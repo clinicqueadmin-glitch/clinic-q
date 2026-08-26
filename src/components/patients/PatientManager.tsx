@@ -43,59 +43,9 @@ function formatMonthsAgo(lastVisit: string): string {
   return rem > 0 ? `${y} ปี ${rem} เดือนที่แล้ว` : `${y} ปีที่แล้ว`
 }
 
-// Use current date for demo data so lastVisit ages are realistic
-const now = new Date()
-const ago = (monthsAgo: number) => {
-  const d = new Date(now)
-  d.setMonth(d.getMonth() - monthsAgo)
-  return d.toISOString().slice(0, 10)
-}
-
-// Demo patients - simplified data
-const initialPatients: Patient[] = [
-  { id: '1', name: 'สมชาย ใจดี', phone: '081-234-5678' },
-  { id: '2', name: 'สมหญิง รักสวย', phone: '082-345-6789' },
-  { id: '3', name: 'วิชัย มั่นคง', phone: '083-456-7890' },
-  { id: '4', name: 'ธนากร เจริญสุข', phone: '084-567-8901' },
-  { id: '5', name: 'พิมพ์ใจ สดใส', phone: '085-678-9012' },
-  { id: '6', name: 'กมล ยิ้มแย้ม', phone: '086-789-0123' },
-  { id: '7', name: 'สุขสันต์ มีสุข', phone: '087-901-2345' },
-  { id: '8', name: 'รัตนา สดชื่น', phone: '088-012-3456' },
-]
-
-// Demo service history data - keyed by phone number
-const serviceHistoryData: Record<string, ServiceHistory[]> = {
-  '081-234-5678': [
-    { id: 'h1', date: '2025-08-25', practitioner: 'ทพ.สมชาย รักษาดี', procedure: 'ขูดหินปูน', duration: 30 },
-    { id: 'h2', date: '2025-07-15', practitioner: 'ทพ.สมชาย รักษาดี', procedure: 'ตรวจสุขภาพฟัน', duration: 20 },
-    { id: 'h3', date: '2025-06-10', practitioner: 'ทพ.สมชาย รักษาดี', procedure: 'อุดฟัน', duration: 45 },
-    { id: 'h4', date: '2025-05-05', practitioner: 'นพ.อริยะ หน้าใส', procedure: 'เลเซอร์หน้าใส', duration: 60 },
-  ],
-  '082-345-6789': [
-    { id: 'h5', date: '2025-08-20', practitioner: 'นพ.อริยะ หน้าใส', procedure: 'ฉีดโบลดกราม', duration: 30 },
-    { id: 'h6', date: '2025-07-18', practitioner: 'นพ.อริยะ หน้าใส', procedure: 'ทำเลเซอร์หน้าใส', duration: 45 },
-  ],
-  '083-456-7890': [
-    { id: 'h7', date: '2025-08-15', practitioner: 'นพ.นรินทร์ สุขสมบูรณ์', procedure: 'ตรวจสุขภาพทั่วไป', duration: 30 },
-    { id: 'h8', date: '2025-07-10', practitioner: 'นพ.นรินทร์ สุขสมบูรณ์', procedure: 'ฉีดวัคซีนไข้หวัดใหญ่', duration: 15 },
-  ],
-  '084-567-8901': [
-    { id: 'h9', date: '2025-08-10', practitioner: 'นพ.สมชาย รักษาดี', procedure: 'จัดฟัน (ปรับเครื่องมือ)', duration: 20 },
-    { id: 'h10', date: '2025-05-10', practitioner: 'นพ.สมชาย รักษาดี', procedure: 'จัดฟัน (ปรับเครื่องมือ)', duration: 20 },
-  ],
-  '085-678-9012': [
-    { id: 'h11', date: '2024-08-26', practitioner: 'นพ.อริยะ หน้าใส', procedure: 'ฉีดฟิลเลอร์ปาก', duration: 45 },
-  ],
-  '086-789-0123': [
-    { id: 'h12', date: '2024-02-15', practitioner: 'นพ.อริยะ หน้าใส', procedure: 'เลเซอร์กำจัดขน', duration: 60 },
-  ],
-  '087-901-2345': [
-    { id: 'h13', date: '2025-08-22', practitioner: 'นพ.นรินทร์ สุขสมบูรณ์', procedure: 'ตรวจสุขภาพทั่วไป', duration: 25 },
-  ],
-  '088-012-3456': [
-    { id: 'h14', date: '2025-01-15', practitioner: 'นพ.อริยะ หน้าใส', procedure: 'ทำเลเซอร์หน้าใส', duration: 45 },
-  ],
-}
+// No demo data - patients are loaded from Supabase
+const initialPatients: Patient[] = []
+const serviceHistoryData: Record<string, ServiceHistory[]> = {}
 
 const emptyForm: Omit<Patient, 'id'> = {
   name: '',

@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Clock, Users, Stethoscope, ArrowLeft, Timer, Activity, CheckCircle, ChevronDown, ChevronRight, X, Filter } from 'lucide-react'
 import Link from 'next/link'
-import { useQueue, clinicDemoData, type QueueItem } from '@/lib/queue-context'
+import { useQueue, type QueueItem } from '@/lib/queue-context'
 import { useClinic } from '@/lib/clinic-context'
 import { clinicConfig, type ClinicType } from '@/lib/queue-data'
 import { getDefaultBranchData, getEstimatedDuration } from '@/lib/branch-data'
@@ -53,7 +53,7 @@ export default function QueueStatusBoard() {
     return () => clearInterval(refreshTimer)
   }, [])
 
-  // Use demo data if queue is empty (public page without login)
+  // Use queue data (from Supabase or localStorage)
   const effectiveQueue = useMemo(() => {
     if (queue.length > 0) return queue
     // Re-read from localStorage on refreshTick changes
@@ -62,7 +62,7 @@ export default function QueueStatusBoard() {
       const saved = localStorage.getItem(storageKey)
       if (saved) return JSON.parse(saved) as QueueItem[]
     } catch {}
-    return clinicDemoData[clinicType] || []
+    return []
   }, [queue, clinicType, refreshTick])
   const clinicCfg = clinicConfig[clinicType]
   const accentColor = clinicCfg.color

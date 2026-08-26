@@ -44,95 +44,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null)
 
-// ═══ DEMO DATA ═══
-
-const demoUsers: Record<string, { password: string; user: User }> = {
-  // Platform Owner
-  'admin@clinicq.com': {
-    password: 'admin123',
-    user: { id: 'u-admin', email: 'admin@clinicq.com', name: 'Admin System', createdAt: new Date().toISOString() }
-  },
-  // Dental Clinic - Owner
-  'owner@dental.com': {
-    password: 'owner123',
-    user: { id: '1', email: 'owner@dental.com', name: 'สมศักดิ์ เจ้าของคลินิก', phone: '089-123-4567', createdAt: new Date().toISOString() }
-  },
-  // Dental Clinic - Staff
-  'staff@dental.com': {
-    password: 'staff123',
-    user: { id: '2', email: 'staff@dental.com', name: 'สมหญิง เจ้าหน้าที่', phone: '081-111-2222', createdAt: new Date().toISOString() }
-  },
-  // Dental Clinic - Doctor (Practitioner)
-  'doctor@dental.com': {
-    password: 'doctor123',
-    user: { id: '3', email: 'doctor@dental.com', name: 'ทพ.สมชาย รักษาดี', phone: '082-222-3333', createdAt: new Date().toISOString() }
-  },
-  // Medical Clinic - Owner
-  'owner@medical.com': {
-    password: 'owner123',
-    user: { id: '10', email: 'owner@medical.com', name: 'นพ.นรินทร์ สุขสมบูรณ์', phone: '081-333-4444', createdAt: new Date().toISOString() }
-  },
-  // Medical Clinic - Staff
-  'staff@medical.com': {
-    password: 'staff123',
-    user: { id: '11', email: 'staff@medical.com', name: 'ปราณี หทัยสุข', phone: '082-444-5555', createdAt: new Date().toISOString() }
-  },
-  // Medical Clinic - Doctor (Practitioner)
-  'doctor@medical.com': {
-    password: 'doctor123',
-    user: { id: '12', email: 'doctor@medical.com', name: 'นพ.ธนพล ใจดี', phone: '083-555-6666', createdAt: new Date().toISOString() }
-  },
-  // Aesthetic Clinic - Owner
-  'owner@aesthetic.com': {
-    password: 'owner123',
-    user: { id: '20', email: 'owner@aesthetic.com', name: 'นพ.อริยะ หน้าใส', phone: '081-666-7777', createdAt: new Date().toISOString() }
-  },
-  // Aesthetic Clinic - Staff
-  'staff@aesthetic.com': {
-    password: 'staff123',
-    user: { id: '21', email: 'staff@aesthetic.com', name: 'ศิริพร จันทร์เจ้า', phone: '082-777-8888', createdAt: new Date().toISOString() }
-  },
-  // Aesthetic Clinic - Doctor (Practitioner)
-  'doctor@aesthetic.com': {
-    password: 'doctor123',
-    user: { id: '22', email: 'doctor@aesthetic.com', name: 'นพ.ณัชชา เลเซอร์', phone: '083-888-9999', createdAt: new Date().toISOString() }
-  },
-  // Example: User with multiple clinic memberships
-  'doctor@gmail.com': {
-    password: 'doctor123',
-    user: { id: '30', email: 'doctor@gmail.com', name: 'นพ.สมชาย รักษาดี', phone: '081-999-0000', createdAt: new Date().toISOString() }
-  },
-}
-
-// Demo clinics
-const demoClinics: Clinic[] = [
-  { id: 'clinic-dental', name: 'คลินิกทันตกรรม สุขฟัน', type: 'dental', color: '#3B82F6', ownerId: '1', isActive: true },
-  { id: 'clinic-medical', name: 'คลินิกเวชกรรม สุขใจ', type: 'medical', color: '#22C55E', ownerId: '10', isActive: true },
-  { id: 'clinic-aesthetic', name: 'คลินิกเสริมความงาม สวยใส', type: 'aesthetic', color: '#EC4899', ownerId: '20', isActive: true },
-]
-
-// Demo memberships (user ↔ clinic ↔ role)
-const demoMemberships: ClinicMembership[] = [
-  // Dental clinic
-  { id: 'm1', userId: '1', clinicId: 'clinic-dental', role: 'owner', isActive: true, createdAt: '2024-01-01' },
-  { id: 'm2', userId: '2', clinicId: 'clinic-dental', role: 'front_desk', isActive: true, createdAt: '2024-01-15' },
-  { id: 'm3', userId: '3', clinicId: 'clinic-dental', role: 'practitioner', isActive: true, createdAt: '2024-01-20' },
-  
-  // Medical clinic
-  { id: 'm4', userId: '10', clinicId: 'clinic-medical', role: 'owner', isActive: true, createdAt: '2024-02-01' },
-  { id: 'm5', userId: '11', clinicId: 'clinic-medical', role: 'front_desk', isActive: true, createdAt: '2024-02-10' },
-  { id: 'm6', userId: '12', clinicId: 'clinic-medical', role: 'practitioner', isActive: true, createdAt: '2024-02-15' },
-  
-  // Aesthetic clinic
-  { id: 'm7', userId: '20', clinicId: 'clinic-aesthetic', role: 'owner', isActive: true, createdAt: '2024-03-01' },
-  { id: 'm8', userId: '21', clinicId: 'clinic-aesthetic', role: 'front_desk', isActive: true, createdAt: '2024-03-10' },
-  { id: 'm9', userId: '22', clinicId: 'clinic-aesthetic', role: 'practitioner', isActive: true, createdAt: '2024-03-15' },
-  
-  // Example: User with multiple clinic memberships (SAME USER, DIFFERENT ROLES)
-  { id: 'm10', userId: '30', clinicId: 'clinic-dental', role: 'practitioner', isActive: true, createdAt: '2024-03-10' },
-  { id: 'm11', userId: '30', clinicId: 'clinic-medical', role: 'practitioner', isActive: true, createdAt: '2024-03-15' },
-  { id: 'm12', userId: '30', clinicId: 'clinic-aesthetic', role: 'manager', isActive: true, createdAt: '2024-03-20' },
-]
+// No demo data - system is empty until real users are created
 
 const STORAGE_KEYS = {
   AUTH: 'clinicq-auth',
@@ -168,9 +80,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [forcePasswordChange, setForcePasswordChange] = useState(false)
   
   // Data stores
-  const [users, setUsers] = useState<User[]>(() => loadFromStorage(STORAGE_KEYS.USERS, Object.values(demoUsers).map(d => d.user)))
-  const [clinics, setClinics] = useState<Clinic[]>(() => loadFromStorage(STORAGE_KEYS.CLINICS, demoClinics))
-  const [memberships, setMemberships] = useState<ClinicMembership[]>(() => loadFromStorage(STORAGE_KEYS.MEMBERSHIPS, demoMemberships))
+  const [users, setUsers] = useState<User[]>(() => loadFromStorage(STORAGE_KEYS.USERS, []))
+  const [clinics, setClinics] = useState<Clinic[]>(() => loadFromStorage(STORAGE_KEYS.CLINICS, []))
+  const [memberships, setMemberships] = useState<ClinicMembership[]>(() => loadFromStorage(STORAGE_KEYS.MEMBERSHIPS, []))
   
   // Load session from localStorage
   useEffect(() => {
@@ -202,19 +114,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   
   // ═══ Login ═══
   const login = useCallback(async (email: string, password: string): Promise<{ success: boolean; error?: string; needsClinicSelection?: boolean }> => {
-    // Check demo users first
-    const demo = demoUsers[email]
+    // Check stored users
     let user: User | undefined
-    
-    if (demo && demo.password === password) {
-      user = demo.user
-    } else {
-      // Check stored users (for registered users)
-      user = users.find(u => u.email === email)
-      // In real app, verify password hash here
-      if (!user || password !== '123456') {  // Demo: default password
-        return { success: false, error: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' }
-      }
+    user = users.find(u => u.email === email)
+    // Verify password (stored passwords or default '123456' for new users)
+    const storedPasswords = JSON.parse(localStorage.getItem('clinicq-user-passwords') || '{}')
+    const storedPassword = storedPasswords[email] || (user?.forcePasswordChange ? '123456' : undefined)
+    if (!user || password !== storedPassword) {
+      return { success: false, error: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' }
     }
     
     if (!user) {
@@ -224,12 +131,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Get user's memberships
     const userMemberships = memberships.filter(m => m.userId === user!.id && m.isActive)
     
+    // Platform owner: no clinic memberships, only platform access
     if (userMemberships.length === 0) {
-      return { success: false, error: 'ไม่มีสิทธิ์เข้าใช้งานคลินิกใดๆ' }
-    }
-    
-    // Check if user is platform owner
-    if (email === 'admin@clinicq.com') {
+      // Allow login as platform owner (no clinic needed)
       const newSession: AuthSession = { user, currentClinicId: null }
       setSession(newSession)
       localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(newSession))
@@ -276,18 +180,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ═══ Update Password ═══
   const updatePassword = useCallback((newPassword: string) => {
     if (!session?.user) return
-    
-    // Update the user's password in storage
-    // In a real app, this would be an API call
-    const storedUsers = localStorage.getItem('clinicq-users')
-    if (storedUsers) {
-      const users = JSON.parse(storedUsers)
-      // For demo users, we can't actually change the password in demoUsers object
-      // But we can store the new password in localStorage
-      const userPasswords = JSON.parse(localStorage.getItem('clinicq-user-passwords') || '{}')
-      userPasswords[session.user.email] = newPassword
-      localStorage.setItem('clinicq-user-passwords', JSON.stringify(userPasswords))
-    }
+    // Store the new password in localStorage
+    const userPasswords = JSON.parse(localStorage.getItem('clinicq-user-passwords') || '{}')
+    userPasswords[session.user.email] = newPassword
+    localStorage.setItem('clinicq-user-passwords', JSON.stringify(userPasswords))
     
     // Update the forcePasswordChange flag in the user object
     const updatedUser = { ...session.user, forcePasswordChange: false }
@@ -472,7 +368,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   
   // ═══ Computed Values ═══
   const currentMembership = getCurrentMembership()
-  const currentRole = currentMembership?.role || (session?.user?.email === 'admin@clinicq.com' ? 'platform_owner' as PlatformRole : null)
+  const currentRole = currentMembership?.role || (!session?.currentClinicId && session?.user ? 'platform_owner' as PlatformRole : null)
   
   const contextValue: AuthContextType = {
     session,

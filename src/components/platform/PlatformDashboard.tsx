@@ -12,34 +12,8 @@ import {
   type PlatformClinic, type PackageType,
 } from '@/lib/platform-data'
 
-// Demo user data for all clinics
-const allUsers = [
-  { id: 'u-platform', name: 'Admin System', email: 'admin@clinicq.com', role: 'platform_owner', clinicType: '-', color: '#DC2626' },
-  { id: 'u-dental-owner', name: 'ทพ.สมบูรณ์ สุขใจ', email: 'owner@dental.com', role: 'clinic_owner', clinicType: 'dental', color: '#EA580C' },
-  { id: 'u-dental-manager', name: 'คุณกรุณา สดใส', email: 'manager@dental.com', role: 'manager', clinicType: 'dental', color: '#CA8A04' },
-  { id: 'u-dental-front', name: 'คุณมณี ใจดี', email: 'front@dental.com', role: 'front_desk', clinicType: 'dental', color: '#16A34A' },
-  { id: 'u-dental-doctor', name: 'ทพ.วิชัย มั่นคง', email: 'doctor@dental.com', role: 'provider', clinicType: 'dental', color: '#2563EB' },
-  { id: 'u-medical-owner', name: 'นพ.นรินทร์ สุขสมบูรณ์', email: 'owner@medical.com', role: 'clinic_owner', clinicType: 'medical', color: '#EA580C' },
-  { id: 'u-medical-manager', name: 'คุณปราณี รักสุขภาพ', email: 'manager@medical.com', role: 'manager', clinicType: 'medical', color: '#CA8A04' },
-  { id: 'u-medical-front', name: 'คุณสุภาพร วงศ์สวัสดิ์', email: 'front@medical.com', role: 'front_desk', clinicType: 'medical', color: '#16A34A' },
-  { id: 'u-medical-doctor', name: 'นพ.ธนพล รักสุขภาพ', email: 'doctor@medical.com', role: 'provider', clinicType: 'medical', color: '#2563EB' },
-  { id: 'u-aesthetic-owner', name: 'นพ.อริยะ หน้าใส', email: 'owner@aesthetic.com', role: 'clinic_owner', clinicType: 'aesthetic', color: '#EA580C' },
-  { id: 'u-aesthetic-manager', name: 'คุณชลิดา สวยเริศ', email: 'manager@aesthetic.com', role: 'manager', clinicType: 'aesthetic', color: '#CA8A04' },
-  { id: 'u-aesthetic-front', name: 'คุณวรรณพร ผิวงาม', email: 'front@aesthetic.com', role: 'front_desk', clinicType: 'aesthetic', color: '#16A34A' },
-  { id: 'u-aesthetic-doctor', name: 'พญ.สิริพร ผิวงาม', email: 'doctor@aesthetic.com', role: 'provider', clinicType: 'aesthetic', color: '#2563EB' },
-  { id: 'u-thai-owner', name: 'นายสมศักดิ์ นวดเก่ง', email: 'owner@thai.com', role: 'clinic_owner', clinicType: 'thai', color: '#EA580C' },
-  { id: 'u-thai-manager', name: 'คุณสุดา สมุนไพร', email: 'manager@thai.com', role: 'manager', clinicType: 'thai', color: '#CA8A04' },
-  { id: 'u-thai-front', name: 'คุณพิมพ์ใจ สดใส', email: 'front@thai.com', role: 'front_desk', clinicType: 'thai', color: '#16A34A' },
-  { id: 'u-thai-doctor', name: 'นายสมชาย นวดไทย', email: 'doctor@thai.com', role: 'provider', clinicType: 'thai', color: '#2563EB' },
-  { id: 'u-chinese-owner', name: 'อาจารย์หมออู จีนเทวะ', email: 'owner@chinese.com', role: 'clinic_owner', clinicType: 'chinese', color: '#EA580C' },
-  { id: 'u-chinese-manager', name: 'คุณจิราวัฒน์ หยินหยาง', email: 'manager@chinese.com', role: 'manager', clinicType: 'chinese', color: '#CA8A04' },
-  { id: 'u-chinese-front', name: 'คุณมณี สดชื่น', email: 'front@chinese.com', role: 'front_desk', clinicType: 'chinese', color: '#16A34A' },
-  { id: 'u-chinese-doctor', name: 'อาจารย์หมอจีน เหวินหลง', email: 'doctor@chinese.com', role: 'provider', clinicType: 'chinese', color: '#2563EB' },
-  { id: 'u-physical-owner', name: 'พท.สมศรี บำบัดดี', email: 'owner@physical.com', role: 'clinic_owner', clinicType: 'physical', color: '#EA580C' },
-  { id: 'u-physical-manager', name: 'คุณสมใจ กายภาพ', email: 'manager@physical.com', role: 'manager', clinicType: 'physical', color: '#CA8A04' },
-  { id: 'u-physical-front', name: 'คุณวันดี สุขสันต์', email: 'front@physical.com', role: 'front_desk', clinicType: 'physical', color: '#16A34A' },
-  { id: 'u-physical-doctor', name: 'นายสมใจ กายภาพ', email: 'doctor@physical.com', role: 'provider', clinicType: 'physical', color: '#2563EB' },
-]
+// No demo data - users are loaded from Supabase
+const allUsers: Array<{ id: string; name: string; email: string; role: string; clinicType: string; color: string }> = []
 
 const roleLabels: Record<string, string> = {
   platform_owner: 'เจ้าของระบบ',

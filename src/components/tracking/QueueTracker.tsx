@@ -7,7 +7,7 @@ import Link from 'next/link'
 import {
   Clock, CheckCircle, Loader2, Stethoscope, Bell, Share2, ArrowLeft, Home, X, BarChart3,
 } from 'lucide-react'
-import { useQueue, type QueueItem, clinicDemoData } from '@/lib/queue-context'
+import { useQueue, type QueueItem } from '@/lib/queue-context'
 import { useClinic } from '@/lib/clinic-context'
 import { clinicConfig, type ClinicType } from '@/lib/queue-data'
 import { createClient } from '@/utils/supabase/client'
@@ -235,21 +235,13 @@ export default function QueueTracker() {
           }
         }
       } catch (e) {
-        // Supabase table doesn't exist or query failed — fall through to demo data
-        console.log('Supabase search failed, falling back to demo data')
+        // Supabase table doesn't exist or query failed
+        console.log('Supabase search failed')
       }
     }
     
-    // Fallback to demo queue — search by phone only
-    let found = effectiveQueue.find(item => item.phone === q)
-    // If not found in current queue, search ALL clinic demo data
-    if (!found) {
-      const allClinicTypes = Object.keys(clinicDemoData) as ClinicType[]
-      for (const ct of allClinicTypes) {
-        found = clinicDemoData[ct].find(item => item.phone === q)
-        if (found) break
-      }
-    }
+    // Search in current queue
+    const found = effectiveQueue.find(item => item.phone === q)
     setLiveItem(found || null)
     setViewMode(found ? 'result' : 'error')
     setIsLoading(false)
