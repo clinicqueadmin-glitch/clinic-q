@@ -1,0 +1,348 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;500;600;700;800;900&family=Prompt:wght@300;400;500;600;700;800&display=swap');
+
+html {
+  font-size: 17px;
+}
+
+body {
+  background-color: #f0fdfa;
+  color: #334155;
+  font-family: 'Nunito', 'Prompt', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.6;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    url('/brand-logo.png') repeat center / 300px,
+    linear-gradient(135deg, #f0fdfa 0%, #f0f9ff 50%, #f0fdf4 100%);
+  opacity: 0.08;
+  pointer-events: none;
+  z-index: 0;
+}
+
+body > * {
+  position: relative;
+  z-index: 1;
+}
+
+body > *:not(.brand-watermark) {
+  position: relative;
+  z-index: 1;
+}
+
+body > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ═══ Candy UI Design System ═══ */
+
+/* Candy Card — soft, colorful, playful */
+.candy-card {
+  background: #ffffff;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 182, 193, 0.2);
+  box-shadow: 0 2px 8px rgba(255, 182, 193, 0.08), 0 8px 24px rgba(0, 0, 0, 0.03);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.candy-card:hover {
+  box-shadow: 0 4px 16px rgba(255, 182, 193, 0.15), 0 12px 32px rgba(0, 0, 0, 0.05);
+  transform: translateY(-2px);
+}
+
+/* Candy Stat Card */
+.candy-stat {
+  background: #ffffff;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 182, 193, 0.15);
+  box-shadow: 0 2px 8px rgba(255, 182, 193, 0.06);
+  transition: all 0.2s ease;
+}
+
+/* Candy Button — rounded, gradient, bouncy */
+.candy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 700;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+}
+.candy-btn:active {
+  transform: scale(0.95);
+}
+.candy-btn-primary {
+  background: linear-gradient(135deg, #14b8a6, #0d9488);
+  color: white;
+  box-shadow: 0 4px 14px rgba(20, 184, 166, 0.35);
+}
+.candy-btn-primary:hover {
+  box-shadow: 0 6px 20px rgba(20, 184, 166, 0.45);
+}
+.candy-btn-success {
+  background: linear-gradient(135deg, #34d399, #10b981);
+  color: white;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+}
+.candy-btn-success:hover {
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.45);
+}
+
+/* Candy Grid */
+.candy-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(4, 1fr);
+}
+@media (max-width: 1024px) {
+  .candy-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  .candy-grid { grid-template-columns: 1fr; }
+}
+
+.candy-grid-2 {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, 1fr);
+}
+@media (max-width: 768px) {
+  .candy-grid-2 { grid-template-columns: 1fr; }
+}
+
+.candy-grid-3 {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(3, 1fr);
+}
+@media (max-width: 1024px) {
+  .candy-grid-3 { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  .candy-grid-3 { grid-template-columns: 1fr; }
+}
+
+/* Candy Badge */
+.candy-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+/* Candy Divider */
+.candy-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 182, 193, 0.3), transparent);
+  margin: 0;
+}
+
+/* Candy Input */
+.candy-input {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 16px;
+  border: 2px solid #f1f5f9;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  background: #ffffff;
+}
+.candy-input:focus {
+  outline: none;
+  border-color: #f472b6;
+  box-shadow: 0 0 0 4px rgba(244, 114, 182, 0.1);
+}
+
+/* Candy Select */
+.candy-select {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 16px;
+  border: 2px solid #f1f5f9;
+  font-size: 0.875rem;
+  font-weight: 500;
+  background: #ffffff;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 40px;
+}
+
+/* Scrollbar — candy pink */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: #fda4af;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: #f472b6;
+}
+
+/* Animations */
+@keyframes slide-in-right {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.animate-slide-in-right {
+  animation: slide-in-right 0.3s ease-out;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+  animation: fade-in 0.25s ease-out;
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+.animate-scale-in {
+  animation: scale-in 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes bounce-in {
+  0% { transform: scale(0.3); opacity: 0; }
+  50% { transform: scale(1.05); }
+  70% { transform: scale(0.9); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.animate-bounce-in {
+  animation: bounce-in 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes marquee {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+
+.animate-marquee {
+  animation: marquee 20s linear infinite;
+}
+
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.page-enter {
+  animation: page-in 0.3s ease-out;
+}
+
+/* Candy gradient text */
+.candy-gradient-text {
+  background: linear-gradient(135deg, #14b8a6, #0d9488, #0f766e);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ═══ Responsive Improvements ═══ */
+
+/* Mobile: reduce font size */
+@media (max-width: 640px) {
+  html { font-size: 15px; }
+  .candy-card { border-radius: 16px; }
+}
+
+/* Tablet: medium adjustments */
+@media (min-width: 641px) and (max-width: 1024px) {
+  html { font-size: 16px; }
+}
+
+/* Mobile: hide desktop-only elements */
+@media (max-width: 640px) {
+  .desktop-only { display: none !important; }
+}
+
+/* Mobile: full width cards */
+@media (max-width: 640px) {
+  .candy-card { margin-left: 0; margin-right: 0; }
+}
+
+/* Mobile: compact padding */
+@media (max-width: 640px) {
+  .page-padding { padding: 12px !important; }
+}
+
+/* Mobile: tables scroll horizontally */
+@media (max-width: 768px) {
+  table { font-size: 12px; }
+  table th, table td { padding: 8px 6px !important; white-space: nowrap; }
+}
+
+/* Mobile: hide sidebar by default, show with toggle */
+@media (max-width: 768px) {
+  .sidebar-container { position: fixed; z-index: 50; transform: translateX(-100%); transition: transform 0.3s ease; }
+  .sidebar-container.open { transform: translateX(0); }
+}
+
+/* Mobile: make buttons full width */
+@media (max-width: 640px) {
+  .btn-full-mobile { width: 100%; }
+}
+
+/* Mobile: make grid stack */
+@media (max-width: 640px) {
+  .grid-2-mobile { grid-template-columns: 1fr !important; }
+  .flex-col-mobile { flex-direction: column !important; }
+}
+
+/* PWA Install Banner slide-up */
+@keyframes slide-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.animate-slide-up {
+  animation: slide-up 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Mobile: safe area for PWA */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Clickable phone links */
+a[href^="tel:"] {
+  color: #2563EB;
+  text-decoration: none;
+  cursor: pointer;
+}
+a[href^="tel:"]:hover {
+  text-decoration: underline;
+  color: #1D4ED8;
+}
