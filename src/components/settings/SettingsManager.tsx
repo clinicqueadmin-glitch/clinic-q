@@ -284,7 +284,7 @@ export default function SettingsManager() {
   const copyLink = () => {
     navigator.clipboard.writeText(trackingUrl).catch(() => {})
     setCopied(true)
-    showToastMsg('คัดลูลิงก์แล้ว!', 'success')
+    showToastMsg('คัดลอกลิงก์แล้ว!', 'success')
     setTimeout(() => setCopied(false), 2000)
   }
 
@@ -644,7 +644,7 @@ export default function SettingsManager() {
                         🖨️ พิมพ์ QR Code
                       </button>
                       <button onClick={copyLink} className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm flex items-center gap-2">
-                        {copied ? <><Check className="w-4 h-4 text-green-500" /> คัดลูลิงก์แล้ว</> : <><Copy className="w-4 h-4" /> คัดลูลิงก์</>}
+                        {copied ? <><Check className="w-4 h-4 text-green-500" /> คัดลอกลิงก์แล้ว</> : <><Copy className="w-4 h-4" /> คัดลอกลิงก์</>}
                       </button>
                       <a href={trackingUrl} target="_blank" rel="noopener noreferrer" className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm flex items-center gap-2">
                         <ExternalLink className="w-4 h-4" /> เปิดลิงก์
@@ -669,7 +669,7 @@ export default function SettingsManager() {
                     <div className="p-3 bg-green-50 rounded-lg border border-green-100">
                       <p className="text-xs font-bold text-green-800 mb-2">💡 วิธีตั้งค่าใน LINE OA:</p>
                       <ol className="text-xs text-green-700 space-y-1 list-decimal list-inside">
-                        <li>คัดลูลิงก์ด้านบน</li>
+                        <li>คัดลอกลิงก์ด้านบน</li>
                         <li>เปิด LINE Official Account Manager → แก้ไข Rich Menu</li>
                         <li>เพิ่มปุ่ม "ตรวจสอบคิว" → วางลิงก์</li>
                         <li>คนไข้กดปุ่ม → กรอกเบอร์โทร → เห็นสถานะคิวทันที</li>
@@ -706,7 +706,7 @@ export default function SettingsManager() {
                             }}
                             className="px-3 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-700 text-xs font-medium flex items-center gap-1"
                           >
-                            {copied ? <><Check className="w-3 h-3" /> คัดลอกแล้ว</> : <><Copy className="w-3 h-3" /> คัดลูลิงก์</>}
+                            {copied ? <><Check className="w-3 h-3" /> คัดลอกแล้ว</> : <><Copy className="w-3 h-3" /> คัดลอกลิงก์</>}
                           </button>
                           <a
                             href={`/queue-status?clinic=${currentClinic || 'dental'}`}
@@ -744,7 +744,7 @@ export default function SettingsManager() {
                     <div className="bg-white rounded-xl p-3 border border-blue-100">
                       <p className="text-xs font-bold text-blue-800 mb-2">🔍 สำหรับลิงก์ตรวจสอบคิว</p>
                       <ol className="text-xs text-blue-700 space-y-1 list-decimal list-inside">
-                        <li>คัดลูลิงก์ไปวางใน LINE OA</li>
+                        <li>คัดลอกลิงก์ไปวางใน LINE OA</li>
                         <li>สร้างปุ่ม "ตรวจสอบคิว" ใน Rich Menu</li>
                         <li>คนไข้กดปุ่ม → กรอกเบอร์โทร</li>
                         <li>เห็นสถานะคิวของตนเองทันที</li>
