@@ -52,8 +52,9 @@ function loadPractitioners(clinicType: ClinicType): Practitioner[] {
 // Filter practitioners by current clinic ID
 function filterByClinic(practitioners: Practitioner[], clinicId: string | null): Practitioner[] {
   if (!clinicId) return practitioners
-  // Show practitioners that belong to this clinic OR have no clinicId (legacy)
-  return practitioners.filter(p => !p.clinicId || p.clinicId === clinicId)
+  // Strict: only show practitioners that explicitly belong to this clinic
+  // Legacy practitioners without clinicId are NOT shown for any specific clinic
+  return practitioners.filter(p => p.clinicId === clinicId)
 }
 
 const PractitionerContext = createContext<PractitionerContextType | null>(null)
