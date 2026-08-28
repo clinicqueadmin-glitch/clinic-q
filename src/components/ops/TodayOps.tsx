@@ -87,7 +87,8 @@ export default function TodayOps() {
         try { return JSON.parse(saved) } catch {}
       }
     }
-    return branchData.rooms
+    // New clinics start with no rooms - user must add them via settings
+    return []
   })
   
   // Read daily room schedule from separate localStorage (practitioner, branch, time for today)
