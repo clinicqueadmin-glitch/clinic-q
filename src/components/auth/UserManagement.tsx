@@ -105,10 +105,20 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
     }
   }, [])
 
-  // Save to localStorage
+  // Save to localStorage + sync with auth system
   useEffect(() => {
     if (users.length > 0) {
       localStorage.setItem('clinicq-users-with-roles', JSON.stringify(users))
+      // Sync with auth system's user store so login can find them
+      const authUsers = users.map(u => ({
+        id: u.id,
+        email: u.email,
+        name: u.name,
+        phone: u.phone || '',
+        createdAt: u.createdAt,
+        forcePasswordChange: u.forcePasswordChange ?? true,
+      }))
+      localStorage.setItem('clinicq-users', JSON.stringify(authUsers))
     }
   }, [users])
 
@@ -210,6 +220,21 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
         forcePasswordChange: true  // Set flag to require password change on first login
       }
       setUsers(prev => [...prev, newUser])
+      // Store password for login
+      const userPasswords = JSON.parse(localStorage.getItem('clinicq-user-passwords') || '{}')
+      userPasswords[form.email] = form.password
+      localStorage.setItem('clinicq-user-passwords', JSON.stringify(userPasswords))
+      // Also add membership for this clinic
+      const memberships = JSON.parse(localStorage.getItem('clinicq-memberships') || '[]')
+      const newMembership = {
+        id: `membership-${Date.now()}`,
+        userId: newUser.id,
+        clinicId: currentClinicId || '',
+        role: form.roles[0] || 'front_desk',
+        isActive: true,
+        createdAt: new Date().toISOString(),
+      }
+      localStorage.setItem('clinicq-memberships', JSON.stringify([...memberships, newMembership]))
       
       // Create practitioner record if user has practitioner role
       if (form.roles.includes('practitioner')) {
