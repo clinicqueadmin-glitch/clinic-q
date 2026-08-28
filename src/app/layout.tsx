@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
 import './globals.css'
 import ClinicProviderWrapper from '@/components/clinic/ClinicProviderWrapper'
 import { QueueProvider } from '@/lib/queue-context'
@@ -9,7 +8,7 @@ import SWRegistration from '@/components/SWRegistration'
 import PWAInstallBanner from '@/components/PWAInstallBanner'
 import ForcePasswordChangeWrapper from '@/components/auth/ForcePasswordChangeWrapper'
 
-const inter = Inter({ subsets: ['latin'] })
+
 
 export const metadata: Metadata = {
   title: 'Clinic-Q | ระบบจัดการคิวคลินิก',
@@ -45,7 +44,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="th">
-      <body className={inter.className}>
+      <body>
         <div className="brand-watermark" />
         <SWRegistration />
         <PWAInstallBanner />
