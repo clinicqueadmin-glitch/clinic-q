@@ -84,6 +84,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [clinics, setClinics] = useState<Clinic[]>(() => loadFromStorage(STORAGE_KEYS.CLINICS, []))
   const [memberships, setMemberships] = useState<ClinicMembership[]>(() => loadFromStorage(STORAGE_KEYS.MEMBERSHIPS, []))
   
+  // Initialize platform owner account if not exists
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const PLATFORM_OWNER_EMAIL = 'sakarinmam999@gmail.com'
+    const currentUsers = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]')
+    const existingOwner = currentUsers.find((u: any) => u.email === PLATFORM_OWNER_EMAIL)
+    if (!existingOwner) {
+      const platformOwner: User = {
+        id: 'platform-owner-1',
+        email: PLATFORM_OWNER_EMAIL,
+        name: 'Sakarin (Platform Owner)',
+        phone: '',
+        createdAt: new Date().toISOString(),
+        forcePasswordChange: false,
+      }
+      const updatedUsers = [...currentUsers, platformOwner]
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers))
+      setUsers(updatedUsers)
+      // Store password
+      const passwords = JSON.parse(localStorage.getItem('clinicq-user-passwords') || '{}')
+      passwords[PLATFORM_OWNER_EMAIL] = 'abc1234'
+      localStorage.setItem('clinicq-user-passwords', JSON.stringify(passwords))
+    }
+  }, [])
+  
   // Load session from localStorage
   useEffect(() => {
     const saved = loadFromStorage<AuthSession | null>(STORAGE_KEYS.AUTH, null)
@@ -155,16 +180,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { success: false, error: 'ไม่พบบัญชีผู้ใช้' }
     }
     
+    // Platform owner: only specific emails can be platform owner
+    const PLATFORM_OWNER_EMAILS = ['sakarinmam999@gmail.com']
+    const isPlatformOwner = PLATFORM_OWNER_EMAILS.includes(user.email)
+    
     // Get user's memberships
     const userMemberships = allMemberships.filter(m => m.userId === user!.id && m.isActive)
     
     // Platform owner: no clinic memberships, only platform access
-    if (userMemberships.length === 0) {
+    if (isPlatformOwner && userMemberships.length === 0) {
       // Allow login as platform owner (no clinic needed)
       const newSession: AuthSession = { user, currentClinicId: null }
       setSession(newSession)
       localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(newSession))
       return { success: true }
+    }
+    
+    // Non-platform owner with no memberships → error
+    if (!isPlatformOwner && userMemberships.length === 0) {
+      return { success: false, error: 'ไม่มีสิทธิ์เข้าใช้งาน กรุณาติดต่อผู้ดูแลระบบ' }
     }
     
     // Check if user has only 1 clinic - auto select
