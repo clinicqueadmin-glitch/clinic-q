@@ -1,14 +1,14 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import {
   Plus, Edit, Trash2, X, AlertTriangle, Stethoscope,
-  DoorOpen, ChevronDown, ChevronRight, Check,
+  ChevronDown, ChevronRight,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useClinic } from '@/lib/clinic-context'
 import {
-  type Branch, type Practitioner, type Room, type Procedure,
+  type Branch, type Practitioner, type Procedure,
   type ClinicBranchData,
   getDefaultBranchData,
 } from '@/lib/branch-data'
@@ -29,11 +29,7 @@ export default function BranchRoomSettings() {
   const [editingProcedure, setEditingProcedure] = useState<{ branchId: string; procedure: Procedure | null }>({ branchId: '', procedure: null })
   const [procForm, setProcForm] = useState({ name: '', estimatedDuration: 30 })
 
-  const [showRoomModal, setShowRoomModal] = useState(false)
-  const [editingRoom, setEditingRoom] = useState<Room | null>(null)
-  const [roomForm, setRoomForm] = useState({ name: '', color: '#0891B2', image: '' })
-
-  const [confirmDelete, setConfirmDelete] = useState<{ type: 'branch' | 'procedure' | 'room'; id: string; branchId?: string } | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<{ type: 'branch' | 'procedure'; id: string; branchId?: string } | null>(null)
 
   const showToast = (msg: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ msg, type } as any)
@@ -41,8 +37,6 @@ export default function BranchRoomSettings() {
     setTimeout(() => setToast(null), 3000)
   }
 
-  const getBranchName = (branchId: string) => data.branches.find(b => b.id === branchId)?.name || '—'
-  const getPractitionerName = (id: string) => data.practitioners.find(p => p.id === id)?.name || '—'
 
   /* ───── Branch CRUD ───── */
   const saveBranch = () => {
@@ -92,49 +86,11 @@ export default function BranchRoomSettings() {
     }))
   }
 
-  /* ───── Room CRUD ───── */
-  const saveRoom = () => {
-    if (!roomForm.name) {
-      showToast('กรุณากรอกชื่อห้อง', 'error'); return
-    }
-    if (editingRoom) {
-      setData(prev => ({
-        ...prev,
-        rooms: prev.rooms.map(r => r.id === editingRoom.id ? { ...r, name: roomForm.name, color: roomForm.color, image: roomForm.image || undefined } : r),
-      }))
-      showToast('แก้ไขห้องสำเร็จ!')
-    } else {
-      const maxId = Math.max(0, ...data.rooms.map(r => r.id))
-      const newRoom: Room = { id: maxId + 1, name: roomForm.name, color: roomForm.color, image: roomForm.image || undefined, branchId: '', practitionerId: '', slotDuration: 30, workingStartTime: '09:00', workingEndTime: '17:00', active: true }
-      setData(prev => ({ ...prev, rooms: [...prev.rooms, newRoom] }))
-      showToast('เพิ่มห้องสำเร็จ!')
-    }
-    setShowRoomModal(false)
-  }
-
-  const handleRoomImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (!file.type.startsWith('image/')) {
-      showToast('กรุณาเลือกไฟล์รูปภาพ', 'error')
-      return
-    }
-    if (file.size > 500 * 1024) {
-      showToast('ขนาดไฟล์ต้องไม่เกิน 500 KB', 'error')
-      return
-    }
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      setRoomForm(prev => ({ ...prev, image: ev.target?.result as string }))
-    }
-    reader.readAsDataURL(file)
-  }
-
   const handleDelete = () => {
     if (!confirmDelete) return
     const { type, id, branchId } = confirmDelete
     if (type === 'branch') {
-      setData(prev => ({ ...prev, branches: prev.branches.filter(b => b.id !== id), rooms: prev.rooms.filter(r => r.branchId !== id) }))
+      setData(prev => ({ ...prev, branches: prev.branches.filter(b => b.id !== id) }))
       showToast('ลบสาขาแล้ว', 'info')
     } else if (type === 'procedure') {
       setData(prev => ({
@@ -142,9 +98,6 @@ export default function BranchRoomSettings() {
         branches: prev.branches.map(b => b.id === branchId ? { ...b, procedures: b.procedures.filter(p => p.id !== id) } : b),
       }))
       showToast('ลบหัตถการแล้ว', 'info')
-    } else if (type === 'room') {
-      setData(prev => ({ ...prev, rooms: prev.rooms.filter(r => r.id !== Number(id)) }))
-      showToast('ลบห้องแล้ว', 'info')
     }
     setConfirmDelete(null)
   }
@@ -200,64 +153,6 @@ export default function BranchRoomSettings() {
             <div className="flex justify-end gap-3 p-6 border-t border-gray-100">
               <button onClick={() => setShowProcedureModal(false)} className="btn-secondary">ยกเลิก</button>
               <button onClick={saveProcedure} className="btn-primary" style={{ backgroundColor: config.color }}>บันทึก</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ─── Room Modal ─── */}
-      {showRoomModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-xl font-bold">{editingRoom ? 'แก้ไขห้อง' : 'เพิ่มห้องใหม่'}</h2>
-              <button onClick={() => setShowRoomModal(false)} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อห้อง *</label>
-                <input type="text" value={roomForm.name} onChange={(e) => setRoomForm({ ...roomForm, name: e.target.value })} placeholder="เช่น ห้อง 1" className="input-field" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">สีประจำห้อง</label>
-                <div className="flex items-center gap-3">
-                  <input type="color" value={roomForm.color} onChange={(e) => setRoomForm({ ...roomForm, color: e.target.value })} className="w-12 h-12 rounded-lg cursor-pointer border border-gray-200" />
-                  <div className="flex-1">
-                    <div className="h-8 rounded-lg" style={{ backgroundColor: roomForm.color }} />
-                    <p className="text-[10px] text-gray-400 mt-1">ตัวอย่างสี</p>
-                  </div>
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">รูปห้องตรวจ <span className="text-gray-400 font-normal">(ไม่บังคับ)</span></label>
-                <div className="flex items-center gap-3">
-                  {roomForm.image ? (
-                    <div className="relative">
-                      <img src={roomForm.image} alt="ห้อง" className="w-20 h-20 rounded-xl object-cover border border-gray-200" />
-                      <button
-                        onClick={() => setRoomForm(prev => ({ ...prev, image: '' }))}
-                        className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600"
-                      >×</button>
-                    </div>
-                  ) : (
-                    <label className="w-20 h-20 rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 hover:bg-gray-50 transition-colors">
-                      <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      <span className="text-[9px] text-gray-400 mt-1">เลือกรูป</span>
-                      <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={handleRoomImageUpload} />
-                    </label>
-                  )}
-                  <div className="flex-1 text-xs text-gray-500">
-                    <p>รองรับ PNG หรือ JPEG</p>
-                    <p>ขนาดไม่เกิน 500 KB</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-100">
-              <button onClick={() => setShowRoomModal(false)} className="btn-secondary">ยกเลิก</button>
-              <button onClick={saveRoom} className="btn-primary" style={{ backgroundColor: config.color }}>บันทึก</button>
             </div>
           </div>
         </div>
@@ -356,46 +251,6 @@ export default function BranchRoomSettings() {
               </div>
             )
           })}
-        </div>
-      </div>
-
-      {/* ─── Rooms Section ─── */}
-      <div className="pt-6 border-t border-gray-100">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">ห้องตรวจ</h3>
-            <p className="text-sm text-gray-500">กำหนดห้อง สาขาที่รับผิดชอบ และผู้ทำหัตถการ</p>
-          </div>
-          <button onClick={() => { setEditingRoom(null); setRoomForm({ name: '', color: config.color, image: '' }); setShowRoomModal(true) }} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ backgroundColor: config.color }}>
-            <Plus className="w-4 h-4" /> เพิ่มห้อง
-          </button>
-        </div>
-
-        <div className="space-y-3">
-          {data.rooms.filter(r => r.active).map(room => (
-            <div key={room.id} className="flex items-center justify-between p-4 border border-gray-100 rounded-xl hover:bg-gray-50">
-              <div className="flex items-center gap-4">
-                {room.image ? (
-                  <img src={room.image} alt={room.name} className="w-12 h-12 rounded-xl object-cover border border-gray-200" />
-                ) : (
-                  <div className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-sm" style={{ backgroundColor: room.color }}>
-                    {room.id}
-                  </div>
-                )}
-                <div>
-                  <p className="font-medium text-gray-900">{room.name}</p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <div className="w-3 h-3 rounded-full border border-gray-200" style={{ backgroundColor: room.color }} />
-                    <span className="text-xs text-gray-500">สีประจำห้อง</span>
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button onClick={() => { setEditingRoom(room); setRoomForm({ name: room.name, color: room.color, image: room.image || '' }); setShowRoomModal(true) }} className="p-2 hover:bg-gray-100 rounded-lg"><Edit className="w-4 h-4 text-gray-500" /></button>
-                <button onClick={() => setConfirmDelete({ type: 'room', id: String(room.id) })} className="p-2 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4 text-gray-400 hover:text-red-500" /></button>
-              </div>
-            </div>
-          ))}
         </div>
       </div>
     </div>
