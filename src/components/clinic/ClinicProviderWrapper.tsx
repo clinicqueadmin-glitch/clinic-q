@@ -25,7 +25,7 @@ function AppShell({ children }: { children: ReactNode }) {
 
 function ClinicRouter({ children }: { children: ReactNode }) {
   const { isConfigured, setClinic, currentClinic } = useClinic()
-  const { isAuthenticated, isLoading, session, currentRole } = useAuth()
+  const { isAuthenticated, isLoading, session, currentRole, currentClinicId } = useAuth()
   const pathname = usePathname()
 
   // Auto-select clinic from auth session when not configured
@@ -54,7 +54,7 @@ function ClinicRouter({ children }: { children: ReactNode }) {
   // Root path → authenticated users get AppShell with sidebar, unauthenticated get plain
   if (pathname === '/') {
     if (isAuthenticated && currentRole !== 'platform_owner' && isConfigured) {
-      return <PractitionerProvider clinicType={currentClinic || 'dental'}><AppShell>{children}</AppShell></PractitionerProvider>
+      return <PractitionerProvider clinicType={currentClinic || 'dental'} clinicId={currentClinicId}><AppShell>{children}</AppShell></PractitionerProvider>
     }
     return <>{children}</>
   }
@@ -118,7 +118,7 @@ function ClinicRouter({ children }: { children: ReactNode }) {
     return <AppShell>{children}</AppShell>
   }
 
-  return <PractitionerProvider clinicType={currentClinic || 'dental'}><AppShell>{children}</AppShell></PractitionerProvider>
+  return <PractitionerProvider clinicType={currentClinic || 'dental'} clinicId={currentClinicId}><AppShell>{children}</AppShell></PractitionerProvider>
 }
 
 export default function ClinicProviderWrapper({ children }: { children: ReactNode }) {

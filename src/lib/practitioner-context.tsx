@@ -49,10 +49,22 @@ function loadPractitioners(clinicType: ClinicType): Practitioner[] {
   return practitionersWithMeta
 }
 
+// Filter practitioners by current clinic ID
+function filterByClinic(practitioners: Practitioner[], clinicId: string | null): Practitioner[] {
+  if (!clinicId) return practitioners
+  // Show practitioners that belong to this clinic OR have no clinicId (legacy)
+  return practitioners.filter(p => !p.clinicId || p.clinicId === clinicId)
+}
+
 const PractitionerContext = createContext<PractitionerContextType | null>(null)
 
-export function PractitionerProvider({ children, clinicType }: { children: ReactNode; clinicType: ClinicType }) {
+export function PractitionerProvider({ children, clinicType, clinicId }: { children: ReactNode; clinicType: ClinicType; clinicId?: string | null }) {
   const [practitioners, setPractitioners] = useState<Practitioner[]>(() => loadPractitioners(clinicType))
+  
+  // Filter practitioners by current clinic
+  const filteredPractitioners = useMemo(() => {
+    return filterByClinic(practitioners, clinicId || null)
+  }, [practitioners, clinicId])
 
   const saveToStorage = useCallback((data: Practitioner[]) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
@@ -102,10 +114,10 @@ export function PractitionerProvider({ children, clinicType }: { children: React
 
   return (
     <PractitionerContext.Provider value={{ 
-      practitioners, 
+      practitioners: filteredPractitioners,
       updatePractitioner, 
       addPractitioner, 
-      deletePractitioner, 
+      deletePractitioner,
       togglePractitioner,
       getPractitionerByUserId,
       getPractitionersByClinicId
