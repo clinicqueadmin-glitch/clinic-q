@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { User, Mail, Phone, Calendar, Shield, Save, ArrowLeft, Camera, CheckCircle, Lock, Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { roleConfig } from '@/lib/auth-types'
@@ -15,6 +15,8 @@ export default function ProfilePage() {
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState(user?.email || '')
   const [isSaving, setIsSaving] = useState(false)
+  const [profileImage, setProfileImage] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [showSuccess, setShowSuccess] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -34,10 +36,39 @@ export default function ProfilePage() {
           const data = JSON.parse(saved)
           if (data.name) setName(data.name)
           if (data.phone) setPhone(data.phone)
+          if (data.profileImage) setProfileImage(data.profileImage)
         } catch {}
       }
     }
   }, [user])
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      alert('กรุณาเลือกไฟล์รูปภาพ')
+      return
+    }
+    if (file.size > 500 * 1024) {
+      alert('ขนาดไฟล์ต้องไม่เกิน 500 KB')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const imageData = ev.target?.result as string
+      setProfileImage(imageData)
+      // Auto save
+      if (user) {
+        const saved = localStorage.getItem(`clinicq-profile-${user.id}`)
+        const data = saved ? JSON.parse(saved) : {}
+        localStorage.setItem(`clinicq-profile-${user.id}`, JSON.stringify({
+          ...data,
+          profileImage: imageData,
+        }))
+      }
+    }
+    reader.readAsDataURL(file)
+  }
 
   const handleSave = () => {
     if (!user) return
@@ -47,6 +78,7 @@ export default function ProfilePage() {
       name,
       phone,
       email,
+      profileImage,
     }))
     // Update session name if changed
     if (name !== user.name) {
@@ -115,15 +147,33 @@ export default function ProfilePage() {
         {/* Avatar Section */}
         <div className="bg-gradient-to-r from-pink-50 to-purple-50 px-6 py-8 flex flex-col items-center">
           <div className="relative">
-            <div
-              className="w-24 h-24 rounded-full flex items-center justify-center text-white text-3xl font-bold shadow-lg"
-              style={{ backgroundColor: roleCfg?.color || '#9CA3AF' }}
+            {profileImage ? (
+              <img 
+                src={profileImage} 
+                alt="Profile" 
+                className="w-24 h-24 rounded-full object-cover shadow-lg border-4 border-white"
+              />
+            ) : (
+              <div
+                className="w-24 h-24 rounded-full flex items-center justify-center text-white text-3xl font-bold shadow-lg"
+                style={{ backgroundColor: roleCfg?.color || '#9CA3AF' }}
+              >
+                {name.charAt(0)}
+              </div>
+            )}
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className="absolute bottom-0 right-0 p-2 bg-white rounded-full shadow-md hover:shadow-lg transition-shadow"
             >
-              {name.charAt(0)}
-            </div>
-            <button className="absolute bottom-0 right-0 p-2 bg-white rounded-full shadow-md hover:shadow-lg transition-shadow">
               <Camera className="w-4 h-4 text-gray-600" />
             </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="hidden"
+            />
           </div>
           <h2 className="mt-4 text-xl font-bold text-gray-900">{name}</h2>
           <span
