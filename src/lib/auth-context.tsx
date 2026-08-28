@@ -92,8 +92,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const freshUser = users.find(u => u.id === saved.user.id)
       if (freshUser) {
         setSession({ ...saved, user: freshUser })
+        // Check if user needs to force change password
+        if (freshUser.forcePasswordChange) {
+          setForcePasswordChange(true)
+        }
       } else {
         setSession(saved)
+        if (saved.user.forcePasswordChange) {
+          setForcePasswordChange(true)
+        }
       }
     }
     setIsLoading(false)
@@ -114,9 +121,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   
   // ═══ Login ═══
   const login = useCallback(async (email: string, password: string): Promise<{ success: boolean; error?: string; needsClinicSelection?: boolean }> => {
-    // Check stored users
-    let user: User | undefined
-    user = users.find(u => u.email === email)
+    // Check stored users — also read from localStorage directly as fallback
+    // (in case users were registered after this component mounted)
+    const freshUsers: User[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]')
+    const allUsers = [...users]
+    for (const fu of freshUsers) {
+      if (!allUsers.find(u => u.id === fu.id)) allUsers.push(fu)
+    }
+    let user: User | undefined = allUsers.find(u => u.email === email)
+    
+    // Also refresh memberships from localStorage
+    const freshMemberships: ClinicMembership[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.MEMBERSHIPS) || '[]')
+    const allMemberships = [...memberships]
+    for (const fm of freshMemberships) {
+      if (!allMemberships.find(m => m.id === fm.id)) allMemberships.push(fm)
+    }
+    
+    // Also refresh clinics from localStorage
+    const freshClinics: Clinic[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.CLINICS) || '[]')
+    const allClinics = [...clinics]
+    for (const fc of freshClinics) {
+      if (!allClinics.find(c => c.id === fc.id)) allClinics.push(fc)
+    }
+    
     // Verify password (stored passwords or default '123456' for new users)
     const storedPasswords = JSON.parse(localStorage.getItem('clinicq-user-passwords') || '{}')
     const storedPassword = storedPasswords[email] || (user?.forcePasswordChange ? '123456' : undefined)
@@ -129,7 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     
     // Get user's memberships
-    const userMemberships = memberships.filter(m => m.userId === user!.id && m.isActive)
+    const userMemberships = allMemberships.filter(m => m.userId === user!.id && m.isActive)
     
     // Platform owner: no clinic memberships, only platform access
     if (userMemberships.length === 0) {
@@ -142,7 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     // Check if user has only 1 clinic - auto select
     if (userMemberships.length === 1) {
-      const singleClinic = clinics.find(c => c.id === userMemberships[0].clinicId)
+      const singleClinic = allClinics.find(c => c.id === userMemberships[0].clinicId)
       const newSession: AuthSession = { user, currentClinicId: singleClinic?.id || null }
       setSession(newSession)
       localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(newSession))
@@ -195,7 +222,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       u.id === session.user.id ? { ...u, forcePasswordChange: false } : u
     ))
     
-    alert('เปลี่ยนรหัสผ่านสำเร็จ!')
+    // password changed successfully
   }, [session])
   
   // ═══ Select Clinic (for users with multiple clinics) ═══

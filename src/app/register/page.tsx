@@ -53,7 +53,57 @@ export default function RegisterPage() {
 
   const handleSubmit = () => {
     if (!validate()) return
-    // Save registered clinic to localStorage
+    
+    const now = new Date().toISOString()
+    const clinicId = `clinic-${Date.now()}`
+    const userId = `user-${Date.now()}`
+    const membershipId = `mem-${Date.now()}`
+    
+    // 1. Create User record
+    const users = JSON.parse(localStorage.getItem('clinicq-users') || '[]')
+    const newUser = {
+      id: userId,
+      email: form.email,
+      name: form.ownerName,
+      phone: form.phone,
+      createdAt: now,
+      forcePasswordChange: true, // Force change password on first login
+    }
+    users.push(newUser)
+    localStorage.setItem('clinicq-users', JSON.stringify(users))
+    
+    // 2. Store password
+    const passwords = JSON.parse(localStorage.getItem('clinicq-user-passwords') || '{}')
+    passwords[form.email] = form.password
+    localStorage.setItem('clinicq-user-passwords', JSON.stringify(passwords))
+    
+    // 3. Create Clinic record
+    const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
+    const newClinic = {
+      id: clinicId,
+      name: form.clinicName,
+      type: selectedType,
+      phone: form.phone,
+      ownerName: form.ownerName,
+      createdAt: now,
+    }
+    clinics.push(newClinic)
+    localStorage.setItem('clinicq-clinics', JSON.stringify(clinics))
+    
+    // 4. Create Membership (owner role)
+    const memberships = JSON.parse(localStorage.getItem('clinicq-memberships') || '[]')
+    const newMembership = {
+      id: membershipId,
+      userId: userId,
+      clinicId: clinicId,
+      role: 'owner',
+      isActive: true,
+      createdAt: now,
+    }
+    memberships.push(newMembership)
+    localStorage.setItem('clinicq-memberships', JSON.stringify(memberships))
+    
+    // 5. Save registration info (legacy)
     const registered = JSON.parse(localStorage.getItem('clinicq-registered-clinics') || '{}')
     registered[form.email] = {
       clinicType: selectedType,
@@ -61,9 +111,13 @@ export default function RegisterPage() {
       ownerName: form.ownerName,
       phone: form.phone,
       email: form.email,
-      registeredAt: new Date().toISOString(),
+      registeredAt: now,
     }
     localStorage.setItem('clinicq-registered-clinics', JSON.stringify(registered))
+    
+    // 6. Set default clinic type for ClinicContext
+    localStorage.setItem('clinic-q-type', selectedType || 'dental')
+    
     setStep('success')
   }
 
@@ -300,6 +354,17 @@ export default function RegisterPage() {
               </div>
             </div>
 
+            <div className="bg-blue-50 rounded-2xl p-4 border border-blue-200 space-y-2">
+              <p className="text-sm text-blue-700 font-medium">
+                📧 อีเมล: <strong>{form.email}</strong>
+              </p>
+              <p className="text-sm text-blue-700">
+                🔑 รหัสผ่าน: ใช้รหัสผ่านที่กรอกไว้ตอนสมัคร
+              </p>
+              <p className="text-xs text-blue-600">
+                ⚠️ ระบบจะให้เปลี่ยนรหัสผ่านใหม่ในการเข้าใช้งานครั้งแรก
+              </p>
+            </div>
             <div className="bg-amber-50 rounded-2xl p-4 border border-amber-200">
               <p className="text-sm text-amber-700 font-medium">
                 ⚠️ ทดลองใช้จะสิ้นสุดใน 30 วัน — อัปเกรดเป็นแพ็กเกจชำระเงินเพื่อใช้งานต่อ
@@ -307,7 +372,7 @@ export default function RegisterPage() {
             </div>
 
             <button
-              onClick={() => router.push('/login')}
+              onClick={() => window.location.href = '/login'}
               className="w-full py-3.5 rounded-2xl font-bold text-white bg-gradient-to-r from-purple-500 to-pink-500 hover:shadow-lg shadow-purple-200 transition-all"
             >
               เข้าสู่ระบบ
