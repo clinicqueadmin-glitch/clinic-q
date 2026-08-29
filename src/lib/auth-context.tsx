@@ -23,6 +23,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string; needsClinicSelection?: boolean }>
   logout: () => void
   updatePassword: (newPassword: string) => void
+  resetPasswordByEmail: (email: string) => Promise<{ success: boolean; error?: string }>
   
   // Clinic Management
   switchClinic: (clinicId: string) => void
@@ -258,7 +259,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     // password changed successfully
   }, [session])
-  
+
+  // ═══ Reset Password by Email (for Forgot Password) ═══
+  const resetPasswordByEmail = useCallback(async (email: string): Promise<{ success: boolean; error?: string }> => {
+    // Check if user exists in localStorage
+    const users = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]')
+    const userExists = users.some((u: any) => u.email === email)
+    if (!userExists) {
+      return { success: false, error: 'ไม่พบอีเมลนี้ในระบบ' }
+    }
+    // Reset password to 123456 and set forcePasswordChange
+    const userPasswords = JSON.parse(localStorage.getItem('clinicq-user-passwords') || '{}')
+    userPasswords[email] = '123456'
+    localStorage.setItem('clinicq-user-passwords', JSON.stringify(userPasswords))
+    // Update forcePasswordChange flag
+    const updatedUsers = users.map((u: any) => 
+      u.email === email ? { ...u, forcePasswordChange: true } : u
+    )
+    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers))
+    setUsers(updatedUsers)
+    return { success: true }
+  }, [])
+
   // ═══ Select Clinic (for users with multiple clinics) ═══
   const selectClinic = useCallback((clinicId: string) => {
     setSession(prev => {
@@ -442,6 +464,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     login,
     logout,
     updatePassword,
+    resetPasswordByEmail,
     switchClinic,
     getUserClinics,
     getCurrentMembership,
