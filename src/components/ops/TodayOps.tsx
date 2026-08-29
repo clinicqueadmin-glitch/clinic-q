@@ -500,8 +500,12 @@ export default function TodayOps() {
   }
 
   const handleRegisterAppointment = () => {
-    if (!apptForm.patientName.trim() || apptForm.phone.length !== 10 || !apptForm.appointmentTime || !apptForm.branchId || !apptForm.procedureId) {
-      showToastMsg('กรุณากรอกข้อมูลให้ครบทุกช่อง (เบอร์โทร 10 หลัก)', 'error')
+    if (!apptForm.patientName.trim() || !apptForm.appointmentTime || !apptForm.branchId || !apptForm.procedureId) {
+      showToastMsg('กรุณากรอกข้อมูลให้ครบทุกช่อง', 'error')
+      return
+    }
+    if (apptForm.phone && apptForm.phone.length !== 10 && apptForm.phone.length !== 0) {
+      showToastMsg('เบอร์โทรศัพท์ต้องเป็นตัวเลข 10 หลัก', 'error')
       return
     }
     const branch = branchData.branches.find(b => b.id === apptForm.branchId)
@@ -543,6 +547,8 @@ export default function TodayOps() {
     showToastMsg(`ลงทะเบียนนัดสำเร็จ! ${apptForm.patientName} ${isOnTime ? '✓ มาตามนัด' : `⚠ ช้า ${lateMins} น.`}`, 'success')
     setShowAppointment(false)
     setApptForm({ patientName: '', phone: '', appointmentTime: '', isOnTime: true, lateMinutes: 0, branchId: '', procedureId: '', practitionerName: '' })
+    // Redirect to main page after 1 second
+    setTimeout(() => { window.location.href = '/' }, 1000)
   }
 
   const openCompleteModal = (item: QueueItem) => {
@@ -890,7 +896,7 @@ export default function TodayOps() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">👨‍⚕️ แพทย์ผู้นัด</label>
                   <select value={apptForm.practitionerName} onChange={e => setApptForm(f => ({ ...f, practitionerName: e.target.value }))} className="input-field">
                     <option value="">-- เลือกแพทย์ --</option>
-                    {practitioners.filter(p => p.active).map(p => (
+                    {practitioners.filter(p => p.active && (!currentClinic || p.branchId === '' || branchData.branches.some(b => b.id === p.branchId && b.active))).map(p => (
                       <option key={p.id} value={p.name}>{p.name}</option>
                     ))}
                   </select>
