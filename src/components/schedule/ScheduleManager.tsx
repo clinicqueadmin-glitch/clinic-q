@@ -17,6 +17,7 @@ import {
 } from '@/lib/schedule-data'
 import { useSchedule, type StaffInfo, type LeaveRequest } from '@/lib/schedule-context'
 import { useQueue } from '@/lib/queue-context'
+import PhoneInput from '@/components/ui/PhoneInput'
 import Toast from '@/components/ui/Toast'
 
 const roomColors = ['#93C5FD', '#A7F3D0', '#FCD34D', '#FDA4AF', '#D8B4FE']
@@ -330,8 +331,8 @@ export default function ScheduleManager() {
 
   // Confirm booking
   const confirmBooking = () => {
-    if (!bookingName || !bookingPhone || !bookingProcedure) {
-      showToastMsg('กรุณากรอกข้อมูลให้ครบทุกช่อง', 'error')
+    if (!bookingName || bookingPhone.length !== 10 || !bookingProcedure) {
+      showToastMsg('กรุณากรอกข้อมูลให้ครบทุกช่อง (เบอร์โทร 10 หลัก)', 'error')
       setTimeout(() => setToast(null), 3000)
       return
     }
@@ -398,10 +399,12 @@ export default function ScheduleManager() {
                 <label className="block text-xs font-medium text-gray-600 mb-1">ชื่อ-นามสกุล *</label>
                 <input type="text" value={bookingName} onChange={(e) => setBookingName(e.target.value)} placeholder="กรอกชื่อผู้รับบริการ" className="w-full px-3 py-2.5 rounded-lg border border-gray-200 focus:border-primary-400 focus:outline-none text-sm" />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">เบอร์โทรศัพท์ *</label>
-                <input type="tel" value={bookingPhone} onChange={(e) => setBookingPhone(e.target.value)} placeholder="0xx-xxx-xxxx" className="w-full px-3 py-2.5 rounded-lg border border-gray-200 focus:border-primary-400 focus:outline-none text-sm" />
-              </div>
+              <PhoneInput
+                label="เบอร์โทรศัพท์"
+                value={bookingPhone}
+                onChange={setBookingPhone}
+                required
+              />
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">หัตถการที่ต้องการ *</label>
                 <select value={bookingProcedure} onChange={(e) => setBookingProcedure(e.target.value)} className="w-full px-3 py-2.5 rounded-lg border border-gray-200 focus:border-primary-400 focus:outline-none text-sm">

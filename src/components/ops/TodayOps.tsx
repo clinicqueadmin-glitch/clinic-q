@@ -19,6 +19,7 @@ import {
 } from '@/lib/branch-data'
 import { usePractitioners } from '@/lib/practitioner-context'
 import { addCompletedProcedures, updateQueueStatus } from '@/lib/supabase-queue'
+import PhoneInput from '@/components/ui/PhoneInput'
 
 export const difficultyConfig: Record<DifficultyLevel, { label: string; detail: string; color: string; bg: string; multiplier: number }> = {
   easy:       { label: 'ทั่วไป', detail: 'ทำได้ตามปกติ ไม่ซับซ้อน',   color: 'text-gray-600', bg: 'bg-gray-50',  multiplier: 0.8 },
@@ -499,8 +500,8 @@ export default function TodayOps() {
   }
 
   const handleRegisterAppointment = () => {
-    if (!apptForm.patientName.trim() || !apptForm.appointmentTime || !apptForm.branchId || !apptForm.procedureId) {
-      showToastMsg('กรุณากรอกข้อมูลให้ครบทุกช่อง', 'error')
+    if (!apptForm.patientName.trim() || apptForm.phone.length !== 10 || !apptForm.appointmentTime || !apptForm.branchId || !apptForm.procedureId) {
+      showToastMsg('กรุณากรอกข้อมูลให้ครบทุกช่อง (เบอร์โทร 10 หลัก)', 'error')
       return
     }
     const branch = branchData.branches.find(b => b.id === apptForm.branchId)
@@ -835,10 +836,12 @@ export default function TodayOps() {
                   <input type="text" value={apptForm.patientName} onChange={e => setApptForm(f => ({ ...f, patientName: e.target.value }))} className="input-field" placeholder="เช่น สมชาย ใจดี" />
                 </div>
                 {/* Phone */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">เบอร์โทรศัพท์</label>
-                  <input type="tel" value={apptForm.phone} onChange={e => setApptForm(f => ({ ...f, phone: e.target.value }))} className="input-field" placeholder="081-234-5678" />
-                </div>
+                <PhoneInput
+                  label="เบอร์โทรศัพท์"
+                  value={apptForm.phone}
+                  onChange={(v) => setApptForm(f => ({ ...f, phone: v }))}
+                  required
+                />
                 {/* Appointment time */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">⏰ เวลาที่นัด</label>

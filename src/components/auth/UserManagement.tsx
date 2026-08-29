@@ -13,6 +13,7 @@ import {
 import { useAuth } from '@/lib/auth-context'
 import { usePractitioners, type Practitioner } from '@/lib/practitioner-context'
 import { getDefaultBranchData } from '@/lib/branch-data'
+import PhoneInput from '@/components/ui/PhoneInput'
 import { useClinic } from '@/lib/clinic-context'
 import { UserPlus, Edit, Trash2, Shield, Users, Award, Plus, X, UserMinus } from 'lucide-react'
 
@@ -615,15 +616,11 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
               </div>
 
               {/* Phone */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">เบอร์โทรศัพท์</label>
-                <input 
-                  value={form.phone} 
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })} 
-                  className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" 
-                  placeholder="08X-XXX-XXXX" 
-                />
-              </div>
+              <PhoneInput
+                label="เบอร์โทรศัพท์"
+                value={form.phone}
+                onChange={(v) => setForm({ ...form, phone: v })}
+              />
 
               {/* Password */}
               {!editingUser && (

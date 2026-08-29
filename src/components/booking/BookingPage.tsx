@@ -11,6 +11,7 @@ import { QRCodeSVG } from 'qrcode.react'
 import { clinicConfig, type ClinicType } from '@/lib/queue-data'
 import { getDefaultBranchData, getAllActiveProcedures } from '@/lib/branch-data'
 import { useQueue } from '@/lib/queue-context'
+import PhoneInput from '@/components/ui/PhoneInput'
 
 export default function BookingPage() {
   const searchParams = useSearchParams()
@@ -46,7 +47,7 @@ export default function BookingPage() {
 
   // Submit booking
   const handleSubmit = () => {
-    if (!name.trim() || !phone.trim() || !selectedProcedure) return
+    if (!name.trim() || phone.length !== 10 || !selectedProcedure) return
 
     const number = generateQueueNumber()
     const now = new Date()
@@ -197,18 +198,13 @@ export default function BookingPage() {
           </div>
 
           {/* Phone */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-              <Phone className="w-3.5 h-3.5 inline mr-1" /> เบอร์โทรศัพท์ *
-            </label>
-            <input
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="0xx-xxx-xxxx"
-              className="w-full px-4 py-3 rounded-2xl border border-gray-200 focus:border-gray-400 focus:outline-none text-sm bg-white transition-colors"
-            />
-          </div>
+          <PhoneInput
+            label="เบอร์โทรศัพท์"
+            value={phone}
+            onChange={setPhone}
+            required
+            showIcon
+          />
 
           {/* Branch */}
           <div>
@@ -263,14 +259,14 @@ export default function BookingPage() {
           {/* Submit */}
           <button
             onClick={handleSubmit}
-            disabled={!name.trim() || !phone.trim() || !selectedProcedure}
+            disabled={!name.trim() || phone.length !== 10 || !selectedProcedure}
             className={clsx(
               'w-full py-3.5 rounded-2xl font-bold text-sm transition-all',
-              name.trim() && phone.trim() && selectedProcedure
+              name.trim() && phone.length === 10 && selectedProcedure
                 ? 'text-white shadow-lg hover:shadow-xl active:scale-[0.98]'
                 : 'bg-gray-100 text-gray-400 cursor-not-allowed'
             )}
-            style={name.trim() && phone.trim() && selectedProcedure ? { backgroundColor: accentColor } : {}}
+            style={name.trim() && phone.length === 10 && selectedProcedure ? { backgroundColor: accentColor } : {}}
           >
             📱 จองคิวออนไลน์
           </button>

@@ -5,6 +5,7 @@ import { Users, Phone, Trash2, Search, X, MessageCircle, UserPlus, Check } from 
 import { clsx } from 'clsx'
 import { getAllLineUsers, removeLineUser, type LineUserProfile } from '@/lib/line-notification'
 import Toast from '@/components/ui/Toast'
+import PhoneInput from '@/components/ui/PhoneInput'
 
 export default function LineUserManager() {
   const [lineUsers, setLineUsers] = useState<LineUserProfile[]>([])
@@ -38,8 +39,8 @@ export default function LineUserManager() {
   })
 
   const handleAddUser = () => {
-    if (!addForm.userId || !addForm.phoneNumber) {
-      showToastMsg('กรุณากรอกข้อมูลให้ครบถ้วน', 'error')
+    if (!addForm.userId || addForm.phoneNumber.length !== 10) {
+      showToastMsg('กรุณากรอกข้อมูลให้ครบถ้วน (เบอร์โทร 10 หลัก)', 'error')
       return
     }
 
@@ -162,16 +163,12 @@ export default function LineUserManager() {
                 />
                 <p className="text-xs text-gray-400 mt-1">หาได้จาก Webhook Event Log ใน LINE Developers Console</p>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">เบอร์โทรศัพท์ *</label>
-                <input
-                  type="tel"
-                  value={addForm.phoneNumber}
-                  onChange={(e) => setAddForm({ ...addForm, phoneNumber: e.target.value })}
-                  placeholder="081-234-5678"
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                />
-              </div>
+              <PhoneInput
+                label="เบอร์โทรศัพท์"
+                value={addForm.phoneNumber}
+                onChange={(v) => setAddForm({ ...addForm, phoneNumber: v })}
+                required
+              />
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อ (ถ้ารู้)</label>
                 <input

@@ -12,6 +12,7 @@ import {
 import { useClinic } from '@/lib/clinic-context'
 import { clinicConfig, type ClinicType, initialQueue } from '@/lib/queue-data'
 import Toast from '@/components/ui/Toast'
+import PhoneInput from '@/components/ui/PhoneInput'
 
 type CreateClinicType = 'medical' | 'aesthetic' | 'thai' | 'chinese' | 'dental' | 'physical'
 
@@ -74,8 +75,8 @@ export default function Dashboard() {
   }
 
   const handleCreateQueue = () => {
-    if (!createForm.patientName || !createForm.phone) {
-      showToastMsg('กรุณากรอกชื่อและเบอร์โทรศัพท์', 'error')
+    if (!createForm.patientName || createForm.phone.length !== 10) {
+      showToastMsg('กรุณากรอกชื่อและเบอร์โทรศัพท์ 10 หลัก', 'error')
       return
     }
     showToastMsg(`สร้างคิวสำหรับ ${createForm.patientName} สำเร็จ!`, 'success')
@@ -111,16 +112,12 @@ export default function Dashboard() {
                   className="input-field"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">เบอร์โทรศัพท์ *</label>
-                <input
-                  type="tel"
-                  value={createForm.phone}
-                  onChange={(e) => setCreateForm({ ...createForm, phone: e.target.value })}
-                  placeholder="0xx-xxx-xxxx"
-                  className="input-field"
-                />
-              </div>
+              <PhoneInput
+                label="เบอร์โทรศัพท์"
+                value={createForm.phone}
+                onChange={(v) => setCreateForm({ ...createForm, phone: v })}
+                required
+              />
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">บริการที่ต้องการ</label>
                 <input

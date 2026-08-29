@@ -5,6 +5,7 @@ import { Plus, Search, Edit, Trash2, Eye, X, Phone, User, PhoneCall, Filter, Clo
 import { clsx } from 'clsx'
 import { useClinic } from '@/lib/clinic-context'
 import Toast from '@/components/ui/Toast'
+import PhoneInput from '@/components/ui/PhoneInput'
 
 interface Patient {
   id: string
@@ -122,11 +123,13 @@ export default function PatientManager() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อ-นามสกุล *</label>
                 <input type="text" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} placeholder="กรอกชื่อ-นามสกุล" className="input-field" />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">เบอร์โทร *</label>
-                <input type="tel" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} placeholder="0xx-xxx-xxxx" className="input-field" />
-                <p className="text-xs text-gray-400 mt-1">ใช้เป็นหลักในการค้นหาประวัติการเข้ารับบริการ</p>
-              </div>
+              <PhoneInput
+                label="เบอร์โทร"
+                value={editForm.phone}
+                onChange={(v) => setEditForm({ ...editForm, phone: v })}
+                required
+              />
+              <p className="text-xs text-gray-400 -mt-2">ใช้เป็นหลักในการค้นหาประวัติการเข้ารับบริการ</p>
             </div>
             <div className="flex justify-end gap-3 p-6 border-t border-gray-100">
               <button onClick={() => { setShowAddModal(false); setShowEditModal(null) }} className="btn-secondary">ยกเลิก</button>

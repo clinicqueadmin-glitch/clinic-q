@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { procedures, findBestRoom, generateQueueNumber, CLINIC_LOCATION, MAX_DISTANCE_METERS, checkDistance } from '@/lib/booking-data'
+import PhoneInput from '@/components/ui/PhoneInput'
 
 type BookingStep = 'location' | 'info' | 'procedure' | 'done'
 type LocationStatus = 'checking' | 'near' | 'far' | 'error' | 'denied'
@@ -174,17 +175,19 @@ export default function RemoteBooking() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อ-นามสกุล</label>
                 <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="กรอกชื่อ-นามสกุล" className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-blue-400 focus:outline-none" />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">เบอร์โทรศัพท์</label>
-                <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0xx-xxx-xxxx" className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-blue-400 focus:outline-none" />
-              </div>
+              <PhoneInput
+                label="เบอร์โทรศัพท์"
+                value={phone}
+                onChange={setPhone}
+                required
+              />
             </div>
             <button
-              onClick={() => name.trim().length >= 2 && phone.trim().length >= 9 && setStep('procedure')}
-              disabled={!(name.trim().length >= 2 && phone.trim().length >= 9)}
+              onClick={() => name.trim().length >= 2 && phone.length === 10 && setStep('procedure')}
+              disabled={!(name.trim().length >= 2 && phone.length === 10)}
               className={clsx(
                 'w-full py-4 rounded-xl text-lg font-bold transition-all shadow-sm',
-                name.trim().length >= 2 && phone.trim().length >= 9 ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                name.trim().length >= 2 && phone.length === 10 ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-100 text-gray-300 cursor-not-allowed'
               )}
             >
               ถัดไป

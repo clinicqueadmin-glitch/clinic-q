@@ -6,6 +6,7 @@ import {
   Loader2, Phone, User, Stethoscope, Clock,
   CheckCircle, Plus, Trash2,
 } from 'lucide-react'
+import PhoneInput from '@/components/ui/PhoneInput'
 import { clsx } from 'clsx'
 import { QRCodeSVG } from 'qrcode.react'
 import { clinicConfig, type ClinicType } from '@/lib/queue-data'
@@ -101,7 +102,7 @@ export default function WalkinPage() {
 
   // Submit
   const handleSubmit = async () => {
-    if (!name.trim() || !phone.trim() || selectedProcs.length === 0) return
+    if (!name.trim() || phone.length !== 10 || selectedProcs.length === 0) return
     if (bookingMode === 'appointment' && !appointmentTime) return
 
     const number = generateQueueNumber()
@@ -129,7 +130,7 @@ export default function WalkinPage() {
     const newQueueItem: Record<string, any> = {
       number,
       patientName: name.trim(),
-      phone: phone.trim(),
+      phone: phone.length === 10,
       procedure: primaryProc.name,
       procedureId: primaryProc.procedureId,
       branchId: selectedBranch,
@@ -359,18 +360,13 @@ export default function WalkinPage() {
           </div>
 
           {/* Phone */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-              <Phone className="w-3.5 h-3.5 inline mr-1" /> เบอร์โทรศัพท์ *
-            </label>
-            <input
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="0xx-xxx-xxxx"
-              className="w-full px-4 py-3 rounded-2xl border border-gray-200 focus:border-gray-400 focus:outline-none text-sm bg-white transition-colors"
-            />
-          </div>
+          <PhoneInput
+            label="เบอร์โทรศัพท์"
+            value={phone}
+            onChange={setPhone}
+            required
+            showIcon
+          />
 
           {/* Branch */}
           <div>
@@ -550,15 +546,15 @@ export default function WalkinPage() {
           {/* Submit */}
           <button
             onClick={handleSubmit}
-            disabled={!name.trim() || !phone.trim() || selectedProcs.length === 0 || (bookingMode === 'appointment' && !appointmentTime)}
+            disabled={!name.trim() || phone.length !== 10 || selectedProcs.length === 0 || (bookingMode === 'appointment' && !appointmentTime)}
             className={clsx(
               'w-full py-3.5 rounded-2xl font-bold text-sm transition-all',
-              name.trim() && phone.trim() && selectedProcs.length > 0 && (bookingMode === 'walkin' || appointmentTime)
+              name.trim() && phone.length === 10 && selectedProcs.length > 0 && (bookingMode === 'walkin' || appointmentTime)
                 ? 'text-white shadow-lg hover:shadow-xl active:scale-[0.98]'
                 : 'bg-gray-100 text-gray-400 cursor-not-allowed'
             )}
             style={
-              name.trim() && phone.trim() && selectedProcs.length > 0 && (bookingMode === 'walkin' || appointmentTime)
+              name.trim() && phone.length === 10 && selectedProcs.length > 0 && (bookingMode === 'walkin' || appointmentTime)
                 ? { backgroundColor: bookingMode === 'walkin' ? '#22C55E' : '#F97316' }
                 : {}
             }

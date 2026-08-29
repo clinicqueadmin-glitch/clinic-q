@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useClinic } from '@/lib/clinic-context'
+import PhoneInput from '@/components/ui/PhoneInput'
 import { useSchedule } from '@/lib/schedule-context'
 import { useQueue } from '@/lib/queue-context'
 import Toast from '@/components/ui/Toast'
@@ -165,8 +166,8 @@ export default function PatientBooking() {
   }
 
   const handleConfirm = () => {
-    if (!name || !phone || !procedure) {
-      setToast({ message: 'กรุณากรอกข้อมูลให้ครบทุกช่อง', type: 'error' })
+    if (!name || phone.length !== 10 || !procedure) {
+      setToast({ message: 'กรุณากรอกข้อมูลให้ครบทุกช่อง (เบอร์โทร 10 หลัก)', type: 'error' })
       setTimeout(() => setToast(null), 3000)
       return
     }
@@ -489,16 +490,12 @@ export default function PatientBooking() {
                   className="w-full px-3 py-2.5 rounded-lg border border-gray-200 focus:border-primary-400 focus:outline-none text-sm"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">เบอร์โทรศัพท์ *</label>
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="0xx-xxx-xxxx"
-                  className="w-full px-3 py-2.5 rounded-lg border border-gray-200 focus:border-primary-400 focus:outline-none text-sm"
-                />
-              </div>
+              <PhoneInput
+                label="เบอร์โทรศัพท์"
+                value={phone}
+                onChange={setPhone}
+                required
+              />
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">สาขา *</label>
                 <div className="px-3 py-2.5 rounded-lg bg-gray-50 border border-gray-200 text-sm text-gray-700">
@@ -521,14 +518,14 @@ export default function PatientBooking() {
 
               <button
                 onClick={handleConfirm}
-                disabled={!name || !phone || !procedure}
+                disabled={!name || phone.length !== 10 || !procedure}
                 className={clsx(
                   'w-full py-3 rounded-xl font-bold text-sm shadow-md transition-all',
-                  name && phone && procedure
+                  name && phone.length === 10 && procedure
                     ? 'text-white hover:shadow-lg'
                     : 'bg-gray-100 text-gray-300 cursor-not-allowed'
                 )}
-                style={name && phone && procedure ? { backgroundColor: config.color } : {}}
+                style={name && phone.length === 10 && procedure ? { backgroundColor: config.color } : {}}
               >
                 ยืนยันนัดหมาย
               </button>

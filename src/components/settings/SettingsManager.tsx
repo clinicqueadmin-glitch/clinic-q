@@ -13,6 +13,7 @@ import { useClinic } from '@/lib/clinic-context'
 import { useAuth } from '@/lib/auth-context'
 import UserManagement from '@/components/auth/UserManagement'
 import Toast from '@/components/ui/Toast'
+import PhoneInput from '@/components/ui/PhoneInput'
 import BranchRoomSettings from './BranchRoomSettings'
 import RoomSettings from './RoomSettings'
 import LineUserManager from '@/components/line/LineUserManager'
@@ -255,8 +256,8 @@ export default function SettingsManager() {
     setShowStaffModal(true)
   }
   const saveStaff = () => {
-    if (!staffForm.name || !staffForm.phone) {
-      showToastMsg('กรุณากรอกชื่อและเบอร์โทร', 'error')
+    if (!staffForm.name || staffForm.phone.length !== 10) {
+      showToastMsg('กรุณากรอกชื่อและเบอร์โทร 10 หลัก', 'error')
       return
     }
     if (editingStaff) {
@@ -321,10 +322,12 @@ export default function SettingsManager() {
                   <input type="text" value={staffForm.specialty} onChange={(e) => setStaffForm({ ...staffForm, specialty: e.target.value })} placeholder="เช่น ทันตกรรมทั่วไป" className="input-field" />
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">เบอร์โทรศัพท์ *</label>
-                <input type="tel" value={staffForm.phone} onChange={(e) => setStaffForm({ ...staffForm, phone: e.target.value })} placeholder="0xx-xxx-xxxx" className="input-field" />
-              </div>
+              <PhoneInput
+                label="เบอร์โทรศัพท์"
+                value={staffForm.phone}
+                onChange={(v) => setStaffForm({ ...staffForm, phone: v })}
+                required
+              />
             </div>
             <div className="flex justify-end gap-3 p-6 border-t border-gray-100">
               <button onClick={() => setShowStaffModal(false)} className="btn-secondary">ยกเลิก</button>
@@ -543,10 +546,12 @@ export default function SettingsManager() {
                     <input type="text" value={clinicName} onChange={(e) => setClinicName(e.target.value)} className="input-field" />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1"><Phone className="w-4 h-4 inline mr-1" />เบอร์โทรศัพท์</label>
-                      <input type="tel" value={clinicPhone} onChange={(e) => setClinicPhone(e.target.value)} className="input-field" />
-                    </div>
+                    <PhoneInput
+                      label="เบอร์โทรศัพท์"
+                      value={clinicPhone}
+                      onChange={setClinicPhone}
+                      showIcon
+                    />
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1"><Clock className="w-4 h-4 inline mr-1" />เวลาเปิดทำการ</label>
                       <div className="grid grid-cols-2 gap-2">

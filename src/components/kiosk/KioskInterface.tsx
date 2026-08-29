@@ -18,6 +18,7 @@ import {
   type Procedure,
 } from '@/lib/branch-data'
 import { staffRoles, generateQueueNumber } from '@/lib/booking-data'
+import PhoneInput from '@/components/ui/PhoneInput'
 
 type Step = 'info' | 'branch' | 'procedure' | 'confirm' | 'done'
 
@@ -111,7 +112,7 @@ export default function KioskInterface() {
     setStep('done')
   }
 
-  const canProceed = name.trim().length >= 2 && phone.trim().length >= 9
+  const canProceed = name.trim().length >= 2 && phone.length === 10
 
   const resetAll = () => {
     setStep('info')
@@ -204,16 +205,13 @@ export default function KioskInterface() {
                   autoFocus
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">เบอร์โทรศัพท์</label>
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="0xx-xxx-xxxx"
-                  className="w-full px-5 py-4 text-lg rounded-xl border-2 border-gray-200 focus:border-primary-400 focus:outline-none transition-colors"
-                />
-              </div>
+              <PhoneInput
+                label="เบอร์โทรศัพท์"
+                value={phone}
+                onChange={setPhone}
+                required
+                className="px-5 py-4 text-lg rounded-xl border-2"
+              />
             </div>
 
             <button
