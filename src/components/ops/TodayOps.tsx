@@ -95,6 +95,14 @@ export default function TodayOps() {
   const [dailyRooms, setDailyRooms] = useState<Room[]>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('clinic-daily-rooms')
+      const savedDate = localStorage.getItem('clinic-daily-rooms-date')
+      const today = new Date().toISOString().split('T')[0]
+      // If date doesn't match today, clear daily rooms (new day)
+      if (savedDate !== today) {
+        localStorage.removeItem('clinic-daily-rooms')
+        localStorage.setItem('clinic-daily-rooms-date', today)
+        return []
+      }
       if (saved) {
         try { return JSON.parse(saved) } catch {}
       }
@@ -1325,6 +1333,24 @@ export default function TodayOps() {
             <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-gray-300" /> ว่าง {roomStatus.filter(r => !r.serving).length}</span>
           </div>
         </div>
+        {roomStatus.length === 0 ? (
+          <div className="text-center py-8">
+            <div className="w-20 h-20 rounded-2xl mx-auto mb-4 flex items-center justify-center bg-amber-100">
+              <span className="text-4xl">🏥</span>
+            </div>
+            <h3 className="text-lg font-extrabold text-gray-800 mb-2">⚠️ ยังไม่มีห้องตรวจวันนี้</h3>
+            <p className="text-sm text-gray-500 mb-5 max-w-md mx-auto">
+              กรุณาเพิ่มห้องตรวจเพื่อเริ่มใช้งานระบบจัดคิววันนี้
+            </p>
+            <button
+              onClick={() => setShowAddRoom(true)}
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl text-base font-bold text-white shadow-lg hover:shadow-xl transition-all"
+              style={{ backgroundColor: config.color }}
+            >
+              <Plus className="w-5 h-5" /> เพิ่มห้องตรวจวันนี้
+            </button>
+          </div>
+        ) : (
         <div className={clsx('candy-grid', roomStatus.length <= 2 ? 'candy-grid-2' : roomStatus.length <= 4 ? 'candy-grid-3' : '')}>
           {roomStatus.map((room) => (
             <div key={room.id} className="candy-card p-4 text-center transition-all"
@@ -1395,6 +1421,7 @@ export default function TodayOps() {
             </div>
           ))}
         </div>
+        )}
       </div>
 
       {/* ═══════ SECTION 1: ARRIVED QUEUE — Candy ═══════ */}

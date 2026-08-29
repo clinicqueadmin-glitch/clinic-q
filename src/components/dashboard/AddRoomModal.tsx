@@ -80,10 +80,11 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
     }
   }, [selectedRoom])
 
-  // Available rooms (rooms that are active in RoomSettings)
+  // Available rooms (rooms that are active in RoomSettings AND not already selected today)
   const availableRooms = useMemo(() => {
-    return savedRooms.filter(r => r.active)
-  }, [savedRooms])
+    const usedRoomIds = new Set(dailyRooms.filter(r => r.active).map(r => r.id))
+    return savedRooms.filter(r => r.active && !usedRoomIds.has(r.id))
+  }, [savedRooms, dailyRooms])
 
   // Show confirm dialog before saving
   const handleConfirm = () => {
@@ -156,9 +157,13 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
                 className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-2 focus:outline-none text-sm bg-white"
               >
                 <option value="">— เลือกห้องตรวจ —</option>
-                {availableRooms.map(room => (
-                  <option key={room.id} value={room.id}>{room.name}</option>
-                ))}
+                {availableRooms.length === 0 ? (
+                  <option value="" disabled>✅ เลือกห้องครบทุกห้องแล้ว</option>
+                ) : (
+                  availableRooms.map(room => (
+                    <option key={room.id} value={room.id}>{room.name}</option>
+                  ))
+                )}
               </select>
             </div>
 
