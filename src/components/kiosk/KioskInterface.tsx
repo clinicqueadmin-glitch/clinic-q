@@ -114,7 +114,7 @@ export default function KioskInterface() {
     if (!selectedProcedureId) return null
     const room = findRoomForProcedure(branchData, selectedProcedureId)
     if (!room) return null
-    const practitioner = clinicPractitioners.find(p => p.id === room.practitionerId) || branchData.practitioners.find(p => p.id === room.practitionerId)
+    const practitioner = clinicPractitioners.find(p => p.id === room.practitionerId)
     return { room, practitioner }
   }, [branchData, clinicPractitioners, selectedProcedureId])
 
