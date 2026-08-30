@@ -3,6 +3,7 @@
 import { type ReactNode, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import { ClinicProvider, useClinic } from '@/lib/clinic-context'
+import { clinicConfig } from '@/lib/queue-data'
 import { PractitionerProvider } from '@/lib/practitioner-context'
 import { useAuth } from '@/lib/auth-context'
 import SelectClinic from './SelectClinic'
@@ -31,8 +32,13 @@ function ClinicRouter({ children }: { children: ReactNode }) {
   // Auto-select clinic from auth session when not configured
   useEffect(() => {
     if (!isLoading && isAuthenticated && !isConfigured && currentRole !== 'platform_owner' && session?.currentClinicId) {
-      const clinicType = session.currentClinicId.replace('clinic-', '')
-      setClinic(clinicType as any)
+      // Find clinic type from clinicq-clinics by matching clinicId
+      const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
+      const matchedClinic = clinics.find((c: any) => c.id === session.currentClinicId)
+      const clinicType = matchedClinic?.type || null
+      if (clinicType && clinicConfig[clinicType as keyof typeof clinicConfig]) {
+        setClinic(clinicType as any)
+      }
     }
   }, [isLoading, isAuthenticated, isConfigured, currentRole, session, setClinic])
 
