@@ -171,14 +171,15 @@ export default function TodayOps() {
 
   const providerRoomIds = useMemo(() => {
     if (!isProvider || !user) return null
-    const firstName = user.name.split(' ').slice(0, 2).join(' ')
-    const matchingRoomIds = allActiveRooms.filter(r => {
-      const practitionerName = getPractitionerNameFromContext(r.practitionerId)
-      return practitionerName.includes(firstName) || firstName.includes(practitionerName.split(' ').slice(1).join(' '))
-    }).map(r => r.id)
-    // If no match found by name, show all rooms (fallback)
+    // Find practitioner record linked to this user
+    const myPractitioner = practitioners.find(p => p.userId === user.id)
+    if (!myPractitioner) return null // No practitioner record found, show nothing
+    // Filter rooms where practitionerId matches this user's practitioner record
+    const matchingRoomIds = allActiveRooms
+      .filter(r => r.practitionerId === myPractitioner.id)
+      .map(r => r.id)
     return matchingRoomIds.length > 0 ? matchingRoomIds : null
-  }, [isProvider, user, allActiveRooms, practitioners, branchData, getPractitionerNameFromContext])
+  }, [isProvider, user, allActiveRooms, practitioners])
   const activeRooms = useMemo(() => {
     if (!providerRoomIds) return allActiveRooms
     return allActiveRooms.filter(r => providerRoomIds.includes(r.id))
