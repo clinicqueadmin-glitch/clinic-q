@@ -252,10 +252,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(prev => prev ? { ...prev, user: updatedUser } : null)
     setForcePasswordChange(false)
     
-    // Update in users state
-    setUsers(prev => prev.map(u => 
-      u.id === session.user.id ? { ...u, forcePasswordChange: false } : u
-    ))
+    // Update in users state AND persist to localStorage
+    setUsers(prev => {
+      const updated = prev.map(u => 
+        u.id === session.user.id ? { ...u, forcePasswordChange: false } : u
+      )
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updated))
+      return updated
+    })
     
     // password changed successfully
   }, [session])
