@@ -10,7 +10,7 @@ import PhoneInput from '@/components/ui/PhoneInput'
 import { clsx } from 'clsx'
 import { QRCodeSVG } from 'qrcode.react'
 import { clinicConfig, type ClinicType } from '@/lib/queue-data'
-import { getDefaultBranchData } from '@/lib/branch-data'
+import { getDefaultBranchData, type Practitioner } from '@/lib/branch-data'
 import { useQueue } from '@/lib/queue-context'
 
 interface SelectedProc {
@@ -58,10 +58,25 @@ export default function WalkinPage() {
     return branch?.procedures || []
   }, [selectedBranch, branchData])
 
-  // Get practitioners for selected branch
+  // Get practitioners from localStorage (filtered by current clinic)
   const branchPractitioners = useMemo(() => {
+    const clinicId = `clinic-${clinicType}`
+    // First try loading from localStorage (same key as PractitionerProvider)
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('clinic-practitioners')
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved)
+          if (Array.isArray(parsed)) {
+            const filtered = parsed.filter((p: any) => p.clinicId === clinicId && p.active)
+            if (filtered.length > 0) return filtered
+          }
+        } catch {}
+      }
+    }
+    // Fallback to branch data defaults
     return branchData.practitioners.filter(p => p.active)
-  }, [branchData])
+  }, [branchData, clinicType])
 
   // Add procedure to list
   const addProcedure = () => {

@@ -17,7 +17,7 @@ import {
   formatDateKey,
 } from '@/lib/schedule-data'
 import {
-  getDefaultBranchData, getAllActiveProcedures,
+  getDefaultBranchData, getAllActiveProcedures, type Practitioner,
   findRoomForProcedure, getPractitionerName,
   type Branch,
 } from '@/lib/branch-data'
@@ -80,17 +80,35 @@ export default function PatientBooking() {
     )
   }, [maxDistance])
 
+  // Load practitioners from localStorage (filtered by current clinic)
+  const clinicPractitioners = useMemo(() => {
+    const clinicId = `clinic-${currentClinic || 'dental'}`
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('clinic-practitioners')
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved)
+          if (Array.isArray(parsed)) {
+            const filtered = parsed.filter((p: any) => p.clinicId === clinicId && p.active)
+            if (filtered.length > 0) return filtered as Practitioner[]
+          }
+        } catch {}
+      }
+    }
+    return branchData.practitioners.filter(p => p.active)
+  }, [branchData, currentClinic])
+
   // Active branches (with staff)
   const activeBranches = useMemo(() => {
     return branchData.branches
       .filter(b => b.active)
-      .filter(b => branchData.practitioners.some(p => p.branchId === b.id && p.active))
+      .filter(b => clinicPractitioners.some(p => p.branchId === b.id && p.active))
       .map(b => ({
         ...b,
         activeProcedures: b.procedures.filter(p => p.active),
-        practitioners: branchData.practitioners.filter(p => p.branchId === b.id && p.active),
+        practitioners: clinicPractitioners.filter(p => p.branchId === b.id && p.active),
       }))
-  }, [branchData])
+  }, [branchData, clinicPractitioners])
 
   // Available staff for selected branch
   const availableStaff = useMemo(() => {
