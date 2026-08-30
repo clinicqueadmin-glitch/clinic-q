@@ -58,7 +58,8 @@ export default function QueueStatusBoard() {
     if (queue.length > 0) return queue
     // Re-read from localStorage on refreshTick changes
     try {
-      const storageKey = `clinic-q-queue-${clinicType}`
+      const today = new Date().toISOString().split('T')[0]
+      const storageKey = `clinicq-queue-${clinicType}-${today}`
       const saved = localStorage.getItem(storageKey)
       if (saved) return JSON.parse(saved) as QueueItem[]
     } catch {}

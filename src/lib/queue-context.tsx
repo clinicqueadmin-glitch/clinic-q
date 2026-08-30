@@ -156,6 +156,16 @@ function getQueueStorageKey(clinic: ClinicType): string {
   return `clinicq-queue-${clinic}-${today}`
 }
 
+/** Look up actual clinic ID from clinicq-clinics by clinic type */
+function resolveClinicId(clinicType: ClinicType): string {
+  try {
+    const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
+    const matched = clinics.find((c: any) => c.type === clinicType)
+    if (matched?.id) return matched.id
+  } catch {}
+  return resolveClinicId(clinicType) // fallback to legacy
+}
+
 export function QueueProvider({ children }: { children: ReactNode }) {
   const [clinicType, setClinicType] = useState<ClinicType | null>(null)
   const [queue, setQueue] = useState<QueueItem[]>([])
@@ -187,7 +197,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
 
     // Try Supabase first
     try {
-      const clinicId = clinicIdMap[clinic]
+      const clinicId = resolveClinicId(clinic)
       const today = new Date().toISOString().split('T')[0]
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
       const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
@@ -260,7 +270,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
   // ─── Realtime subscription ───
   useEffect(() => {
     if (!isSupabaseConnected || !clinicType) return
-    const clinicId = clinicIdMap[clinicType]
+    const clinicId = resolveClinicId(clinicType)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
     if (!supabaseUrl || !supabaseKey) return
@@ -273,7 +283,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
   // ─── Save to Supabase ───
   const saveToSupabase = useCallback(async (item: QueueItem) => {
     if (!isSupabaseConnected || !clinicType) return
-    const clinicId = clinicIdMap[clinicType]
+    const clinicId = resolveClinicId(clinicType)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
     if (!supabaseUrl || !supabaseKey) return
@@ -299,7 +309,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
   const addQueueItem = useCallback(async (item: Omit<QueueItem, 'id'>): Promise<QueueItem> => {
     const newItem: QueueItem = { ...item, id: crypto.randomUUID() }
     if (isSupabaseConnected && clinicType) {
-      const clinicId = clinicIdMap[clinicType]
+      const clinicId = resolveClinicId(clinicType)
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
       const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
       if (supabaseUrl && supabaseKey) {
