@@ -86,14 +86,31 @@ export default function KioskInterface() {
   const selectedBranch = branchData.branches.find(b => b.id === selectedBranchId)
   const selectedProcedure = branchProcedures.find(p => p.id === selectedProcedureId)
 
+  // Load practitioners from localStorage (filtered by current clinic)
+  const clinicPractitioners = useMemo(() => {
+    const clinicId = `clinic-${currentClinic || 'dental'}`
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('clinic-practitioners')
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved)
+          if (Array.isArray(parsed)) {
+            return parsed.filter((p: any) => p.clinicId === clinicId && p.active)
+          }
+        } catch {}
+      }
+    }
+    return []
+  }, [currentClinic])
+
   // Get room and practitioner for selected procedure
   const assignment = useMemo(() => {
     if (!selectedProcedureId) return null
     const room = findRoomForProcedure(branchData, selectedProcedureId)
     if (!room) return null
-    const practitioner = branchData.practitioners.find(p => p.id === room.practitionerId)
+    const practitioner = clinicPractitioners.find(p => p.id === room.practitionerId) || branchData.practitioners.find(p => p.id === room.practitionerId)
     return { room, practitioner }
-  }, [branchData, selectedProcedureId])
+  }, [branchData, clinicPractitioners, selectedProcedureId])
 
   const handleConfirm = () => {
     if (!selectedProcedure || !assignment || !config) return
@@ -244,7 +261,7 @@ export default function KioskInterface() {
               {activeBranches.map(branch => {
                 const Icon = categoryIcons[branch.category] || Stethoscope
                 const branchRooms = branchData.rooms.filter(r => r.branchId === branch.id && r.active)
-                const branchPractitioners = branchData.practitioners.filter(p => p.branchId === branch.id && p.active)
+                const branchPractitioners = clinicPractitioners.filter(p => p.branchId === branch.id)
                 const isSelected = selectedBranchId === branch.id
 
                 return (

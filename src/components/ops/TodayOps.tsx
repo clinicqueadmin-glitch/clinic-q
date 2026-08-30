@@ -156,12 +156,18 @@ export default function TodayOps() {
 
   // Provider sees only their assigned room(s)
   const isProvider = currentRole === 'practitioner'
-  // Get practitioner name from PractitionerContext (localStorage) or fallback to branchData
+  // Get practitioner name from PractitionerContext (localStorage) only
   const getPractitionerNameFromContext = useCallback((practitionerId: string): string => {
     const practitioner = practitioners.find(p => p.id === practitionerId)
     if (practitioner) return practitioner.name
-    return branchData.practitioners.find(p => p.id === practitionerId)?.name || 'ไม่ระบุ'
-  }, [practitioners, branchData])
+    // Also check users with practitioner role
+    if (typeof window !== 'undefined') {
+      const users = JSON.parse(localStorage.getItem('clinicq-users-with-roles') || '[]')
+      const user = users.find((u: any) => u.id === practitionerId)
+      if (user) return user.name
+    }
+    return 'ไม่ระบุ'
+  }, [practitioners])
 
   const providerRoomIds = useMemo(() => {
     if (!isProvider || !user) return null
