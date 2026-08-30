@@ -60,14 +60,21 @@ export default function WalkinPage() {
 
   // Get practitioners from localStorage (filtered by current clinic)
   const branchPractitioners = useMemo(() => {
-    const clinicId = `clinic-${clinicType}`
     if (typeof window !== 'undefined') {
+      // Find current clinic ID from clinicq-clinics
+      const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
+      const currentClinic = clinics.find((c: any) => c.type === clinicType)
+      const clinicId = currentClinic?.id
+      
       const saved = localStorage.getItem('clinic-practitioners')
       if (saved) {
         try {
           const parsed = JSON.parse(saved)
           if (Array.isArray(parsed)) {
-            return parsed.filter((p: any) => p.clinicId === clinicId && p.active)
+            // Filter by clinicId if available, otherwise show all active
+            return clinicId 
+              ? parsed.filter((p: any) => p.clinicId === clinicId && p.active)
+              : parsed.filter((p: any) => p.active)
           }
         } catch {}
       }

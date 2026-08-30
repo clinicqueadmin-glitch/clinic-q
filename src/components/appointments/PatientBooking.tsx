@@ -82,14 +82,20 @@ export default function PatientBooking() {
 
   // Load practitioners from localStorage (filtered by current clinic)
   const clinicPractitioners = useMemo(() => {
-    const clinicId = `clinic-${currentClinic || 'dental'}`
     if (typeof window !== 'undefined') {
+      // Find current clinic ID from clinicq-clinics
+      const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
+      const currentClinicObj = clinics.find((c: any) => c.type === (currentClinic || 'dental'))
+      const clinicId = currentClinicObj?.id
+      
       const saved = localStorage.getItem('clinic-practitioners')
       if (saved) {
         try {
           const parsed = JSON.parse(saved)
           if (Array.isArray(parsed)) {
-            return parsed.filter((p: any) => p.clinicId === clinicId && p.active) as Practitioner[]
+            return clinicId
+              ? parsed.filter((p: any) => p.clinicId === clinicId && p.active) as Practitioner[]
+              : parsed.filter((p: any) => p.active) as Practitioner[]
           }
         } catch {}
       }
