@@ -103,6 +103,7 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
       color: selectedRoom.color,
       image: selectedRoom.image,
       practitionerId: selectedPractitionerId,
+      practitionerName,
       branchId: selectedBranchId,
       workingStartTime: startTime,
       workingEndTime: endTime,

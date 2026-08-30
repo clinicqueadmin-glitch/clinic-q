@@ -156,14 +156,17 @@ export default function TodayOps() {
 
   // Provider sees only their assigned room(s)
   const isProvider = currentRole === 'practitioner'
-  // Get practitioner name from PractitionerContext (localStorage) only
-  const getPractitionerNameFromContext = useCallback((practitionerId: string): string => {
-    const practitioner = practitioners.find(p => p.id === practitionerId)
+  // Get practitioner name - prefer room.practitionerName, then context, then users
+  const getPractitionerNameFromRoom = useCallback((room: { practitionerId: string; practitionerName?: string }): string => {
+    // 1. Use stored name from daily room data (most reliable)
+    if (room.practitionerName) return room.practitionerName
+    // 2. Look up from practitioner context
+    const practitioner = practitioners.find(p => p.id === room.practitionerId)
     if (practitioner) return practitioner.name
-    // Also check users with practitioner role
+    // 3. Look up from users with practitioner role
     if (typeof window !== 'undefined') {
       const users = JSON.parse(localStorage.getItem('clinicq-users-with-roles') || '[]')
-      const user = users.find((u: any) => u.id === practitionerId)
+      const user = users.find((u: any) => u.id === room.practitionerId)
       if (user) return user.name
     }
     return 'ไม่ระบุ'
@@ -174,9 +177,9 @@ export default function TodayOps() {
     // Find practitioner record linked to this user
     const myPractitioner = practitioners.find(p => p.userId === user.id)
     if (!myPractitioner) return null // No practitioner record found, show nothing
-    // Filter rooms where practitionerId matches this user's practitioner record
+    // Match by practitionerId OR by stored practitionerName
     const matchingRoomIds = allActiveRooms
-      .filter(r => r.practitionerId === myPractitioner.id)
+      .filter(r => r.practitionerId === myPractitioner.id || (r.practitionerName && r.practitionerName === myPractitioner.name))
       .map(r => r.id)
     return matchingRoomIds.length > 0 ? matchingRoomIds : null
   }, [isProvider, user, allActiveRooms, practitioners])
@@ -375,7 +378,7 @@ export default function TodayOps() {
     activeRooms.forEach(room => {
       if (occupiedRoomIds.has(room.id)) return
       const roomBranch = branchData.branches.find(b => b.id === room.branchId)
-      const practitionerName = getPractitionerNameFromContext(room.practitionerId)
+      const practitionerName = getPractitionerNameFromRoom(room)
       let matchScore = 0
       // Best match: room's branch matches patient's procedure branch
       if (branch && room.branchId === branch.id) matchScore = 2
@@ -1379,7 +1382,7 @@ export default function TodayOps() {
                 </div>
               )}
               <p className="text-xs font-bold text-gray-900">{room.name}</p>
-              <p className="text-xs text-gray-500">{getPractitionerNameFromContext(room.practitionerId).split(' ').slice(0, 2).join(' ')}</p>
+              <p className="text-xs text-gray-500">{getPractitionerNameFromRoom(room).split(' ').slice(0, 2).join(' ')}</p>
               {room.branchName && (
                 <p className="text-xs mt-0.5 px-1.5 py-0.5 rounded inline-block font-medium" style={{ backgroundColor: `${room.color}15`, color: room.color }}>{room.branchName}</p>
               )}

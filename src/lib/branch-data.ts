@@ -34,6 +34,7 @@ export interface Room {
   image?: string             // base64 data URL (optional room photo)
   branchId: string           // which branch operates here
   practitionerId: string     // who works in this room
+  practitionerName?: string  // practitioner display name (stored at creation time)
   slotDuration: number       // minutes per slot (10, 15, 30, 45, 60)
   workingStartTime: string   // "HH:MM" e.g. "09:00"
   workingEndTime: string     // "HH:MM" e.g. "17:00"
