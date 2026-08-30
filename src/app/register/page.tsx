@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Stethoscope, Sparkles, Heart, Leaf, Brain, Bone,
-  ArrowRight, CheckCircle, Mail, Lock, User, Phone, Building2,
+  ArrowRight, CheckCircle, Mail, User, Phone, Building2,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 
@@ -28,8 +28,6 @@ export default function RegisterPage() {
     ownerName: '',
     email: '',
     phone: '',
-    password: '',
-    confirmPassword: '',
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [acceptTerms, setAcceptTerms] = useState(false)
@@ -43,9 +41,7 @@ export default function RegisterPage() {
     if (!form.email.trim()) errs.email = 'กรุณากรอกอีเมล'
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errs.email = 'อีเมลไม่ถูกต้อง'
     if (!form.phone.trim()) errs.phone = 'กรุณากรอกเบอร์โทรศัพท์'
-    if (!form.password.trim()) errs.password = 'กรุณากรอกรหัสผ่าน'
-    else if (form.password.length < 6) errs.password = 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร'
-    if (form.password !== form.confirmPassword) errs.confirmPassword = 'รหัสผ่านไม่ตรงกัน'
+
     if (!acceptTerms) errs.acceptTerms = 'กรุณายอมรับเงื่อนไขการใช้งาน'
     setErrors(errs)
     return Object.keys(errs).length === 0
@@ -72,9 +68,9 @@ export default function RegisterPage() {
     users.push(newUser)
     localStorage.setItem('clinicq-users', JSON.stringify(users))
     
-    // 2. Store password
+    // 2. Store default password (user must change on first login)
     const passwords = JSON.parse(localStorage.getItem('clinicq-user-passwords') || '{}')
-    passwords[form.email] = form.password
+    passwords[form.email] = '123456'
     localStorage.setItem('clinicq-user-passwords', JSON.stringify(passwords))
     
     // 3. Create Clinic record
@@ -235,24 +231,7 @@ export default function RegisterPage() {
                 onChange={v => setForm(f => ({ ...f, phone: v }))}
                 error={errors.phone}
               />
-              <InputField
-                icon={<Lock className="w-4 h-4" />}
-                label="รหัสผ่าน"
-                type="password"
-                placeholder="อย่างน้อย 6 ตัวอักษร"
-                value={form.password}
-                onChange={v => setForm(f => ({ ...f, password: v }))}
-                error={errors.password}
-              />
-              <InputField
-                icon={<Lock className="w-4 h-4" />}
-                label="ยืนยันรหัสผ่าน"
-                type="password"
-                placeholder="กรอกรหัสผ่านอีกครั้ง"
-                value={form.confirmPassword}
-                onChange={v => setForm(f => ({ ...f, confirmPassword: v }))}
-                error={errors.confirmPassword}
-              />
+
             </div>
 
             {/* ═══ Terms & Conditions ═══ */}
@@ -359,7 +338,7 @@ export default function RegisterPage() {
                 📧 อีเมล: <strong>{form.email}</strong>
               </p>
               <p className="text-sm text-blue-700">
-                🔑 รหัสผ่าน: ใช้รหัสผ่านที่กรอกไว้ตอนสมัคร
+                🔑 รหัสผ่านเริ่มต้น: <strong>123456</strong>
               </p>
               <p className="text-xs text-blue-600">
                 ⚠️ ระบบจะให้เปลี่ยนรหัสผ่านใหม่ในการเข้าใช้งานครั้งแรก
