@@ -61,22 +61,19 @@ export default function WalkinPage() {
   // Get practitioners from localStorage (filtered by current clinic)
   const branchPractitioners = useMemo(() => {
     const clinicId = `clinic-${clinicType}`
-    // First try loading from localStorage (same key as PractitionerProvider)
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('clinic-practitioners')
       if (saved) {
         try {
           const parsed = JSON.parse(saved)
           if (Array.isArray(parsed)) {
-            const filtered = parsed.filter((p: any) => p.clinicId === clinicId && p.active)
-            if (filtered.length > 0) return filtered
+            return parsed.filter((p: any) => p.clinicId === clinicId && p.active)
           }
         } catch {}
       }
     }
-    // Fallback to branch data defaults
-    return branchData.practitioners.filter(p => p.active)
-  }, [branchData, clinicType])
+    return []
+  }, [clinicType])
 
   // Add procedure to list
   const addProcedure = () => {

@@ -21,14 +21,13 @@ interface PractitionerContextType {
 const STORAGE_KEY = 'clinic-practitioners'
 
 function loadPractitioners(clinicType: ClinicType): Practitioner[] {
-  if (typeof window === 'undefined') return getDefaultBranchData(clinicType).practitioners
+  if (typeof window === 'undefined') return []
   
   const saved = localStorage.getItem(STORAGE_KEY)
   if (saved) {
     try {
       const parsed = JSON.parse(saved)
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        // Ensure backward compatibility - add userId and clinicId if missing
+      if (Array.isArray(parsed)) {
         return parsed.map((p: any) => ({
           ...p,
           userId: p.userId || undefined,
@@ -38,15 +37,8 @@ function loadPractitioners(clinicType: ClinicType): Practitioner[] {
     } catch {}
   }
   
-  // Initialize from default data
-  const defaultData = getDefaultBranchData(clinicType)
-  const practitionersWithMeta = defaultData.practitioners.map(p => ({
-    ...p,
-    userId: undefined, // Legacy practitioners don't have user accounts
-    clinicId: undefined, // Will be set based on context
-  }))
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(practitionersWithMeta))
-  return practitionersWithMeta
+  // Start empty - practitioners are created via User Management
+  return []
 }
 
 // Filter practitioners by current clinic ID

@@ -89,14 +89,13 @@ export default function PatientBooking() {
         try {
           const parsed = JSON.parse(saved)
           if (Array.isArray(parsed)) {
-            const filtered = parsed.filter((p: any) => p.clinicId === clinicId && p.active)
-            if (filtered.length > 0) return filtered as Practitioner[]
+            return parsed.filter((p: any) => p.clinicId === clinicId && p.active) as Practitioner[]
           }
         } catch {}
       }
     }
-    return branchData.practitioners.filter(p => p.active)
-  }, [branchData, currentClinic])
+    return []
+  }, [currentClinic])
 
   // Active branches (with staff)
   const activeBranches = useMemo(() => {
