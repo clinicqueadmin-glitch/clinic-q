@@ -1473,13 +1473,7 @@ export default function TodayOps() {
                     <span className="text-sm font-bold text-gray-900">{group.branchName}</span>
                     <span className="text-xs text-gray-500 ml-2">{group.items.length} คิวรอ</span>
                   </div>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {group.rooms.map(room => (
-                      <span key={room.id} className="text-[10px] px-2 py-0.5 rounded-full font-medium border" style={{ backgroundColor: `${room.color}20`, borderColor: `${room.color}40`, color: '#374151' }}>
-                        📍 {room.name}
-                      </span>
-                    ))}
-                  </div>
+
                 </div>
                 {/* Queue Items in this branch */}
                 <div className="divide-y divide-gray-50">
