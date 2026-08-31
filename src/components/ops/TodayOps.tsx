@@ -384,7 +384,6 @@ export default function TodayOps() {
       if (branch && room.branchId === branch.id) matchScore = 2
       // Good match: room can do this procedure
       if (roomBranch?.procedures.some(p => p.id === procId)) matchScore = Math.max(matchScore, 1)
-      // Available (no match but empty)
       results.push({
         room,
         branchName: roomBranch?.name || '',
@@ -392,9 +391,13 @@ export default function TodayOps() {
         matchScore,
       })
     })
+    // Only show rooms from the same branch as patient's procedure
+    // If no matching rooms, show all (fallback)
+    const matchingBranchRooms = results.filter(r => r.matchScore >= 1)
+    const finalRooms = matchingBranchRooms.length > 0 ? matchingBranchRooms : results
     // Sort: best match first, then by room id
-    results.sort((a, b) => b.matchScore - a.matchScore || a.room.id - b.room.id)
-    return results
+    finalRooms.sort((a, b) => b.matchScore - a.matchScore || a.room.id - b.room.id)
+    return finalRooms
   }, [activeRooms, branchData, occupiedRoomIds])
 
   // Open confirmation popup before calling queue item
