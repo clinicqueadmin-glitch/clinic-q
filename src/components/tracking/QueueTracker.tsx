@@ -340,19 +340,29 @@ export default function QueueTracker() {
             </div>
 
             <form onSubmit={(e) => { e.preventDefault(); handleSearch() }} className="space-y-3">
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="เบอร์โทรศัพท์ เช่น 081-234-5678"
-                className="w-full px-5 py-4 text-lg rounded-2xl bg-white shadow-lg focus:outline-none focus:ring-4 focus:ring-white/30 text-center font-mono font-bold tracking-wider placeholder:text-gray-300 placeholder:font-normal"
-                autoFocus
-                inputMode="tel"
-                pattern="[0-9\-\s]*"
-              />
+              <div>
+                <input
+                  type="tel"
+                  value={query}
+                  onChange={(e) => {
+                    // Only allow digits, max 10
+                    const val = e.target.value.replace(/[^0-9]/g, '').slice(0, 10)
+                    setQuery(val)
+                  }}
+                  placeholder="เบอร์โทรศัพท์ 10 หลัก"
+                  className="w-full px-5 py-4 text-lg rounded-2xl bg-white shadow-lg focus:outline-none focus:ring-4 focus:ring-white/30 text-center font-mono font-bold tracking-wider placeholder:text-gray-300 placeholder:font-normal"
+                  autoFocus
+                  inputMode="tel"
+                  maxLength={10}
+                  pattern="[0-9]{10}"
+                />
+                {query.length > 0 && query.length < 10 && (
+                  <p className="text-white/60 text-xs text-center mt-1.5">กรอกหมายเลขโทรศัพท์ให้ครบ 10 หลัก ({query.length}/10)</p>
+                )}
+              </div>
               <button
                 type="submit"
-                disabled={!query.trim()}
+                disabled={!query.trim() || query.length !== 10}
                 className={clsx(
                   'w-full py-4 rounded-2xl text-lg font-bold transition-all',
                   query.trim()
