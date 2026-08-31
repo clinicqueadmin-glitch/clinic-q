@@ -5,7 +5,7 @@ import { clsx } from 'clsx'
 import {
   ChevronLeft, ChevronRight, ArrowLeft, ChevronDown, ChevronUp,
 } from 'lucide-react'
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Legend } from 'recharts'
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts'
 import { useQueue, type QueueItem, type DifficultyLevel, type CompletedProcedure } from '@/lib/queue-context'
 import { useClinic } from '@/lib/clinic-context'
 import { getDefaultBranchData, type ClinicBranchData, type Procedure } from '@/lib/branch-data'
@@ -240,19 +240,45 @@ function PractitionerDrillDown({ doc, onBack, branchData }: { doc: PractitionerD
         <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
           {doc.hourlyLoad.length > 0 ? (
             <div>
-              <p className="text-sm font-medium text-gray-700 mb-3">📈 ช่วงเวลาที่มีงานมาก/น้อย</p>
+              <p className="text-sm font-medium text-gray-700 mb-3">📊 ช่วงเวลามีคนไข้มาก/น้อย</p>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={doc.hourlyLoad}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="hour" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip />
-                    <Legend />
-                    <Line type="monotone" dataKey="count" stroke="#F97316" strokeWidth={3} name="จำนวนคนไข้" dot={{ r: 5 }} activeDot={{ r: 7 }} fill="url(#orangeGradient)" />
-                  </LineChart>
+                  <BarChart data={doc.hourlyLoad} barCategoryGap="20%">
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                    <XAxis dataKey="hour" tick={{ fontSize: 10 }} interval={0} angle={0} />
+                    <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                    <Tooltip
+                      formatter={(value) => [`${value} คน`, 'จำนวนคนไข้']}
+                      labelFormatter={(label) => `เวลา ${label} น.`}
+                    />
+                    <Bar dataKey="count" name="จำนวนคนไข้" radius={[4, 4, 0, 0]}>
+                      {doc.hourlyLoad.map((entry, index) => (
+                        <Cell key={index} fill={entry.count >= Math.max(...doc.hourlyLoad.map(h => h.count)) ? '#F97316' : '#FDBA74'} />
+                      ))}
+                    </Bar>
+                  </BarChart>
                 </ResponsiveContainer>
               </div>
+              {/* Peak hour summary */}
+              {(() => {
+                const maxCount = Math.max(...doc.hourlyLoad.map(h => h.count))
+                const peakHours = doc.hourlyLoad.filter(h => h.count === maxCount).map(h => h.hour)
+                const quietHours = doc.hourlyLoad.filter(h => h.count === 0).map(h => h.hour)
+                return (
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {peakHours.length > 0 && (
+                      <span className="inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full bg-orange-100 text-orange-700 font-medium">
+                        🔥 ช่วงpeak: {peakHours.join(', ')} น.
+                      </span>
+                    )}
+                    {quietHours.length > 0 && quietHours.length < doc.hourlyLoad.length && (
+                      <span className="inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium">
+                        ✅ ช่วงว่าง: {quietHours.slice(0, 3).join(', ')}{quietHours.length > 3 ? ` +${quietHours.length - 3}` : ''} น.
+                      </span>
+                    )}
+                  </div>
+                )
+              })()}
               <p className="text-[10px] text-gray-400 text-center mt-2">แสดงช่วงเวลาตั้งแต่เริ่มปฎิบัติงานจนสิ้นสุด</p>
             </div>
           ) : (
