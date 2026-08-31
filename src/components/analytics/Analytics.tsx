@@ -182,37 +182,50 @@ function PractitionerDrillDown({ doc, onBack, branchData }: { doc: PractitionerD
         <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
           {procComparisonData.length > 0 ? (
             <div>
-              <p className="text-sm font-medium text-gray-700 mb-3">📊 เปรียบเทียบเวลาจริง vs มาตรฐาน</p>
-              <div className="h-64 mb-4">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={procComparisonData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-15} textAnchor="end" height={60} />
-                    <YAxis tick={{ fontSize: 11 }} label={{ value: 'นาที', angle: -90, position: 'insideLeft', fontSize: 11 }} />
-                    <Tooltip />
-                    <Legend />
-                    <Line type="monotone" dataKey="actualTime" stroke="#3B82F6" strokeWidth={3} name="เวลาจริง (เฉลี่ย)" dot={{ r: 5 }} activeDot={{ r: 7 }} />
-                    <Line type="monotone" dataKey="standardTime" stroke="#22C55E" strokeWidth={3} strokeDasharray="5 5" name="เวลามาตรฐาน" dot={{ r: 5 }} activeDot={{ r: 7 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-              {/* Comparison table */}
-              <div className="space-y-2">
+              <p className="text-sm font-medium text-gray-700 mb-3">⏱ เวลาเฉลี่ยแยกตามหัตถการ</p>
+              <p className="text-[10px] text-gray-400 mb-3">เวลาเฉลี่ยที่ใช้ทำหัตถการ เทียบกับค่ามาตรฐาน เร็วกว่ามาตรฐานแสดงว่าทำได้ดี</p>
+              {/* Comparison table with progress bars */}
+              <div className="space-y-3">
                 {procComparisonData.map((p, i) => {
                   const diff = p.actualTime - p.standardTime
                   const percent = p.standardTime > 0 ? Math.round((diff / p.standardTime) * 100) : 0
+                  const maxTime = Math.max(p.actualTime, p.standardTime, 1)
+                  const standardWidth = Math.min(100, (p.standardTime / maxTime) * 100)
+                  const actualWidth = Math.min(100, (p.actualTime / maxTime) * 100)
+                  const isFaster = diff < 0
+                  const statusColor = diff === 0 ? '#22C55E' : isFaster ? '#22C55E' : percent > 20 ? '#EF4444' : '#F59E0B'
+                  const statusLabel = diff === 0 ? '✓ ตรงมาตรฐาน' : isFaster ? `✓ เร็วกว่า ${Math.abs(percent)}%` : percent > 20 ? `⚠ ช้ากว่า ${percent}%` : `▽ ช้ากว่า ${percent}%`
                   return (
-                    <div key={i} className="flex items-center gap-3 bg-gray-50 rounded-xl p-3">
-                      <span className="text-sm font-bold text-gray-800 w-32 truncate">{p.name}</span>
-                      <span className="text-xs text-gray-500">{p.count} ครั้ง</span>
-                      <div className="flex-1 flex items-center gap-2">
-                        <span className="text-xs font-bold text-blue-600">จริง {p.actualTime} น.</span>
-                        <span className="text-xs text-gray-400">vs</span>
-                        <span className="text-xs font-bold text-green-600">มาตรฐาน {p.standardTime} น.</span>
+                    <div key={i} className="bg-gray-50 rounded-xl p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-bold text-gray-800">🦷 {p.name}</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-600 font-medium">{p.count} ครั้ง</span>
+                        </div>
+                        <span className="text-xs font-bold px-2 py-1 rounded-lg" style={{ backgroundColor: statusColor + '15', color: statusColor }}>
+                          {statusLabel}
+                        </span>
                       </div>
-                      <span className={clsx('text-xs font-bold px-2 py-0.5 rounded-full', diff > 0 ? 'bg-red-100 text-red-600' : diff < 0 ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-600')}>
-                        {diff > 0 ? `ช้ากว่า ${percent}%` : diff < 0 ? `เร็วกว่า ${Math.abs(percent)}%` : 'ตรงเป้า'}
-                      </span>
+                      {/* Standard time bar */}
+                      <div className="mb-1.5">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[10px] text-gray-500">📊 มาตรฐาน</span>
+                          <span className="text-[10px] font-bold text-gray-600">{p.standardTime} น.</span>
+                        </div>
+                        <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full bg-gray-400" style={{ width: `${standardWidth}%` }} />
+                        </div>
+                      </div>
+                      {/* Actual time bar */}
+                      <div>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[10px] text-gray-500">⏱ เวลาจริง (เฉลี่ย)</span>
+                          <span className="text-[10px] font-bold" style={{ color: statusColor }}>{p.actualTime} น.</span>
+                        </div>
+                        <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ backgroundColor: statusColor, width: `${actualWidth}%` }} />
+                        </div>
+                      </div>
                     </div>
                   )
                 })}
@@ -838,59 +851,7 @@ export default function Analytics() {
         )}
       </div>
 
-      {/* ═══ Actual vs Standard Time Comparison ═══ */}
-      {comparisonData.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-          <h3 className="text-base font-bold text-gray-900 mb-1">⏱ เปรียบเทียบเวลาจริง vs มาตรฐาน</h3>
-          <p className="text-xs text-gray-400 mb-5">เวลาเฉลี่ยที่ใช้จริง เทียบกับค่ามาตรฐานที่กำหนด — สีเขียวเร็วกว่ามาตรฐาน สีแดงช้ากว่ามาตรฐาน</p>
-          <div className="space-y-4">
-            {comparisonData.map((item, i) => {
-              const maxTime = Math.max(item.avgActual, item.standardTime, 1)
-              const barWidth = Math.min(100, (item.avgActual / maxTime) * 100)
-              const standardWidth = Math.min(100, (item.standardTime / maxTime) * 100)
-              const isFaster = item.diff < 0
-              const isSame = item.diff === 0
-              const statusColor = isSame ? '#22C55E' : isFaster ? '#22C55E' : item.diffPercent > 20 ? '#EF4444' : '#F59E0B'
-              const statusLabel = isSame ? '✓ ตรงมาตรฐาน' : isFaster ? `✓ เร็วกว่า ${Math.abs(item.diffPercent)}%` : item.diffPercent > 20 ? `⚠ ช้ากว่า ${item.diffPercent}%` : `▽ ช้ากว่า ${item.diffPercent}%`
-              return (
-                <div key={i} className="bg-gray-50 rounded-xl p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-gray-800">🦷 {item.procedure}</span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: item.color + '20', color: item.color }}>
-                        {item.practitioner}
-                      </span>
-                    </div>
-                    <span className="text-xs font-bold px-2 py-1 rounded-lg" style={{ backgroundColor: statusColor + '15', color: statusColor }}>
-                      {statusLabel}
-                    </span>
-                  </div>
-                  {/* Standard time bar */}
-                  <div className="mb-1.5">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-[10px] text-gray-500">📊 มาตรฐาน</span>
-                      <span className="text-[10px] font-bold text-gray-600">{item.standardTime} น.</span>
-                    </div>
-                    <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full bg-gray-400 transition-all duration-700" style={{ width: `${standardWidth}%` }} />
-                    </div>
-                  </div>
-                  {/* Actual time bar */}
-                  <div>
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-[10px] text-gray-500">⏱ เวลาจริง (เฉลี่ย)</span>
-                      <span className="text-[10px] font-bold" style={{ color: statusColor }}>{item.avgActual} น. ({item.count} ครั้ง)</span>
-                    </div>
-                    <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full transition-all duration-700" style={{ backgroundColor: statusColor, width: `${barWidth}%` }} />
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
+
 
       {/* ═══ Practitioner Performance — Simple Cards ═══ */}
       <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
