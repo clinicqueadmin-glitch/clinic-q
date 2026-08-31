@@ -18,7 +18,6 @@ import {
   CreditCard,
   AlertTriangle,
   UserCheck,
-  BookOpen,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useClinic } from '@/lib/clinic-context'
@@ -54,8 +53,6 @@ export default function Sidebar() {
   const pathname = usePathname()
   const { config, clearClinic, settings } = useClinic()
   const { user, currentRole, logout } = useAuth()
-  const [showGuide, setShowGuide] = useState(false)
-
   const accentColor = config?.color || '#F97316'
   const roleCfg = currentRole ? roleConfig[currentRole] : null
 
@@ -177,17 +174,6 @@ export default function Sidebar() {
             })}
           </nav>
 
-          {/* Help Guide */}
-          <div className="px-3 pb-1">
-            <button
-              onClick={() => setShowGuide(true)}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-2xl text-sm font-bold text-blue-600 hover:bg-blue-50 transition-colors w-full"
-            >
-              <BookOpen className="w-[18px] h-[18px]" />
-              <span>คู่มือการใช้งาน</span>
-            </button>
-          </div>
-
           {/* Switch Clinic, Admin Contact, Logout */}
           <div className="p-3 space-y-1">
             <div className="candy-divider mx-2 mb-2" />
@@ -228,12 +214,7 @@ export default function Sidebar() {
           </div>
         </div>
       </aside>
-      {/* Setup Guide Modal */}
-      <SetupGuide
-        open={showGuide}
-        onClose={() => setShowGuide(false)}
-        clinicName={settings.clinicName || config?.name}
-      />
+
     </>
   )
 }
