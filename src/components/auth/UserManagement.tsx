@@ -111,14 +111,20 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
     if (users.length > 0) {
       localStorage.setItem('clinicq-users-with-roles', JSON.stringify(users))
       // Sync with auth system's user store so login can find them
-      const authUsers = users.map(u => ({
-        id: u.id,
-        email: u.email,
-        name: u.name,
-        phone: u.phone || '',
-        createdAt: u.createdAt,
-        forcePasswordChange: u.forcePasswordChange ?? true,
-      }))
+      // Preserve existing forcePasswordChange status from auth system
+      const existingAuthUsers: Record<string, any>[] = JSON.parse(localStorage.getItem('clinicq-users') || '[]')
+      const authUsers = users.map(u => {
+        const existing = existingAuthUsers.find((eu: any) => eu.id === u.id)
+        return {
+          id: u.id,
+          email: u.email,
+          name: u.name,
+          phone: u.phone || '',
+          createdAt: u.createdAt,
+          // Preserve existing forcePasswordChange, only default to true for new users
+          forcePasswordChange: existing?.forcePasswordChange ?? u.forcePasswordChange ?? true,
+        }
+      })
       localStorage.setItem('clinicq-users', JSON.stringify(authUsers))
     }
   }, [users])
