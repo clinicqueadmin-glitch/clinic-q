@@ -453,7 +453,11 @@ export default function SettingsManager() {
         <div className="lg:w-72 flex-shrink-0">
           <div className="card p-2">
             <nav className="space-y-1">
-              {tabs.map((tab) => {
+              {tabs.filter(tab => {
+                // LINE OA tab only visible to owner
+                if (tab.id === 'line' && !isOwner) return false
+                return true
+              }).map((tab) => {
                 const Icon = tab.icon
                 return (
                   <button

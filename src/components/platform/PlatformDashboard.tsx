@@ -1,19 +1,25 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   Building2, Users, Activity, AlertTriangle, CheckCircle,
   Clock, TrendingUp, Search, Crown,
-  Zap, Star, Shield, Calendar, CreditCard, UserCheck,
+  Zap, Star, Shield, Calendar, CreditCard, UserCheck, ExternalLink,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import {
-  platformClinics, packageConfig, getDaysRemaining, getTrialStatus,
+  packageConfig, getDaysRemaining, getTrialStatus,
   type PlatformClinic, type PackageType,
 } from '@/lib/platform-data'
+import { createClient } from '@/utils/supabase/client'
 
-// No demo data - users are loaded from Supabase
-const allUsers: Array<{ id: string; name: string; email: string; role: string; clinicType: string; color: string }> = []
+interface ClinicWithStats extends PlatformClinic {
+  totalQueuesToday: number
+  totalQueuesMonth: number
+  totalUsers: number
+  branches: number
+  rooms: number
+}
 
 const roleLabels: Record<string, string> = {
   platform_owner: 'เจ้าของระบบ',
@@ -43,6 +49,70 @@ const clinicTypeLabels: Record<string, string> = {
 export default function PlatformDashboard() {
   const [userSearch, setUserSearch] = useState('')
   const [paymentFilter, setPaymentFilter] = useState<'all' | PackageType>('all')
+  const [platformClinics, setPlatformClinics] = useState<ClinicWithStats[]>([])
+  const [allUsers, setAllUsers] = useState<Array<{ id: string; name: string; email: string; role: string; clinicType: string; color: string }>>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  // Load clinics from Supabase
+  useEffect(() => {
+    const loadClinics = async () => {
+      try {
+        const sb = createClient()
+        if (!sb) { setIsLoading(false); return }
+        const { data: clinics, error } = await sb.from('clinics').select('*')
+        if (error || !clinics) { setIsLoading(false); return }
+
+        // Load stats for each clinic
+        const today = new Date().toISOString().split('T')[0]
+        const enriched: ClinicWithStats[] = await Promise.all(clinics.map(async (c: any) => {
+          // Count queues today
+          const { count: queuesToday } = await sb.from('queues')
+            .select('*', { count: 'exact', head: true })
+            .eq('clinic_id', c.id)
+            .eq('queue_date', today)
+          // Count total users (memberships)
+          const { count: users } = await sb.from('clinic_memberships')
+            .select('*', { count: 'exact', head: true })
+            .eq('clinic_id', c.id)
+          return {
+            id: c.id,
+            name: c.name,
+            type: c.type || 'dental',
+            prefix: c.prefix || 'Q',
+            color: c.color || '#9333EA',
+            ownerName: '',
+            ownerEmail: '',
+            package: 'clinicq' as PackageType,
+            status: 'active' as const,
+            registeredAt: c.created_at || '',
+            expiresAt: null,
+            totalQueuesToday: queuesToday || 0,
+            totalQueuesMonth: 0,
+            totalUsers: users || 0,
+            branches: 0,
+            rooms: 0,
+          }
+        }))
+        setPlatformClinics(enriched)
+
+        // Load users from clinic_memberships + users
+        const { data: memberships } = await sb.from('clinic_memberships').select('*, clinics(type, name)')
+        if (memberships) {
+          const usersList = memberships.map((m: any) => ({
+            id: m.user_id || m.id,
+            name: m.user_name || '',
+            email: m.user_email || '',
+            role: m.role || '',
+            clinicType: m.clinics?.type || '',
+            color: '#6B7280',
+          }))
+          setAllUsers(usersList)
+        }
+      } catch {}
+      setIsLoading(false)
+    }
+    loadClinics()
+  }, [])
 
   // Stats
   const stats = useMemo(() => {
@@ -55,9 +125,9 @@ export default function PlatformDashboard() {
       return t === 'expiring' || t === 'expired'
     }).length
     const totalQueuesToday = platformClinics.reduce((sum, c) => sum + c.totalQueuesToday, 0)
-    const totalUsers = allUsers.length
+    const totalUsers = platformClinics.reduce((sum, c) => sum + c.totalUsers, 0)
     return { total, active, free, paid, expiring, totalQueuesToday, totalUsers }
-  }, [])
+  }, [platformClinics])
 
   // Filtered users
   const filteredUsers = useMemo(() => {
@@ -281,6 +351,7 @@ export default function PlatformDashboard() {
                   <th className="text-center text-[10px] font-bold text-gray-400 uppercase pb-3 px-3">ผู้ใช้</th>
                   <th className="text-center text-[10px] font-bold text-gray-400 uppercase pb-3 px-3">วันหมดอายุ</th>
                   <th className="text-center text-[10px] font-bold text-gray-400 uppercase pb-3 px-3">สถานะ</th>
+                  <th className="text-center text-[10px] font-bold text-gray-400 uppercase pb-3 px-3"></th>
                 </tr>
               </thead>
               <tbody>
@@ -329,6 +400,19 @@ export default function PlatformDashboard() {
                         )}>
                           {trial === 'active' ? '✓ ปกติ' : trial === 'expiring' ? '⚠ ใกล้หมด' : trial === 'expired' ? '✗ หมดอายุ' : '∞ ไม่จำกัด'}
                         </span>
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        <button
+                          onClick={() => {
+                            // Switch to this clinic and go to dashboard
+                            localStorage.setItem('clinic-q-type', clinic.type)
+                            window.location.href = '/'
+                          }}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 transition-all shadow-sm"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          เข้าคลินิก
+                        </button>
                       </td>
                     </tr>
                   )
