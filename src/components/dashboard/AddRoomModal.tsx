@@ -153,6 +153,13 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
             </button>
           </div>
 
+          {/* Daily Setup Banner */}
+          <div className="mx-5 mt-4 p-3 bg-blue-50 border border-blue-100 rounded-xl">
+            <p className="text-xs text-blue-700 font-medium">
+              📅 การจัดห้องตรวจทำทุกวัน — ข้อมูลจะถูกรีเซ็ตเมื่อเริ่มวันใหม่หรือเลยเวลาปิดทำการ
+            </p>
+          </div>
+
           {/* Form */}
           <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
             {/* Room Selection */}

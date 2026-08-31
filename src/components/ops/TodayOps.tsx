@@ -1414,9 +1414,14 @@ export default function TodayOps() {
               <span className="text-4xl">🏥</span>
             </div>
             <h3 className="text-lg font-extrabold text-gray-800 mb-2">⚠️ ยังไม่มีห้องตรวจวันนี้</h3>
-            <p className="text-sm text-gray-500 mb-5 max-w-md mx-auto">
+            <p className="text-sm text-gray-500 mb-3 max-w-md mx-auto">
               กรุณาเพิ่มห้องตรวจเพื่อเริ่มใช้งานระบบจัดคิววันนี้
             </p>
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-5 max-w-md mx-auto">
+              <p className="text-xs text-blue-700 font-medium">
+                📅 ห้องตรวจจะถูกรีเซ็ตทุกวัน — ต้องเพิ่มห้องใหม่เมื่อเริ่มวันใหม่หรือเลยเวลาปิดทำการ
+              </p>
+            </div>
             <button
               onClick={() => setShowAddRoom(true)}
               className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl text-base font-bold text-white shadow-lg hover:shadow-xl transition-all"
