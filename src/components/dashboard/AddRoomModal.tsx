@@ -13,7 +13,7 @@ interface AddRoomModalProps {
 }
 
 export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProps) {
-  const { currentClinic } = useClinic()
+  const { currentClinic, settings } = useClinic()
   const { practitioners } = usePractitioners()
   const branchData = useMemo(() => getDefaultBranchData(currentClinic || 'dental'), [currentClinic])
 
@@ -42,8 +42,8 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
   const [selectedRoomId, setSelectedRoomId] = useState<number | ''>('')
   const [selectedPractitionerId, setSelectedPractitionerId] = useState('')
   const [selectedBranchId, setSelectedBranchId] = useState('')
-  const [startTime, setStartTime] = useState('09:00')
-  const [endTime, setEndTime] = useState('17:00')
+  const [startTime, setStartTime] = useState(settings.openTime || '09:00')
+  const [endTime, setEndTime] = useState(settings.closeTime || '17:00')
 
   // Confirm modal
   const [showConfirm, setShowConfirm] = useState(false)
@@ -129,8 +129,8 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
     setSelectedRoomId('')
     setSelectedPractitionerId('')
     setSelectedBranchId('')
-    setStartTime('09:00')
-    setEndTime('17:00')
+    setStartTime(settings.openTime || '09:00')
+    setEndTime(settings.closeTime || '17:00')
     setShowConfirm(false)
     onClose()
   }

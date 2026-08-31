@@ -125,6 +125,36 @@ export default function TodayOps() {
     }
     return []
   })
+
+  // Reset daily rooms when clinic closes
+  useEffect(() => {
+    const checkClosingTime = () => {
+      const savedSettings = localStorage.getItem('clinic-q-settings')
+      if (!savedSettings) return
+      try {
+        const settings = JSON.parse(savedSettings)
+        const closeTime = settings.closeTime || '20:00'
+        const now = new Date()
+        const [closeHour, closeMin] = closeTime.split(':').map(Number)
+        const currentMinutes = now.getHours() * 60 + now.getMinutes()
+        const closeMinutes = closeHour * 60 + closeMin
+        // If past closing time, clear daily rooms and queue
+        if (currentMinutes >= closeMinutes) {
+          const savedDate = localStorage.getItem('clinic-daily-rooms-date')
+          const today = now.toISOString().split('T')[0]
+          if (savedDate === today) {
+            localStorage.removeItem('clinic-daily-rooms')
+            localStorage.removeItem(`clinicq-queue-${currentClinic}-${today}`)
+            localStorage.setItem('clinic-daily-rooms-date', '')
+            setDailyRooms([])
+          }
+        }
+      } catch {}
+    }
+    checkClosingTime()
+    const interval = setInterval(checkClosingTime, 60000) // Check every minute
+    return () => clearInterval(interval)
+  }, [currentClinic])
   
   // Merge RoomSettings + daily schedule for dashboard display
   const allActiveRooms = useMemo(() => {

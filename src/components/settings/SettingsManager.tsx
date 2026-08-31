@@ -83,11 +83,11 @@ export default function SettingsManager() {
   })
   const [clinicPhone, setClinicPhone] = useState('02-123-4567')
   const [clinicAddress, setClinicAddress] = useState('123 ถนนสุขุมวิท แขวงคลองเตย เขตคลองเตย กรุงเทพมหานคร 10110')
-  const [openTime, setOpenTime] = useState('08:00')
-  const [closeTime, setCloseTime] = useState('20:00')
 
 
   const { settings, updateSettings } = useClinic()
+  const [openTime, setOpenTime] = useState(settings.openTime || '08:00')
+  const [closeTime, setCloseTime] = useState(settings.closeTime || '20:00')
   const [clinicLogo, setClinicLogo] = useState(settings.logo || '')
   const [operatingDays, setOperatingDays] = useState<string[]>(settings.operatingDays || ['mon', 'tue', 'wed', 'thu', 'fri'])
 
@@ -216,7 +216,7 @@ export default function SettingsManager() {
 
   /* ───── Clinic Save ───── */
   const handleSaveClinic = () => {
-    updateSettings({ clinicName, logo: clinicLogo, operatingDays })
+    updateSettings({ clinicName, logo: clinicLogo, operatingDays, openTime, closeTime })
     showToastMsg('บันทึกข้อมูลคลินิกสำเร็จ!', 'success')
   }
 

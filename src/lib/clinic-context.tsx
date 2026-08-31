@@ -7,6 +7,8 @@ export interface ClinicSettings {
   clinicName?: string // custom clinic name
   logo?: string // base64 data URL
   operatingDays: string[] // ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+  openTime?: string // เวลาเปิดทำการ (HH:mm)
+  closeTime?: string // เวลาปิดทำการ (HH:mm)
 }
 
 interface ClinicContextType {
