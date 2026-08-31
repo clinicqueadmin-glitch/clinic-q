@@ -48,7 +48,13 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
   // Confirm modal
   const [showConfirm, setShowConfirm] = useState(false)
 
-  const activePractitioners = practitioners.filter(p => p.active)
+  // Filter out practitioners already assigned to other daily rooms
+  const activePractitioners = useMemo(() => {
+    const assignedIds = new Set(
+      dailyRooms.filter(r => r.active && r.practitionerId).map(r => r.practitionerId)
+    )
+    return practitioners.filter(p => p.active && !assignedIds.has(p.id))
+  }, [practitioners, dailyRooms])
   const branches = branchData.branches.filter(b => b.active)
 
   // Get selected room data from RoomSettings
