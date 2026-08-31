@@ -442,7 +442,8 @@ export default function TodayOps() {
       return
     }
     if (rooms.length === 1) {
-      confirmCallWithRoom(item, rooms[0].room.id)
+      setAvailableRooms(rooms)
+      confirmCallWithRoom(item, rooms[0].room.id, rooms)
       return
     }
     setRoomSelectItem(item)
@@ -451,15 +452,16 @@ export default function TodayOps() {
   }
 
   // Select room → open confirmation dialog
-  const confirmCallWithRoom = (item: QueueItem, roomId: number) => {
+  const confirmCallWithRoom = (item: QueueItem, roomId: number, rooms?: typeof availableRooms) => {
     setShowRoomSelect(false)
-    const selected = availableRooms.find(r => r.room.id === roomId)
+    const pool = rooms || availableRooms
+    const selected = pool.find(r => r.room.id === roomId)
     setRoomConfirmData({
       item,
       roomId,
       roomName: selected?.room.name || `ห้อง ${roomId}`,
       roomColor: selected?.room.color || config?.color || '#3B82F6',
-      practitionerName: selected?.practitionerName || item.assignedDoctor,
+      practitionerName: selected?.practitionerName || item.assignedDoctor || 'ไม่ระบุ',
     })
     setShowRoomConfirm(true)
   }
