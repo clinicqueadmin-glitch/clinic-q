@@ -124,6 +124,33 @@ export default function PricingPage() {
           </div>
         )}
 
+        {/* ═══ LINE OA NOTIFICATION PREVIEW ═══ */}
+        <div className="max-w-xl mx-auto mb-6">
+          <div className="bg-white rounded-3xl border border-gray-100 shadow-lg p-5">
+            <p className="text-sm font-bold text-gray-700 mb-4 flex items-center gap-2">
+              📲 ตัวอย่างข้อความแจ้งเตือน
+            </p>
+            <div className="bg-[#06C755] rounded-2xl overflow-hidden shadow-md">
+              <div className="px-4 py-2 bg-[#06C755] flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-[#06C755] font-extrabold text-xs">Q+</div>
+                <span className="text-white font-bold text-sm">Clinic-Q</span>
+              </div>
+              <div className="bg-white mx-2 mb-2 rounded-xl p-4">
+                <p className="text-sm font-bold text-gray-900 mb-1">🔔 แจ้งเตือนนัด</p>
+                <p className="text-xs text-gray-700 mb-1">สวัสดี คุณสมศรี</p>
+                <p className="text-xs text-gray-700 mb-2">ถึงกำหนดนัดของคุณแล้วค่ะ!</p>
+                <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-600 space-y-1">
+                  <p>คิว: <span className="font-bold">A024</span></p>
+                  <p>ห้อง: <span className="font-bold">3</span></p>
+                  <p>ผู้ทำหัตถการ: <span className="font-bold">นพ.สมชาย</span></p>
+                </div>
+                <p className="text-[10px] text-gray-400 mt-2">กรุณาเข้าห้องตรวจภายใน 5 นาที</p>
+              </div>
+            </div>
+            <p className="text-xs text-green-600 font-medium mt-3 text-center">✨ สมัครรายปี — ตั้งค่าฟรี! พร้อม Rich Menu</p>
+          </div>
+        </div>
+
         {/* ═══ SINGLE PLAN CARD ═══ */}
         <div className="max-w-xl mx-auto">
           <div className="relative bg-white rounded-3xl border-2 border-teal-400 shadow-xl overflow-hidden">
