@@ -2,12 +2,12 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Clock, Users, Stethoscope, ArrowLeft, Timer, Activity, CheckCircle, ChevronDown, ChevronRight, X, Filter } from 'lucide-react'
+import { Clock, Users, Stethoscope, ArrowLeft, Timer, Activity, CheckCircle, ChevronDown, ChevronRight, X, Home } from 'lucide-react'
 import Link from 'next/link'
 import { useQueue, type QueueItem } from '@/lib/queue-context'
 import { useClinic } from '@/lib/clinic-context'
 import { clinicConfig, type ClinicType } from '@/lib/queue-data'
-import { getDefaultBranchData, getEstimatedDuration } from '@/lib/branch-data'
+import { getDefaultBranchData, getEstimatedDuration, type Room } from '@/lib/branch-data'
 
 // Helper: lighten a hex color for background
 function lighten(hex: string, factor = 0.85): string {
@@ -97,48 +97,57 @@ export default function QueueStatusBoard() {
     return effectiveQueue.filter(q => q.status === 'cancelled')
   }, [effectiveQueue])
 
-  // ═══ Group by branch ═══
-  // Map branch → room color (use the first room assigned to that branch)
-  const branchColorMap = useMemo(() => {
-    const map: Record<string, string> = {}
-    branchData.rooms.forEach(room => {
-      if (room.branchId && room.color && !map[room.branchId]) {
-        map[room.branchId] = room.color
+  // ═══ Read daily rooms from localStorage ═══
+  const dailyRooms = useMemo(() => {
+    if (typeof window === 'undefined') return []
+    try {
+      const saved = localStorage.getItem('clinic-daily-rooms')
+      const savedDate = localStorage.getItem('clinic-daily-rooms-date')
+      const today = new Date().toISOString().split('T')[0]
+      if (savedDate === today && saved) {
+        const rooms: Room[] = JSON.parse(saved)
+        return rooms.filter(r => r.active)
+      }
+    } catch {}
+    return []
+  }, [refreshTick])
+
+  // ═══ Per-room status ═══
+  const roomStatuses = useMemo(() => {
+    return dailyRooms.map(room => {
+      const roomServing = serving.find(q => q.assignedRoom === room.id)
+      const roomWaiting = arrivedWaiting.filter(q => q.assignedRoom === room.id)
+      const waitingCount = roomWaiting.length
+      const now = Date.now()
+
+      // Calculate wait time: remaining time for serving + estimated for waiting
+      let waitMinutes = 0
+      if (roomServing) {
+        const expected = getEstimatedDuration(branchData, roomServing.procedureId)
+        const elapsed = roomServing.servingAt ? Math.max(0, Math.floor((now - roomServing.servingAt) / 60000)) : 0
+        waitMinutes = Math.max(0, expected - elapsed)
+      }
+      roomWaiting.forEach(item => {
+        waitMinutes += getEstimatedDuration(branchData, item.procedureId)
+      })
+
+      // Expected free time
+      let expectedFreeTime = ''
+      if (roomServing || waitingCount > 0) {
+        const freeDate = new Date(now + waitMinutes * 60000)
+        expectedFreeTime = freeDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })
+      }
+
+      return {
+        room,
+        serving: roomServing,
+        waitingCount,
+        waitMinutes: Math.round(waitMinutes),
+        expectedFreeTime,
+        isFree: !roomServing && waitingCount === 0,
       }
     })
-    return map
-  }, [branchData])
-
-  // Fallback colors if no room assigned
-  const fallbackColors = ['#93C5FD', '#A7F3D0', '#FCD34D', '#FDA4AF', '#D8B4FE', '#C7D2FE']
-
-  const branchGroups = useMemo(() => {
-    const groups: Record<string, { branch: typeof activeBranches[0]; waiting: typeof arrivedWaiting; serving: typeof arrivedWaiting; roomColor: string }> = {}
-
-    activeBranches.forEach((branch, idx) => {
-      const roomColor = branchColorMap[branch.id] || fallbackColors[idx % fallbackColors.length]
-      groups[branch.id] = {
-        branch,
-        waiting: arrivedWaiting.filter(q => q.branchId === branch.id),
-        serving: serving.filter(q => q.branchId === branch.id),
-        roomColor,
-      }
-    })
-
-    // Handle items without a matching branch
-    const unmatchedWaiting = arrivedWaiting.filter(q => !activeBranches.find(b => b.id === q.branchId))
-    const unmatchedServing = serving.filter(q => !activeBranches.find(b => b.id === q.branchId))
-    if (unmatchedWaiting.length > 0 || unmatchedServing.length > 0) {
-      groups['_other'] = {
-        branch: { id: '_other', name: 'อื่นๆ', category: '' as any, active: true, procedures: [] },
-        waiting: unmatchedWaiting,
-        serving: unmatchedServing,
-        roomColor: '#CBD5E1',
-      }
-    }
-
-    return groups
-  }, [activeBranches, arrivedWaiting, serving, branchColorMap])
+  }, [dailyRooms, serving, arrivedWaiting, branchData])
 
   // ═══ Stats ═══
   const totalEstimatedWait = useMemo(() => {
@@ -155,7 +164,6 @@ export default function QueueStatusBoard() {
   const timeStr = currentTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Bangkok' }) + ' ICT'
   const dateStr = currentTime.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Bangkok' })
 
-  // Total queue items across all branches
   const totalWaiting = arrivedWaiting.length + serving.length
 
   return (
@@ -188,10 +196,10 @@ export default function QueueStatusBoard() {
         <div className="grid grid-cols-3 gap-3">
           <div className="bento-card p-3 text-center">
             <div className="w-8 h-8 rounded-lg mx-auto mb-1.5 flex items-center justify-center" style={{ backgroundColor: `${accentColor}15` }}>
-              <Users className="w-4 h-4" style={{ color: accentColor }} />
+              <Stethoscope className="w-4 h-4" style={{ color: accentColor }} />
             </div>
-            <p className="text-2xl font-black" style={{ color: accentColor }}>{arrivedWaiting.length}</p>
-            <p className="text-[10px] text-gray-500 mt-0.5">คิวรอ</p>
+            <p className="text-2xl font-black" style={{ color: accentColor }}>{dailyRooms.length}</p>
+            <p className="text-[10px] text-gray-500 mt-0.5">ห้องทำหัตถการ</p>
           </div>
           <div className="bento-card p-3 text-center">
             <div className="w-8 h-8 rounded-lg mx-auto mb-1.5 flex items-center justify-center bg-amber-50">
@@ -204,10 +212,10 @@ export default function QueueStatusBoard() {
           </div>
           <div className="bento-card p-3 text-center">
             <div className="w-8 h-8 rounded-lg mx-auto mb-1.5 flex items-center justify-center bg-emerald-50">
-              <Stethoscope className="w-4 h-4 text-emerald-500" />
+              <Users className="w-4 h-4 text-emerald-500" />
             </div>
-            <p className="text-2xl font-black text-emerald-600">{serving.length}</p>
-            <p className="text-[10px] text-gray-500 mt-0.5">กำลังทำ</p>
+            <p className="text-2xl font-black text-emerald-600">{arrivedWaiting.length + serving.length}</p>
+            <p className="text-[10px] text-gray-500 mt-0.5">คิวทั้งหมด</p>
           </div>
         </div>
 
@@ -230,74 +238,62 @@ export default function QueueStatusBoard() {
           </div>
         )}
 
-        {/* ═══════ QUEUE BY BRANCH (SUMMARY ONLY) ═══════ */}
-        {totalWaiting > 0 && (
+        {/* ═══════ ROOM STATUS ═══════ */}
+        {dailyRooms.length > 0 && (
           <div className="space-y-3">
             <div className="flex items-center gap-2 px-1">
-              <Filter className="w-4 h-4 text-gray-400" />
-              <h2 className="font-bold text-gray-700 text-sm">สถานะคิวแยกตามสาขา</h2>
+              <Stethoscope className="w-4 h-4 text-gray-400" />
+              <h2 className="font-bold text-gray-700 text-sm">สถานะห้องตรวจ</h2>
             </div>
 
-            {Object.entries(branchGroups).map(([branchId, group]) => {
-              const bgColor = group.roomColor
+            {roomStatuses.map(({ room, serving: roomServing, waitingCount, waitMinutes, expectedFreeTime, isFree }) => {
+              const bgColor = room.color || '#93C5FD'
               const lightBg = lighten(bgColor)
               const textColor = contrastText(bgColor)
-              const hasItems = group.waiting.length > 0 || group.serving.length > 0
-              if (!hasItems) return null
-
-              // Calculate branch wait time:
-              // 1. Remaining time for patients currently being served
-              // 2. Full estimated duration for patients waiting
-              const now = Date.now()
-              const servingRemaining = group.serving.reduce((sum, item) => {
-                const expected = getEstimatedDuration(branchData, item.procedureId)
-                const elapsed = item.servingAt ? Math.max(0, Math.floor((now - item.servingAt) / 60000)) : 0
-                return sum + Math.max(0, expected - elapsed)
-              }, 0)
-              const waitingDuration = group.waiting.reduce((sum, item) => {
-                return sum + getEstimatedDuration(branchData, item.procedureId)
-              }, 0)
-              const branchWait = Math.round(servingRemaining + waitingDuration)
 
               return (
                 <div
-                  key={branchId}
+                  key={room.id}
                   className="rounded-2xl overflow-hidden border-2 transition-all"
-                  style={{ borderColor: bgColor, backgroundColor: lightBg }}
+                  style={{ borderColor: isFree ? '#E2E8F0' : bgColor, backgroundColor: isFree ? '#F8FAFC' : lightBg }}
                 >
                   <div className="px-5 py-4 flex items-center justify-between">
-                    {/* Left: Branch name + queue count */}
+                    {/* Left: Room info */}
                     <div className="flex items-center gap-3">
                       <div
-                        className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm text-white"
+                        className="w-12 h-12 rounded-xl flex items-center justify-center font-bold text-lg text-white shadow-sm"
                         style={{ backgroundColor: bgColor }}
                       >
-                        {group.waiting.length + group.serving.length}
+                        {room.id}
                       </div>
                       <div>
-                        <p className="font-bold text-sm" style={{ color: textColor }}>{group.branch.name}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          {group.serving.length > 0 && (
-                            <span className="text-[10px] flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                              <span className="text-emerald-600 font-medium">ทำอยู่ {group.serving.length}</span>
-                            </span>
-                          )}
-                          {group.waiting.length > 0 && (
-                            <span className="text-[10px] text-gray-500">รอ {group.waiting.length} คิว</span>
-                          )}
-                        </div>
+                        <p className="font-bold text-sm" style={{ color: isFree ? '#374151' : textColor }}>{room.name}</p>
+                        <p className="text-[10px] mt-0.5" style={{ color: isFree ? '#9CA3AF' : textColor }}>
+                          {room.practitionerName || 'ไม่ระบุผู้ทำหัตถการ'}
+                        </p>
                       </div>
                     </div>
 
-                    {/* Right: Wait time */}
+                    {/* Right: Status */}
                     <div className="text-right">
-                      <p className="text-2xl font-black" style={{ color: bgColor }}>
-                        {group.waiting.length > 0 || group.serving.length > 0 ? `~${branchWait}` : '—'}
-                      </p>
-                      <p className="text-[10px]" style={{ color: textColor }}>นาที</p>
-                      {group.serving.length > 0 && group.waiting.length > 0 && (
-                        <p className="text-[9px] text-gray-400 mt-0.5">กำลังทำ {Math.round(servingRemaining)}น. + รอ {Math.round(waitingDuration)}น.</p>
+                      {isFree ? (
+                        <div>
+                          <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
+                            ✅ ว่าง
+                          </span>
+                        </div>
+                      ) : (
+                        <div>
+                          <p className="text-2xl font-black" style={{ color: bgColor }}>
+                            ~{waitMinutes}
+                          </p>
+                          <p className="text-[10px]" style={{ color: textColor }}>นาที</p>
+                          {expectedFreeTime && (
+                            <p className="text-[9px] mt-0.5" style={{ color: textColor }}>
+                              คาดว่าง ~{expectedFreeTime} น.
+                            </p>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
