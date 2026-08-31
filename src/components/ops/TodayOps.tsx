@@ -753,10 +753,10 @@ export default function TodayOps() {
                   </span>
                 )}
                 {/* Phone */}
-                {item.phone && (
-                  <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-teal-50 text-teal-600 font-medium">
+                {item.phone && typeof item.phone === 'string' && (
+                  <a href={`tel:${item.phone.replace(/-/g, '')}`} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-teal-50 text-teal-600 font-medium hover:bg-teal-100 hover:text-teal-700 hover:underline cursor-pointer">
                     📞 {item.phone}
-                  </span>
+                  </a>
                 )}
                 {/* Procedure */}
                 <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-blue-50 text-blue-600 font-medium">

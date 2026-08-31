@@ -149,7 +149,7 @@ export default function WalkinPage() {
     const newQueueItem: Record<string, any> = {
       number,
       patientName: name.trim(),
-      phone: phone.length === 10,
+      phone: phone,
       procedure: primaryProc.name,
       procedureId: primaryProc.procedureId,
       branchId: selectedBranch,
