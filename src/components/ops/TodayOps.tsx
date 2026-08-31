@@ -20,6 +20,7 @@ import {
 import { usePractitioners } from '@/lib/practitioner-context'
 import { addCompletedProcedures, updateQueueStatus } from '@/lib/supabase-queue'
 import PhoneInput from '@/components/ui/PhoneInput'
+import SetupGuide from '@/components/guide/SetupGuide'
 
 export const difficultyConfig: Record<DifficultyLevel, { label: string; detail: string; color: string; bg: string; multiplier: number }> = {
   easy:       { label: 'ทั่วไป', detail: 'ทำได้ตามปกติ ไม่ซับซ้อน',   color: 'text-gray-600', bg: 'bg-gray-50',  multiplier: 0.8 },
@@ -79,6 +80,20 @@ export default function TodayOps() {
   const { user, currentRole } = useAuth()
   const { practitioners } = usePractitioners()
   const [branchData, setBranchData] = useState(() => getDefaultBranchData(currentClinic || 'dental'))
+  
+  // Setup guide for new clinics
+  const [showSetupGuide, setShowSetupGuide] = useState(() => {
+    if (typeof window === 'undefined') return false
+    const guideKey = `clinicq-setup-guide-shown-${currentClinic || 'default'}`
+    return !localStorage.getItem(guideKey)
+  })
+  
+  const closeSetupGuide = () => {
+    setShowSetupGuide(false)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`clinicq-setup-guide-shown-${currentClinic || 'default'}`, 'true')
+    }
+  }
   
   // Read room settings from localStorage (RoomSettings - basic room info)
   const [savedRooms, setSavedRooms] = useState<Room[]>(() => {
@@ -1694,6 +1709,13 @@ export default function TodayOps() {
         open={showAddRoom}
         onClose={() => setShowAddRoom(false)}
         onSave={handleAddRoom}
+      />
+
+      {/* Setup Guide for new clinics */}
+      <SetupGuide
+        open={showSetupGuide}
+        onClose={closeSetupGuide}
+        clinicName={settings.clinicName || config?.name}
       />
     </div>
   )
