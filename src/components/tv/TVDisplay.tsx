@@ -5,7 +5,7 @@ import { clsx } from 'clsx'
 import { Volume2, VolumeX, Maximize, Minimize, RefreshCw } from 'lucide-react'
 import { useQueue, type QueueItem } from '@/lib/queue-context'
 import { useClinic } from '@/lib/clinic-context'
-import { getDefaultBranchData, getOvertimeStatus } from '@/lib/branch-data'
+import { getDefaultBranchData, getOvertimeStatus, type Room } from '@/lib/branch-data'
 import TVCalledAlert from './TVCalledAlert'
 import TVAdDisplay, { type TVAd } from './TVAdDisplay'
 
@@ -54,7 +54,23 @@ export default function TVDisplay() {
   const { queue, setQueue } = useQueue()
   const { config, currentClinic, settings } = useClinic()
   const branchData = useMemo(() => getDefaultBranchData(currentClinic || 'dental'), [currentClinic])
-  const activeRooms = useMemo(() => branchData.rooms.filter(r => r.active), [branchData])
+  
+  // Read daily rooms from localStorage (only show rooms added for today)
+  const activeRooms = useMemo(() => {
+    if (typeof window === 'undefined') return branchData.rooms.filter(r => r.active)
+    const saved = localStorage.getItem('clinic-daily-rooms')
+    const savedDate = localStorage.getItem('clinic-daily-rooms-date')
+    const today = new Date().toISOString().split('T')[0]
+    if (savedDate === today && saved) {
+      try {
+        const dailyRooms: Room[] = JSON.parse(saved)
+        const active = dailyRooms.filter((r) => r.active)
+        if (active.length > 0) return active
+      } catch {}
+    }
+    // Fallback: show all active rooms from branch data
+    return branchData.rooms.filter(r => r.active)
+  }, [branchData])
 
   const [lastCalled, setLastCalled] = useState<QueueItem | null>(null)
   const [showAlert, setShowAlert] = useState(false)
