@@ -118,7 +118,7 @@ export default function PricingPage() {
             <div className="p-8">
               {/* Plan name */}
               <div className="text-center mb-6">
-                <span className="text-5xl">🦷</span>
+                <img src="/brand-logo.png" alt="Clinic-Q Logo" className="w-20 h-20 mx-auto rounded-2xl shadow-md" />
                 <h3 className="text-2xl font-extrabold text-gray-900 mt-3">Clinic-Q Professional</h3>
                 <p className="text-gray-500 mt-2">ระบบจัดการคิวคลินิกครบวงจร สำหรับทุกประเภทคลินิก</p>
               </div>
