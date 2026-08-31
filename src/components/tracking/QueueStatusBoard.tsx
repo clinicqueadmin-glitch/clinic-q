@@ -120,6 +120,18 @@ export default function QueueStatusBoard() {
       const waitingCount = roomWaiting.length
       const now = Date.now()
 
+      // Get branch and procedure info for this room
+      let branchName = ''
+      let procedureName = ''
+      if (roomServing) {
+        // Find branch name
+        const branch = branchData.branches.find(b => b.id === roomServing.branchId)
+        branchName = branch?.name || ''
+        // Find procedure name
+        const proc = branch?.procedures.find(p => p.id === roomServing.procedureId)
+        procedureName = proc?.name || roomServing.procedure
+      }
+
       // Calculate wait time: remaining time for serving + estimated for waiting
       let waitMinutes = 0
       if (roomServing) {
@@ -145,6 +157,8 @@ export default function QueueStatusBoard() {
         waitMinutes: Math.round(waitMinutes),
         expectedFreeTime,
         isFree: !roomServing && waitingCount === 0,
+        branchName,
+        procedureName,
       }
     })
   }, [dailyRooms, serving, arrivedWaiting, branchData])
@@ -187,6 +201,27 @@ export default function QueueStatusBoard() {
             <p className="text-white font-mono font-bold text-lg">{timeStr}</p>
             <p className="text-white/60 text-[10px]">{dateStr}</p>
             <p className="text-white/40 text-[9px] mt-0.5">🔄 อัปเดตอัตโนมัติทุก 30 วินาที</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ═══════ DATE & TIME DISPLAY ═══════ */}
+      <div className="max-w-3xl mx-auto px-4 pt-4">
+        <div className="bento-card p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${accentColor}15` }}>
+                <Clock className="w-5 h-5" style={{ color: accentColor }} />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-gray-900">📅 {dateStr}</p>
+                <p className="text-lg font-mono font-black" style={{ color: accentColor }}>{timeStr}</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] text-gray-400">ข้อมูล ณ เวลา</p>
+              <p className="text-xs font-medium text-gray-500">อัปเดตอัตโนมัติทุก 30 วินาที</p>
+            </div>
           </div>
         </div>
       </div>
@@ -238,6 +273,54 @@ export default function QueueStatusBoard() {
           </div>
         )}
 
+        {/* ═══════ BRANCH SUMMARY ═══════ */}
+        {arrivedWaiting.length > 0 && (
+          <div className="bento-card p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Stethoscope className="w-4 h-4 text-gray-400" />
+              <h2 className="font-bold text-gray-700 text-sm">สาขาที่มีคนไข้รอ</h2>
+            </div>
+            <div className="space-y-2">
+              {(() => {
+                // Group waiting by branch
+                const branchMap = new Map<string, { name: string; count: number; waitMinutes: number }>()
+                arrivedWaiting.forEach(item => {
+                  const branch = branchData.branches.find(b => b.id === item.branchId)
+                  const branchName = branch?.name || 'ไม่ระบุสาขา'
+                  const existing = branchMap.get(item.branchId || 'unknown')
+                  if (existing) {
+                    existing.count++
+                    existing.waitMinutes += getEstimatedDuration(branchData, item.procedureId)
+                  } else {
+                    branchMap.set(item.branchId || 'unknown', {
+                      name: branchName,
+                      count: 1,
+                      waitMinutes: getEstimatedDuration(branchData, item.procedureId),
+                    })
+                  }
+                })
+                return Array.from(branchMap.entries()).map(([id, info]) => (
+                  <div key={id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${accentColor}15` }}>
+                        <span className="text-sm">🏥</span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-gray-900">{info.name}</p>
+                        <p className="text-[10px] text-gray-500">{info.count} คิวรอ</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-black" style={{ color: accentColor }}>~{info.waitMinutes}</p>
+                      <p className="text-[10px] text-gray-500">นาที</p>
+                    </div>
+                  </div>
+                ))
+              })()}
+            </div>
+          </div>
+        )}
+
         {/* ═══════ ROOM STATUS ═══════ */}
         {dailyRooms.length > 0 && (
           <div className="space-y-3">
@@ -246,7 +329,7 @@ export default function QueueStatusBoard() {
               <h2 className="font-bold text-gray-700 text-sm">สถานะห้องตรวจ</h2>
             </div>
 
-            {roomStatuses.map(({ room, serving: roomServing, waitingCount, waitMinutes, expectedFreeTime, isFree }) => {
+            {roomStatuses.map(({ room, serving: roomServing, waitingCount, waitMinutes, expectedFreeTime, isFree, branchName, procedureName }) => {
               const bgColor = room.color || '#93C5FD'
               const lightBg = lighten(bgColor)
               const textColor = contrastText(bgColor)
@@ -271,6 +354,12 @@ export default function QueueStatusBoard() {
                         <p className="text-[10px] mt-0.5" style={{ color: isFree ? '#9CA3AF' : textColor }}>
                           {room.practitionerName || 'ไม่ระบุผู้ทำหัตถการ'}
                         </p>
+                        {!isFree && procedureName && (
+                          <p className="text-[10px] mt-0.5 font-medium" style={{ color: isFree ? '#9CA3AF' : textColor }}>
+                            📋 {procedureName}
+                            {branchName && <span className="text-[9px] ml-1">({branchName})</span>}
+                          </p>
+                        )}
                       </div>
                     </div>
 
