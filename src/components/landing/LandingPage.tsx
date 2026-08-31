@@ -264,6 +264,22 @@ export default function LandingPage() {
           <p className="text-lg text-gray-500 mb-8">
             ทดลองใช้ฟรี 30 วัน · ไม่ต้องบัตรเครดิต · ไม่มีสัญญาผูกมัด
           </p>
+
+          {/* Yearly Promotion Banner */}
+          <div className="max-w-2xl mx-auto mb-8">
+            <div className="bg-gradient-to-r from-purple-600 via-pink-500 to-teal-400 rounded-3xl p-6 text-center text-white shadow-xl">
+              <p className="text-2xl md:text-3xl font-extrabold leading-relaxed">
+                🎉 สมัครรายปี
+              </p>
+              <p className="text-xl md:text-2xl font-bold mt-2 leading-relaxed">
+                เราจะตั้งค่าแจ้งเตือนเมื่อถึงคิวนัดทาง <span className="text-yellow-200">LineOA</span>
+              </p>
+              <p className="text-lg md:text-xl font-bold mt-2 leading-relaxed">
+                พร้อมทำหน้า <span className="text-yellow-200">Rich Menu</span> สำหรับระบบนัดคิวให้ <span className="text-yellow-200 text-2xl">ฟรี!</span>
+              </p>
+            </div>
+          </div>
+
           <div className="max-w-lg mx-auto">
             <div className="bg-white rounded-3xl border-2 border-teal-400 shadow-xl p-8">
               <span className="inline-block px-4 py-1.5 bg-teal-100 text-teal-700 text-sm font-bold rounded-full mb-4">⭐ แพ็กเกจเดียว ครบทุกฟีเจอร์</span>

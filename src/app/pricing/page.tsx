@@ -107,6 +107,23 @@ export default function PricingPage() {
           </div>
         )}
 
+        {/* ═══ YEARLY PROMOTION BANNER ═══ */}
+        {billing === 'yearly' && (
+          <div className="max-w-xl mx-auto mb-6">
+            <div className="bg-gradient-to-r from-purple-600 via-pink-500 to-teal-400 rounded-3xl p-6 text-center text-white shadow-xl">
+              <p className="text-2xl md:text-3xl font-extrabold leading-relaxed">
+                🎉 สมัครรายปี
+              </p>
+              <p className="text-xl md:text-2xl font-bold mt-2 leading-relaxed">
+                เราจะตั้งค่าแจ้งเตือนเมื่อถึงคิวนัดทาง <span className="text-yellow-200">LineOA</span>
+              </p>
+              <p className="text-lg md:text-xl font-bold mt-2 leading-relaxed">
+                พร้อมทำหน้า <span className="text-yellow-200">Rich Menu</span> สำหรับระบบนัดคิวให้ <span className="text-yellow-200 text-2xl">ฟรี!</span>
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* ═══ SINGLE PLAN CARD ═══ */}
         <div className="max-w-xl mx-auto">
           <div className="relative bg-white rounded-3xl border-2 border-teal-400 shadow-xl overflow-hidden">
