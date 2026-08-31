@@ -2,8 +2,8 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import {
-  ChevronLeft, Clock, User, Phone,
-  CheckCircle, Calendar, MapPin, AlertTriangle,
+  ChevronLeft, User, Phone,
+  CheckCircle, MapPin, AlertTriangle,
   Navigation, Building2, Search,
 } from 'lucide-react'
 import { clsx } from 'clsx'
@@ -12,10 +12,7 @@ import PhoneInput from '@/components/ui/PhoneInput'
 import { useSchedule } from '@/lib/schedule-context'
 import { useQueue } from '@/lib/queue-context'
 import Toast from '@/components/ui/Toast'
-import {
-  DAY_NAMES_SHORT, DAY_NAMES_FULL, MONTH_NAMES_TH,
-  formatDateKey,
-} from '@/lib/schedule-data'
+
 import {
   getDefaultBranchData, getAllActiveProcedures, type Practitioner,
   findRoomForProcedure, getPractitionerName,
@@ -23,7 +20,7 @@ import {
 } from '@/lib/branch-data'
 import { checkDistance, CLINIC_LOCATION } from '@/lib/booking-data'
 
-type BookingStep = 'location' | 'select-doctor' | 'select-slot' | 'fill-info' | 'done'
+type BookingStep = 'location' | 'select-doctor' | 'fill-info' | 'done'
 type LocationStatus = 'checking' | 'near' | 'far' | 'error' | 'denied'
 
 const roomColors = ['#93C5FD', '#A7F3D0', '#FCD34D', '#FDA4AF', '#D8B4FE']
@@ -43,8 +40,7 @@ export default function PatientBooking() {
   const [step, setStep] = useState<BookingStep>('location')
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null)
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null)
-  const [selectedSlotDate, setSelectedSlotDate] = useState('')
-  const [selectedSlotId, setSelectedSlotId] = useState('')
+
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [procedure, setProcedure] = useState('')
@@ -130,62 +126,16 @@ export default function PatientBooking() {
     return branch?.procedures.filter(p => p.active) || []
   }, [branchData, selectedBranchId])
 
-  // Available slots for selected doctor (next 14 days)
-  const availableSlots = useMemo(() => {
-    if (!selectedStaffId) return []
-    const today = new Date()
-    const slots: { date: string; dateLabel: string; slotId: string; timeRange: string; roomId: number }[] = []
-
-    for (let i = 0; i < 14; i++) {
-      const d = new Date(today)
-      d.setDate(today.getDate() + i)
-      const dateStr = formatDateKey(d)
-
-      const daySlots = assignments.filter(a =>
-        a.date === dateStr && a.staffId === selectedStaffId
-      ).sort((a, b) => {
-        const aTime = a.slotId.split('-')[1] || '00:00'
-        const bTime = b.slotId.split('-')[1] || '00:00'
-        return aTime.localeCompare(bTime)
-      })
-
-      daySlots.forEach(slot => {
-        const timeRange = slot.slotId.replace('slot-', '').replace('-', ' - ')
-        const isBooked = queue.some(q => q.status !== 'completed' && q.time && slot.slotId.includes(q.time))
-        if (!isBooked) {
-          const dayName = DAY_NAMES_SHORT[d.getDay()]
-          const monthName = MONTH_NAMES_TH[d.getMonth()]
-          slots.push({
-            date: dateStr,
-            dateLabel: `${dayName} ${d.getDate()} ${monthName}`,
-            slotId: slot.slotId,
-            timeRange,
-            roomId: slot.roomId,
-          })
-        }
-      })
-    }
-
-    return slots
-  }, [selectedStaffId, assignments, queue])
-
-  // Group available slots by date
-  const slotsByDate = useMemo(() => {
-    const map: Record<string, typeof availableSlots> = {}
-    availableSlots.forEach(slot => {
-      if (!map[slot.date]) map[slot.date] = []
-      map[slot.date].push(slot)
-    })
-    return map
-  }, [availableSlots])
-
   const selectedStaff = staff.find(s => s.id === selectedStaffId)
   const selectedBranch = branchData.branches.find(b => b.id === selectedBranchId)
 
-  const handleSelectSlot = (date: string, slotId: string) => {
-    setSelectedSlotDate(date)
-    setSelectedSlotId(slotId)
-    setStep('fill-info')
+
+
+  // Auto-calculate booking time: 30 minutes from now
+  const getBookingTime = () => {
+    const now = new Date()
+    now.setMinutes(now.getMinutes() + 30)
+    return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
   }
 
   const handleConfirm = () => {
@@ -196,8 +146,8 @@ export default function PatientBooking() {
     }
 
     const proc = branchProcedures.find(p => p.id === procedure)
-    const timeMatch = selectedSlotId.match(/slot-(\d{2}:\d{2})/)
-    const timeStr = timeMatch ? timeMatch[1] : '09:00'
+    const timeStr = getBookingTime() // Auto: 30 min from now
+    const today = new Date().toISOString().split('T')[0]
     const queueNumber = `${config?.prefix || 'E'}${String(Math.floor(Math.random() * 900) + 100).slice(0, 3)}`
 
     const newQueue = {
@@ -208,18 +158,26 @@ export default function PatientBooking() {
       procedure: proc?.name || '',
       procedureId: procedure,
       branchId: selectedStaff?.branchId || '',
-      bookingMode: 'appointment' as const,
-      assignedRoom: availableSlots.find(s => s.slotId === selectedSlotId)?.roomId || 1,
+      bookingMode: 'remote' as const,
+      assignedRoom: 0,
       assignedDoctor: selectedStaff?.name || '',
       status: 'waiting' as const,
       time: timeStr,
-      bookedAt: timeStr,
-      arrivalTime: timeStr,
+      bookedTimeSlot: timeStr,
+      bookedAt: today,
+      arrivalTime: '',
       arrived: false,
+      // Auto-cancel: if not arrived by booking time + 15 min, cancel
+      autoCancelAt: (() => {
+        const [h, m] = timeStr.split(':').map(Number)
+        const cancelTime = new Date()
+        cancelTime.setHours(h, m + 15, 0, 0)
+        return cancelTime.getTime()
+      })(),
     }
 
     setQueue(prev => [...prev, newQueue])
-    setResult({ number: queueNumber, doctor: selectedStaff?.name || '', time: timeStr, date: selectedSlotDate })
+    setResult({ number: queueNumber, doctor: selectedStaff?.name || '', time: timeStr, date: today })
     setStep('done')
   }
 
@@ -238,7 +196,6 @@ export default function PatientBooking() {
   // Steps for indicator (excluding location)
   const bookingSteps = [
     { key: 'select-doctor', label: 'เลือกแพทย์' },
-    { key: 'select-slot', label: 'เลือกเวลา' },
     { key: 'fill-info', label: 'กรอกข้อมูล' },
   ]
 
@@ -333,7 +290,7 @@ export default function PatientBooking() {
         {step !== 'location' && step !== 'done' && (
           <div className="flex items-center justify-center gap-2 text-xs">
             {bookingSteps.map((s, i) => {
-              const stepOrder = ['select-doctor', 'select-slot', 'fill-info']
+              const stepOrder = ['select-doctor', 'fill-info']
               const currentIdx = stepOrder.indexOf(step)
               return (
                 <div key={s.key} className="flex items-center gap-2">
@@ -407,7 +364,7 @@ export default function PatientBooking() {
                         key={s.id}
                         onClick={() => {
                           setSelectedStaffId(s.id)
-                          setStep('select-slot')
+                          setStep('fill-info')
                         }}
                         className="w-full flex items-center gap-3 p-4 rounded-xl border border-gray-100 hover:border-gray-300 hover:shadow-sm transition-all text-left"
                       >
@@ -436,68 +393,19 @@ export default function PatientBooking() {
           </div>
         )}
 
-        {/* ═══════ STEP 2: Select Slot ═══════ */}
-        {step === 'select-slot' && selectedStaff && (
+
+
+        {/* ═══════ STEP 3: Fill Info ═══════ */}
+        {step === 'fill-info' && (
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <div className="flex items-center gap-3 mb-4">
               <button onClick={() => setStep('select-doctor')} className="p-1.5 rounded-lg hover:bg-gray-100">
                 <ChevronLeft className="w-4 h-4 text-gray-500" />
               </button>
               <div>
-                <h2 className="text-sm font-bold text-gray-900">{selectedStaff.name}</h2>
-                <p className="text-[11px] text-gray-500">เลือกเวลาที่ว่าง — แสดง 14 วันข้างหน้า</p>
-              </div>
-            </div>
-
-            {Object.keys(slotsByDate).length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-8">ไม่มี slot ว่างใน 14 วันข้างหน้า</p>
-            ) : (
-              <div className="space-y-4 max-h-[50vh] overflow-y-auto">
-                {Object.entries(slotsByDate).map(([date, slots]) => {
-                  const dateObj = new Date(date)
-                  const isToday = date === formatDateKey(new Date())
-                  return (
-                    <div key={date}>
-                      <div className="flex items-center gap-2 mb-2">
-                        <Calendar className="w-3.5 h-3.5 text-gray-400" />
-                        <span className={clsx('text-xs font-medium', isToday ? 'text-green-600' : 'text-gray-700')}>
-                          {DAY_NAMES_FULL[dateObj.getDay()]}ที่ {dateObj.getDate()} {MONTH_NAMES_TH[dateObj.getMonth()]}
-                          {isToday && ' (วันนี้)'}
-                        </span>
-                        <span className="text-[10px] text-gray-400">({slots.length} ช่วง)</span>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {slots.map(slot => (
-                          <button
-                            key={slot.slotId}
-                            onClick={() => handleSelectSlot(date, slot.slotId)}
-                            className="px-3 py-2 rounded-lg border border-gray-200 hover:border-green-400 hover:bg-green-50 text-xs font-medium text-gray-700 transition-all"
-                          >
-                            <Clock className="w-3 h-3 inline mr-1" />
-                            {slot.timeRange}
-                            <span className="text-gray-400 ml-1">ห้อง {slot.roomId}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ═══════ STEP 3: Fill Info ═══════ */}
-        {step === 'fill-info' && (
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <div className="flex items-center gap-3 mb-4">
-              <button onClick={() => setStep('select-slot')} className="p-1.5 rounded-lg hover:bg-gray-100">
-                <ChevronLeft className="w-4 h-4 text-gray-500" />
-              </button>
-              <div>
                 <h2 className="text-sm font-bold text-gray-900">กรอกข้อมูลนัดหมาย</h2>
                 <p className="text-[11px] text-gray-500">
-                  {selectedStaff?.name} • {selectedSlotDate} • {selectedSlotId.replace('slot-', '').replace('-', ' - ')}
+                  {selectedStaff?.name} • {selectedBranch?.name} • เวลานัด {getBookingTime()} น.
                 </p>
               </div>
             </div>
@@ -563,7 +471,13 @@ export default function PatientBooking() {
               <CheckCircle className="w-8 h-8 text-green-500" />
             </div>
             <h2 className="text-lg font-bold text-gray-900 mb-2">นัดหมายสำเร็จ!</h2>
-            <p className="text-sm text-gray-500 mb-6">กรุณามาถึงคลินิกก่อนเวลานัด 15 นาที</p>
+            <p className="text-sm text-gray-500 mb-2">เวลานัด: <span className="font-bold" style={{ color: config.color }}>{result.time} น.</span></p>
+            <p className="text-xs text-orange-500 mb-6">⚠️ หากมาไม่ถึงคลินิกก่อนเวลา {(() => {
+              const [h, m] = result.time.split(':').map(Number)
+              const cancelH = h + Math.floor((m + 15) / 60)
+              const cancelM = (m + 15) % 60
+              return `${cancelH.toString().padStart(2, '0')}:${cancelM.toString().padStart(2, '0')}`
+            })()} น. คิวจะถูกยกเลิกอัตโนมัติ</p>
 
             <div className="bg-gray-50 rounded-xl p-4 text-left space-y-3">
               <div className="flex justify-between">
