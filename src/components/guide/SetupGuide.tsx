@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { X, ChevronRight, ChevronLeft, Building2, Users, BookOpen, CheckCircle, Settings, Stethoscope, MonitorPlay, QrCode } from 'lucide-react'
+import { X, ChevronRight, ChevronLeft, CheckCircle } from 'lucide-react'
 import { clsx } from 'clsx'
 
 interface SetupGuideProps {
@@ -140,16 +140,67 @@ export default function SetupGuide({ open, onClose, clinicName }: SetupGuideProp
             </div>
           )}
 
+          {/* Dashboard preview */}
+          {step.id === 'usage' && (
+            <div className="mb-5">
+              <p className="text-xs font-bold text-gray-500 mb-3 text-center">ตัวอย่างหน้า Dashboard</p>
+              {/* Stats cards */}
+              <div className="grid grid-cols-4 gap-2 mb-3">
+                {[
+                  { num: '24', label: 'รวมวันนี้', color: '#EC4899', bg: '#FDF2F8' },
+                  { num: '8', label: 'รอเรียก', color: '#F59E0B', bg: '#FFFBEB' },
+                  { num: '3', label: 'กำลังทำ', color: '#10B981', bg: '#ECFDF5' },
+                  { num: '13', label: 'เสร็จแล้ว', color: '#3B82F6', bg: '#EFF6FF' },
+                ].map((s, i) => (
+                  <div key={i} className="rounded-xl p-2 text-center" style={{ backgroundColor: s.bg }}>
+                    <p className="text-lg font-black" style={{ color: s.color }}>{s.num}</p>
+                    <p className="text-[9px] font-medium" style={{ color: s.color }}>{s.label}</p>
+                  </div>
+                ))}
+              </div>
+              {/* Room cards */}
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: 1, name: 'ห้อง 1', doctor: 'พญ.สุวรรณา', proc: 'ถอนฟัน', color: '#10B981', status: 'doing' },
+                  { id: 2, name: 'ห้อง 2', doctor: 'พญ.วิไล', proc: 'อุดฟัน', color: '#F59E0B', status: 'doing' },
+                  { id: 3, name: 'ห้อง 3', doctor: 'นพ.สมชาย', proc: '', color: '#6B7280', status: 'free' },
+                ].map((r) => (
+                  <div key={r.id} className="bg-white border border-gray-100 rounded-xl p-2.5 shadow-sm">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <div className="w-6 h-6 rounded-lg flex items-center justify-center text-white text-[10px] font-bold" style={{ backgroundColor: r.color }}>
+                        {r.id}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-bold text-gray-900 truncate">{r.name}</p>
+                        <p className="text-[8px] text-gray-400 truncate">{r.doctor}</p>
+                      </div>
+                    </div>
+                    {r.status === 'doing' ? (
+                      <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-50">
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                        <span className="text-[8px] font-medium text-green-600">{r.proc}</span>
+                      </div>
+                    ) : (
+                      <div className="px-2 py-0.5 rounded-full bg-gray-50">
+                        <span className="text-[8px] text-gray-400">ว่าง</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Role guide */}
           {step.roles && (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {step.roles.map((r, i) => (
-                <div key={i} className="bg-gray-50 rounded-xl p-4">
-                  <p className="text-sm font-bold text-gray-900 mb-2">{r.role}</p>
-                  <ul className="space-y-1.5">
+                <div key={i} className="bg-gray-50 rounded-xl p-3">
+                  <p className="text-xs font-bold text-gray-900 mb-2">{r.role}</p>
+                  <ul className="space-y-1">
                     {r.tasks.map((task, j) => (
-                      <li key={j} className="flex items-start gap-2 text-xs text-gray-600">
-                        <CheckCircle className="w-3.5 h-3.5 text-green-500 mt-0.5 flex-shrink-0" />
+                      <li key={j} className="flex items-start gap-2 text-[11px] text-gray-600">
+                        <CheckCircle className="w-3 h-3 text-green-500 mt-0.5 flex-shrink-0" />
                         {task}
                       </li>
                     ))}
