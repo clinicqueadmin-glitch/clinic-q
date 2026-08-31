@@ -62,6 +62,7 @@ export function useNotification() {
         completed:  [784, 659, 523],        // G5 E5 C5 — descending
         cancelled:  [440, 349, 294],        // A4 F4 D4 — descending sad
         alert:      [880, 880, 880],        // A5 × 3 — urgent
+        room:       [440, 554, 659, 880],   // A4 C#5 E5 A5 — welcoming chime
       }
       const freqs = notes[type] || notes.called
       freqs.forEach((freq, i) => {

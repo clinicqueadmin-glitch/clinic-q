@@ -83,9 +83,9 @@ export default function TVCalledAlert({ queue, clinic, onDismiss }: TVCalledAler
           </span>
         </div>
 
-        {/* Patient Name */}
-        <h2 className="text-3xl md:text-4xl font-bold text-white mb-3">
-          {queue.patientName}
+        {/* Procedure — NOT patient name */}
+        <h2 className="text-2xl md:text-3xl font-bold text-white mb-3">
+          📋 {queue.procedure || 'หัตถการ'}
         </h2>
 
         {/* Clinic Info */}

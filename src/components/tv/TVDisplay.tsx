@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { clsx } from 'clsx'
 import { Volume2, VolumeX, Maximize, Minimize, RefreshCw } from 'lucide-react'
 import { useQueue, type QueueItem } from '@/lib/queue-context'
@@ -194,6 +194,57 @@ export default function TVDisplay() {
     setTimeout(() => setShowAlert(false), 8000)
   }, [nextQueue, setQueue, playBeep])
 
+  // ═══ Room notification: play sound + show procedure when patient arrives ═══
+  const [roomNotification, setRoomNotification] = useState<{ roomId: number; procedure: string; color: string } | null>(null)
+  const prevServingRef = useRef<Set<number>>(new Set())
+
+  // Play room notification sound
+  const playRoomSound = useCallback(() => {
+    if (!soundEnabled) return
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const freqs = [440, 554, 659, 880] // A4 C#5 E5 A5 — welcoming chime
+      freqs.forEach((freq, i) => {
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        osc.type = 'sine'
+        osc.frequency.value = freq
+        const t = ctx.currentTime + i * 0.18
+        gain.gain.setValueAtTime(0, t)
+        gain.gain.linearRampToValueAtTime(0.25, t + 0.05)
+        gain.gain.linearRampToValueAtTime(0, t + 0.25)
+        osc.start(t)
+        osc.stop(t + 0.3)
+      })
+    } catch {}
+  }, [soundEnabled])
+
+  // Detect new patient arriving at room
+  useEffect(() => {
+    const currentServing = new Set(
+      queue.filter(q => q.status === 'serving' && q.assignedRoom > 0).map(q => q.assignedRoom)
+    )
+    // Find newly assigned rooms
+    currentServing.forEach(roomId => {
+      if (!prevServingRef.current.has(roomId)) {
+        const item = queue.find(q => q.assignedRoom === roomId && q.status === 'serving')
+        if (item) {
+          const room = activeRooms.find(r => r.id === roomId)
+          playRoomSound()
+          setRoomNotification({
+            roomId,
+            procedure: item.procedure || 'ไม่ระบุหัตถการ',
+            color: room?.color || '#93C5FD',
+          })
+          setTimeout(() => setRoomNotification(null), 6000)
+        }
+      }
+    })
+    prevServingRef.current = currentServing
+  }, [queue, activeRooms, playRoomSound])
+
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen()
@@ -225,6 +276,30 @@ export default function TVDisplay() {
       {/* Called Alert */}
       {showAlert && lastCalled && (
         <TVCalledAlert queue={lastCalled} clinic={config ? { name: config.name, nameEn: config.nameEn || config.name, color: config.color, bg: config.bg, icon: config.prefix, prefix: config.prefix } : { name: 'Clinic', nameEn: 'Clinic', color: '#93C5FD', bg: '#EFF6FF', icon: 'Q', prefix: 'Q' }} onDismiss={() => setShowAlert(false)} />
+      )}
+
+      {/* Room Notification — procedure only, NO patient name */}
+      {roomNotification && (
+        <div className="fixed top-4 right-4 z-50 animate-slide-in">
+          <div
+            className="flex items-center gap-4 px-6 py-4 rounded-2xl shadow-2xl border-2 backdrop-blur-sm"
+            style={{
+              backgroundColor: roomNotification.color + '20',
+              borderColor: roomNotification.color,
+            }}
+          >
+            <div
+              className="w-14 h-14 rounded-xl flex items-center justify-center text-white text-2xl font-bold shadow-lg"
+              style={{ backgroundColor: roomNotification.color }}
+            >
+              {roomNotification.roomId}
+            </div>
+            <div>
+              <p className="text-white/60 text-xs font-medium">ห้อง {roomNotification.roomId} — มีคนไข้เข้าห้อง</p>
+              <p className="text-white text-lg font-bold">📋 {roomNotification.procedure}</p>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Header */}
@@ -374,6 +449,17 @@ export default function TVDisplay() {
           )}
         </div>
       </div>
+
+      {/* Room notification animation */}
+      <style jsx>{`
+        @keyframes slide-in {
+          from { transform: translateX(100%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        .animate-slide-in {
+          animation: slide-in 0.4s ease-out forwards;
+        }
+      `}</style>
     </div>
   )
 }
