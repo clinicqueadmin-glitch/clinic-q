@@ -35,6 +35,7 @@ export default function WalkinPage() {
   const [phone, setPhone] = useState('')
   const [selectedBranch, setSelectedBranch] = useState('')
   const [selectedProcedure, setSelectedProcedure] = useState('')
+  const [customProcedureName, setCustomProcedureName] = useState('')
   const [selectedProcs, setSelectedProcs] = useState<SelectedProc[]>([])
   const [submittedNumber, setSubmittedNumber] = useState('')
   const [submitResult, setSubmitResult] = useState<{ number: string; mode: BookingMode; apptTime: string; onTime: boolean; practitioner: string } | null>(null)
@@ -85,6 +86,22 @@ export default function WalkinPage() {
   // Add procedure to list
   const addProcedure = () => {
     if (!selectedProcedure) return
+    
+    // Handle 'other' custom procedure
+    if (selectedProcedure === 'other') {
+      const customName = customProcedureName.trim()
+      if (!customName) return
+      const customId = `custom-${Date.now()}`
+      setSelectedProcs(prev => [...prev, {
+        procedureId: customId,
+        name: customName,
+        quantity: 1,
+      }])
+      setSelectedProcedure('')
+      setCustomProcedureName('')
+      return
+    }
+    
     const proc = branchProcedures.find(p => p.id === selectedProcedure)
     if (!proc) return
     if (selectedProcs.some(p => p.procedureId === selectedProcedure)) {
@@ -276,7 +293,7 @@ export default function WalkinPage() {
             <button
               onClick={() => {
                 setName(''); setPhone(''); setSelectedBranch('')
-                setSelectedProcedure(''); setSelectedProcs([])
+                setSelectedProcedure(''); setSelectedProcs([]); setCustomProcedureName('')
                 setAppointmentTime(''); setIsOnTime(true); setLateMinutes(0)
                 setPractitionerName(''); setSubmittedNumber(''); setSubmitResult(null)
               }}
@@ -423,10 +440,11 @@ export default function WalkinPage() {
                   {branchProcedures.map(proc => (
                     <option key={proc.id} value={proc.id}>{proc.name} ({proc.estimatedDuration} น.)</option>
                   ))}
+                  <option value="other">📝 อื่นๆ (ระบุเอง)</option>
                 </select>
                 <button
                   onClick={addProcedure}
-                  disabled={!selectedProcedure}
+                  disabled={!selectedProcedure || (selectedProcedure === 'other' && !customProcedureName.trim())}
                   className={clsx(
                     'px-4 py-3 rounded-2xl font-bold text-sm transition-all flex items-center gap-1',
                     selectedProcedure
@@ -438,6 +456,17 @@ export default function WalkinPage() {
                   <Plus className="w-4 h-4" /> เพิ่ม
                 </button>
               </div>
+              {/* Custom procedure name input */}
+              {selectedProcedure === 'other' && (
+                <input
+                  type="text"
+                  value={customProcedureName}
+                  onChange={(e) => setCustomProcedureName(e.target.value)}
+                  placeholder="กรอกชื่อหัตถการ..."
+                  className="w-full px-4 py-3 rounded-2xl border border-gray-200 focus:border-gray-400 focus:outline-none text-sm bg-white transition-colors mt-2"
+                  autoFocus
+                />
+              )}
             </div>
           )}
 
