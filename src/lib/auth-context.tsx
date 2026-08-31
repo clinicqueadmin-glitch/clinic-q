@@ -134,6 +134,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(false)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
   
+  // ═══ Auto-logout at midnight (0:00) ═══
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const today = new Date().toISOString().split('T')[0]
+    const lastLoginDate = localStorage.getItem('clinicq-last-login-date')
+    // Store today's date on first load
+    if (!lastLoginDate) {
+      localStorage.setItem('clinicq-last-login-date', today)
+    }
+    // Check every minute if date changed
+    const checker = setInterval(() => {
+      const now = new Date().toISOString().split('T')[0]
+      const stored = localStorage.getItem('clinicq-last-login-date')
+      if (stored && now !== stored) {
+        // Date changed — force logout
+        localStorage.removeItem(STORAGE_KEYS.AUTH)
+        localStorage.removeItem('clinicq-last-login-date')
+        setSession(null)
+        setForcePasswordChange(false)
+        window.location.href = '/'
+      }
+    }, 60000) // check every 60 seconds
+    return () => clearInterval(checker)
+  }, [])
+
   // Persist data
   useEffect(() => {
     saveToStorage(STORAGE_KEYS.USERS, users)
