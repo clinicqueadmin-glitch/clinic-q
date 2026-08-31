@@ -222,7 +222,7 @@ export default function Header() {
                 <hr className="my-2 border-gray-100" />
                 
                 <button
-                  onClick={() => { logout(); window.location.href = '/login' }}
+                  onClick={() => { logout(); window.location.href = '/' }}
                   className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-50"
                 >
                   🚪 ออกจากระบบ

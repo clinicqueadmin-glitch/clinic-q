@@ -204,7 +204,7 @@ export default function Sidebar() {
             <button
               onClick={() => {
                 logout()
-                window.location.href = '/login'
+                window.location.href = '/'
               }}
               className="flex items-center gap-3 px-3 py-2.5 rounded-2xl text-sm font-bold text-red-400 hover:bg-red-50 transition-colors w-full"
             >
