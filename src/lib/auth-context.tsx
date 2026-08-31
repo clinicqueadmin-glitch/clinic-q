@@ -9,6 +9,8 @@ import {
   type PlatformRole,
   type AuthSession 
 } from './auth-types'
+import { supabaseLogin, supabaseLogout, supabaseResetPassword, supabaseUpdatePassword, supabaseRegister } from './supabase-auth'
+import { isSupabaseReady } from './supabase'
 
 interface AuthContextType {
   session: AuthSession | null
@@ -147,92 +149,84 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   
   // ═══ Login ═══
   const login = useCallback(async (email: string, password: string): Promise<{ success: boolean; error?: string; needsClinicSelection?: boolean }> => {
-    // Check stored users — also read from localStorage directly as fallback
-    // (in case users were registered after this component mounted)
+    // Try Supabase Auth first if configured
+    if (isSupabaseReady()) {
+      const result = await supabaseLogin(email, password)
+      if (result.success && result.user && result.clinicId) {
+        const user: User = {
+          id: result.user.id,
+          email: result.user.email,
+          name: result.user.name,
+          phone: result.user.phone,
+          createdAt: new Date().toISOString(),
+          forcePasswordChange: result.user.forcePasswordChange,
+        }
+        const newSession: AuthSession = { user, currentClinicId: result.clinicId }
+        setSession(newSession)
+        localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(newSession))
+        if (user.forcePasswordChange) setForcePasswordChange(true)
+        // Fetch clinic type
+        const { data: clinic } = await (await import('./supabase')).getSupabase()?.from('clinics').select('type').eq('id', result.clinicId).single()
+        if (clinic) localStorage.setItem('clinic-q-type', clinic.type)
+        return { success: true }
+      }
+      // Supabase failed - fallback to localStorage below
+    }
+    
+    // Fallback to localStorage
     const freshUsers: User[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]')
     const allUsers = [...users]
     for (const fu of freshUsers) {
       if (!allUsers.find(u => u.id === fu.id)) allUsers.push(fu)
     }
     let user: User | undefined = allUsers.find(u => u.email === email)
-    
-    // Also refresh memberships from localStorage
     const freshMemberships: ClinicMembership[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.MEMBERSHIPS) || '[]')
     const allMemberships = [...memberships]
     for (const fm of freshMemberships) {
       if (!allMemberships.find(m => m.id === fm.id)) allMemberships.push(fm)
     }
-    
-    // Also refresh clinics from localStorage
     const freshClinics: Clinic[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.CLINICS) || '[]')
     const allClinics = [...clinics]
     for (const fc of freshClinics) {
       if (!allClinics.find(c => c.id === fc.id)) allClinics.push(fc)
     }
-    
-    // Verify password (stored passwords or default '123456' for new users)
     const storedPasswords = JSON.parse(localStorage.getItem('clinicq-user-passwords') || '{}')
     const storedPassword = storedPasswords[email] || (user?.forcePasswordChange ? '123456' : undefined)
     if (!user || password !== storedPassword) {
       return { success: false, error: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' }
     }
-    
-    if (!user) {
-      return { success: false, error: 'ไม่พบบัญชีผู้ใช้' }
-    }
-    
-    // Platform owner: only specific emails can be platform owner
+    if (!user) return { success: false, error: 'ไม่พบบัญชีผู้ใช้' }
     const PLATFORM_OWNER_EMAILS = ['sakarinmam999@gmail.com']
     const isPlatformOwner = PLATFORM_OWNER_EMAILS.includes(user.email)
-    
-    // Get user's memberships
     const userMemberships = allMemberships.filter(m => m.userId === user!.id && m.isActive)
-    
-    // Platform owner: no clinic memberships, only platform access
     if (isPlatformOwner && userMemberships.length === 0) {
-      // Allow login as platform owner (no clinic needed)
       const newSession: AuthSession = { user, currentClinicId: null }
       setSession(newSession)
       localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(newSession))
       return { success: true }
     }
-    
-    // Non-platform owner with no memberships → error
     if (!isPlatformOwner && userMemberships.length === 0) {
       return { success: false, error: 'ไม่มีสิทธิ์เข้าใช้งาน กรุณาติดต่อผู้ดูแลระบบ' }
     }
-    
-    // Check if user has only 1 clinic - auto select
     if (userMemberships.length === 1) {
       const singleClinic = allClinics.find(c => c.id === userMemberships[0].clinicId)
       const newSession: AuthSession = { user, currentClinicId: singleClinic?.id || null }
       setSession(newSession)
       localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(newSession))
-      
-      // Set clinic type for ClinicContext
-      if (singleClinic) {
-        localStorage.setItem('clinic-q-type', singleClinic.type)
-      }
-      
-      // Check if user needs to change password
-      if (user.forcePasswordChange) {
-        setForcePasswordChange(true)
-      }
-      
+      if (singleClinic) localStorage.setItem('clinic-q-type', singleClinic.type)
+      if (user.forcePasswordChange) setForcePasswordChange(true)
       return { success: true }
     }
-    
-    // User has multiple clinics - need to show selection
     const newSession: AuthSession = { user, currentClinicId: null }
     setSession(newSession)
     localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(newSession))
     setNeedsClinicSelection(true)
-    
     return { success: true, needsClinicSelection: true }
   }, [users, memberships, clinics])
   
   // ═══ Logout ═══
   const logout = useCallback(() => {
+    if (isSupabaseReady()) supabaseLogout()
     setSession(null)
     setNeedsClinicSelection(false)
     setForcePasswordChange(false)
@@ -240,9 +234,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
   
   // ═══ Update Password ═══
-  const updatePassword = useCallback((newPassword: string) => {
+  const updatePassword = useCallback(async (newPassword: string) => {
     if (!session?.user) return
-    // Store the new password in localStorage
+    if (isSupabaseReady()) {
+      await supabaseUpdatePassword(newPassword)
+    }
     const userPasswords = JSON.parse(localStorage.getItem('clinicq-user-passwords') || '{}')
     userPasswords[session.user.email] = newPassword
     localStorage.setItem('clinicq-user-passwords', JSON.stringify(userPasswords))
@@ -266,17 +262,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ═══ Reset Password by Email (for Forgot Password) ═══
   const resetPasswordByEmail = useCallback(async (email: string): Promise<{ success: boolean; error?: string }> => {
-    // Check if user exists in localStorage
+    if (isSupabaseReady()) {
+      return await supabaseResetPassword(email)
+    }
     const users = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]')
     const userExists = users.some((u: any) => u.email === email)
-    if (!userExists) {
-      return { success: false, error: 'ไม่พบอีเมลนี้ในระบบ' }
-    }
-    // Reset password to 123456 and set forcePasswordChange
+    if (!userExists) return { success: false, error: 'ไม่พบอีเมลนี้ในระบบ' }
     const userPasswords = JSON.parse(localStorage.getItem('clinicq-user-passwords') || '{}')
     userPasswords[email] = '123456'
     localStorage.setItem('clinicq-user-passwords', JSON.stringify(userPasswords))
-    // Update forcePasswordChange flag
     const updatedUsers = users.map((u: any) => 
       u.email === email ? { ...u, forcePasswordChange: true } : u
     )

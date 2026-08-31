@@ -47,7 +47,7 @@ export default function RegisterPage() {
     return Object.keys(errs).length === 0
   }
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!validate()) return
     
     const now = new Date().toISOString()
@@ -55,6 +55,28 @@ export default function RegisterPage() {
     const userId = `user-${Date.now()}`
     const membershipId = `mem-${Date.now()}`
     
+    // Try Supabase first
+    if (typeof window !== 'undefined') {
+      const { isSupabaseReady } = await import('@/lib/supabase')
+      if (isSupabaseReady()) {
+        const { supabaseRegister } = await import('@/lib/supabase-auth')
+        const result = await supabaseRegister({
+          email: form.email,
+          password: '123456',
+          name: form.ownerName,
+          phone: form.phone,
+          clinicName: form.clinicName,
+          clinicType: selectedType || 'dental',
+        })
+        if (result.success) {
+          setStep('success')
+          return
+        }
+        // If Supabase fails, fallback to localStorage
+      }
+    }
+    
+    // Fallback: localStorage
     // 1. Create User record
     const users = JSON.parse(localStorage.getItem('clinicq-users') || '[]')
     const newUser = {

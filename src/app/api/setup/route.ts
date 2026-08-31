@@ -13,7 +13,7 @@ export async function GET() {
     })
   }
 
-  const tables = ['clinics', 'branches', 'rooms', 'queues', 'completed_procedures']
+  const tables = ['clinics', 'branches', 'rooms', 'queues', 'completed_procedures', 'users', 'clinic_memberships', 'practitioners']
   const results: Record<string, boolean> = {}
 
   for (const table of tables) {
