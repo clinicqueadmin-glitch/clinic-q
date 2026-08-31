@@ -752,6 +752,12 @@ export default function TodayOps() {
                     🕐 บัตร {item.appointmentTime || item.bookedTimeSlot} น.
                   </span>
                 )}
+                {/* Phone */}
+                {item.phone && (
+                  <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-teal-50 text-teal-600 font-medium">
+                    📞 {item.phone}
+                  </span>
+                )}
                 {/* Procedure */}
                 <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-blue-50 text-blue-600 font-medium">
                   📋 {item.procedure}
