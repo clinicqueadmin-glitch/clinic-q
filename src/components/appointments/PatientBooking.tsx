@@ -44,6 +44,7 @@ export default function PatientBooking() {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [procedure, setProcedure] = useState('')
+  const [selectedDoctorId, setSelectedDoctorId] = useState<string>('') // optional doctor
   const [result, setResult] = useState<{ number: string; doctor: string; time: string; date: string } | null>(null)
 
   // Get max distance from settings
@@ -166,6 +167,30 @@ export default function PatientBooking() {
   const selectedStaff = staff.find(s => s.id === selectedStaffId)
   const selectedBranch = branchData.branches.find(b => b.id === selectedBranchId)
 
+  // Available doctors from daily rooms (filtered by selected branch)
+  const availableDoctors = useMemo(() => {
+    if (dailyRooms.length === 0) return []
+    const seen = new Set<string>()
+    const doctors: { id: string; name: string; branchId: string; roomName: string; roomId: number }[] = []
+    dailyRooms.forEach((r: any) => {
+      if (r.practitionerName && !seen.has(r.practitionerName)) {
+        seen.add(r.practitionerName)
+        doctors.push({
+          id: r.practitionerId || r.practitionerName,
+          name: r.practitionerName,
+          branchId: r.branchId || '',
+          roomName: r.name || `ห้อง ${r.id}`,
+          roomId: r.id,
+        })
+      }
+    })
+    // Filter by selected branch if one is chosen
+    if (selectedBranchId) {
+      return doctors.filter(d => d.branchId === selectedBranchId)
+    }
+    return doctors
+  }, [dailyRooms, selectedBranchId])
+
 
 
   // Auto-calculate booking time: 30 minutes from now
@@ -187,6 +212,11 @@ export default function PatientBooking() {
     const today = new Date().toISOString().split('T')[0]
     const queueNumber = `${config?.prefix || 'E'}${String(Math.floor(Math.random() * 900) + 100).slice(0, 3)}`
 
+    // Find selected doctor's room from daily rooms
+    const selectedDoc = availableDoctors.find(d => d.id === selectedDoctorId)
+    const assignedRoom = selectedDoc ? selectedDoc.roomId : 0
+    const assignedDoctor = selectedDoc ? selectedDoc.name : (selectedStaff?.name || '')
+
     const newQueue = {
       id: String(Date.now()),
       number: queueNumber,
@@ -194,10 +224,10 @@ export default function PatientBooking() {
       phone,
       procedure: proc?.name || '',
       procedureId: procedure,
-      branchId: selectedStaff?.branchId || '',
+      branchId: selectedDoc?.branchId || selectedStaff?.branchId || '',
       bookingMode: 'remote' as const,
-      assignedRoom: 0,
-      assignedDoctor: selectedStaff?.name || '',
+      assignedRoom,
+      assignedDoctor,
       status: 'waiting' as const,
       time: timeStr,
       bookedTimeSlot: timeStr,
@@ -222,6 +252,7 @@ export default function PatientBooking() {
     setStep('select-doctor')
     setSelectedBranchId(null)
     setSelectedStaffId(null)
+    setSelectedDoctorId('')
     setName('')
     setPhone('')
     setProcedure('')
@@ -479,6 +510,22 @@ export default function PatientBooking() {
                   {selectedBranch?.name || '—'}
                 </div>
               </div>
+              {/* Optional doctor selection */}
+              {availableDoctors.length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">👨‍⚕️ แพทย์ผู้ทำหัตถการ <span className="text-gray-400">(ไม่บังคับ)</span></label>
+                  <select
+                    value={selectedDoctorId}
+                    onChange={(e) => setSelectedDoctorId(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-lg border border-gray-200 focus:border-primary-400 focus:outline-none text-sm"
+                  >
+                    <option value="">— ไม่ระบุแพทย์ —</option>
+                    {availableDoctors.map(d => (
+                      <option key={d.id} value={d.id}>{d.name} ({d.roomName})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">หัตถการที่ต้องการ *</label>
                 <select
