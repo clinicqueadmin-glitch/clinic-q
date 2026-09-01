@@ -879,9 +879,49 @@ export default function TodayOps() {
     )
   }
 
+  // Check if any room is within 30 minutes of closing
+  const closingWarnings = useMemo(() => {
+    const warnings: { roomName: string; practitionerName: string; endTime: string; minsLeft: number }[] = []
+    const nowMinutes = now.getHours() * 60 + now.getMinutes()
+    activeRooms.forEach(room => {
+      if (!room.workingEndTime) return
+      const [ch, cm] = room.workingEndTime.split(':').map(Number)
+      const closeMinutes = ch * 60 + cm
+      const minsLeft = closeMinutes - nowMinutes
+      if (minsLeft <= 30 && minsLeft > 0) {
+        warnings.push({
+          roomName: room.name || `ห้อง ${room.id}`,
+          practitionerName: room.practitionerName || 'ไม่ระบุ',
+          endTime: room.workingEndTime,
+          minsLeft,
+        })
+      }
+    })
+    return warnings
+  }, [activeRooms, now])
+
   return (
     <div className="space-y-4 page-enter">
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+
+      {/* 30-minute end-of-shift warning */}
+      {closingWarnings.length > 0 && (
+        <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-xl bg-orange-100 flex items-center justify-center flex-shrink-0">
+              <span className="text-lg">⏰</span>
+            </div>
+            <div>
+              <p className="text-sm font-bold text-orange-700">⚠️ เตือน: ใกล้หมดเวลาทำการ</p>
+              {closingWarnings.map((w, i) => (
+                <p key={i} className="text-xs text-orange-600 mt-1">
+                  {w.roomName} ({w.practitionerName}) — เหลือเวลาอีก <strong>{w.minsLeft} นาที</strong> (ปิด {w.endTime} น.)
+                </p>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ═══════ APPOINTMENT REGISTRATION MODAL ═══════ */}
       {showAppointment && (

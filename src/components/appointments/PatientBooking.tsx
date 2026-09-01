@@ -200,10 +200,57 @@ export default function PatientBooking() {
     return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
   }
 
+  // Get selected doctor's room working hours
+  const selectedDoctorRoom = useMemo(() => {
+    if (!selectedDoctorId) return null
+    return dailyRooms.find((r: any) =>
+      (r.practitionerId || r.practitionerName) === selectedDoctorId
+    ) || null
+  }, [selectedDoctorId, dailyRooms])
+
+  // Check if booking time exceeds room working hours
+  const checkBookingValid = () => {
+    const bookingTime = getBookingTime()
+    const [bh, bm] = bookingTime.split(':').map(Number)
+    const bookingMinutes = bh * 60 + bm
+
+    // Get procedure duration
+    const proc = branchProcedures.find(p => p.id === procedure)
+    const duration = proc?.estimatedDuration || 30
+    const endTimeMinutes = bookingMinutes + duration
+
+    // Check against doctor's room working hours
+    if (selectedDoctorRoom) {
+      const closeTime = (selectedDoctorRoom as any).workingEndTime || '17:00'
+      const [ch, cm] = closeTime.split(':').map(Number)
+      const closeMinutes = ch * 60 + cm
+
+      if (endTimeMinutes > closeMinutes) {
+        return {
+          valid: false,
+          message: `หัตถการจะเสร็จประมาณ ${Math.floor(endTimeMinutes / 60).toString().padStart(2, '0')}:${(endTimeMinutes % 60).toString().padStart(2, '0')} น. ซึ่งเกินเวลาปิดทำการ (${closeTime} น.) ของห้องตรวจ`
+        }
+      }
+    }
+
+    return { valid: true, message: '' }
+  }
+
+  const [showTimeWarning, setShowTimeWarning] = useState(false)
+  const [timeWarningMsg, setTimeWarningMsg] = useState('')
+
   const handleConfirm = () => {
     if (!name || phone.length !== 10 || !procedure) {
       setToast({ message: 'กรุณากรอกข้อมูลให้ครบทุกช่อง (เบอร์โทร 10 หลัก)', type: 'error' })
       setTimeout(() => setToast(null), 3000)
+      return
+    }
+
+    // Check if booking time exceeds room working hours
+    const validation = checkBookingValid()
+    if (!validation.valid) {
+      setTimeWarningMsg(validation.message)
+      setShowTimeWarning(true)
       return
     }
 
@@ -541,11 +588,38 @@ export default function PatientBooking() {
               </div>
 
               {/* Booking time preview */}
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
-                <p className="text-xs text-blue-600 font-medium">🕐 เวลานัดหมายของคุณ</p>
-                <p className="text-lg font-black text-blue-700 mt-1">{getBookingTime()} น.</p>
-                <p className="text-[10px] text-blue-500 mt-1">(เวลาปัจจุบัน + 30 นาที)</p>
-              </div>
+              {(() => {
+                const bookingTime = getBookingTime()
+                const [bh, bm] = bookingTime.split(':').map(Number)
+                const bookingMinutes = bh * 60 + bm
+                const proc = branchProcedures.find(p => p.id === procedure)
+                const duration = proc?.estimatedDuration || 30
+                const endMinutes = bookingMinutes + duration
+                let closeMinutes = 17 * 60 // default 17:00
+                if (selectedDoctorRoom) {
+                  const closeTime = (selectedDoctorRoom as any).workingEndTime || '17:00'
+                  const [ch, cm] = closeTime.split(':').map(Number)
+                  closeMinutes = ch * 60 + cm
+                }
+                const minsLeft = closeMinutes - endMinutes
+                const isWarning = minsLeft < 30 && minsLeft >= 0
+                const isExceeded = minsLeft < 0
+                return (
+                  <div className={`rounded-xl p-3 border ${isExceeded ? 'bg-red-50 border-red-200' : isWarning ? 'bg-orange-50 border-orange-200' : 'bg-blue-50 border-blue-200'}`}>
+                    <p className={`text-xs font-medium ${isExceeded ? 'text-red-600' : isWarning ? 'text-orange-600' : 'text-blue-600'}`}>🕐 เวลานัดหมายของคุณ</p>
+                    <p className={`text-lg font-black mt-1 ${isExceeded ? 'text-red-700' : isWarning ? 'text-orange-700' : 'text-blue-700'}`}>{bookingTime} น.</p>
+                    <p className={`text-[10px] mt-1 ${isExceeded ? 'text-red-500' : isWarning ? 'text-orange-500' : 'text-blue-500'}`}>
+                      (เวลาปัจจุบัน + 30 นาที)
+                    </p>
+                    {isWarning && !isExceeded && (
+                      <p className="text-[10px] text-orange-600 mt-1 font-medium">⚠️ เหลือเวลาทำงานอีก ~{minsLeft} นาที</p>
+                    )}
+                    {isExceeded && (
+                      <p className="text-[10px] text-red-600 mt-1 font-medium">❌ เกินเวลาปิดทำการของห้องตรวจ</p>
+                    )}
+                  </div>
+                )
+              })()}
 
               <button
                 onClick={handleConfirm}
@@ -628,6 +702,35 @@ export default function PatientBooking() {
           </div>
         )}
       </div>
+
+      {/* Time Warning Popup */}
+      {showTimeWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-scale-in">
+            <div className="text-center">
+              <div className="w-14 h-14 rounded-full bg-orange-100 flex items-center justify-center mx-auto mb-4">
+                <span className="text-3xl">⏰</span>
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">เวลาไม่เพียงพอ</h3>
+              <p className="text-sm text-gray-600 mb-4">{timeWarningMsg}</p>
+              {selectedDoctorRoom && (
+                <div className="bg-gray-50 rounded-xl p-3 mb-4 text-left">
+                  <p className="text-xs text-gray-500">เวลาทำการของห้องตรวจ</p>
+                  <p className="text-sm font-bold text-gray-900">
+                    {(selectedDoctorRoom as any).workingStartTime || '09:00'} - {(selectedDoctorRoom as any).workingEndTime || '17:00'} น.
+                  </p>
+                </div>
+              )}
+              <button
+                onClick={() => setShowTimeWarning(false)}
+                className="w-full py-3 rounded-xl bg-gray-100 text-gray-700 font-bold text-sm hover:bg-gray-200 transition-colors"
+              >
+                กลับไปแก้ไข
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
