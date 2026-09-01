@@ -52,12 +52,32 @@ export default function WalkinPage() {
   const [lateMinutes, setLateMinutes] = useState(0)
   const [practitionerName, setPractitionerName] = useState('')
 
-  // Get procedures for selected branch
+  // Get today's daily rooms from localStorage
+  const dailyRooms = useMemo(() => {
+    if (typeof window === 'undefined') return []
+    const saved = localStorage.getItem('clinic-daily-rooms')
+    const savedDate = localStorage.getItem('clinic-daily-rooms-date')
+    const today = new Date().toISOString().split('T')[0]
+    if (savedDate !== today || !saved) return []
+    try {
+      const parsed = JSON.parse(saved)
+      return Array.isArray(parsed) ? parsed.filter((r: any) => r.active) : []
+    } catch { return [] }
+  }, [])
+
+  // Available branches = branches that have at least one daily room today
+  const availableBranches = useMemo(() => {
+    if (dailyRooms.length === 0) return branchData.branches // fallback: show all if no daily rooms
+    const branchIds = new Set(dailyRooms.filter((r: any) => r.branchId).map((r: any) => r.branchId))
+    return branchData.branches.filter(b => branchIds.has(b.id))
+  }, [dailyRooms, branchData])
+
+  // Get procedures for selected branch (filtered by daily rooms)
   const branchProcedures = useMemo(() => {
     if (!selectedBranch) return []
-    const branch = branchData.branches.find(b => b.id === selectedBranch)
+    const branch = availableBranches.find(b => b.id === selectedBranch)
     return branch?.procedures || []
-  }, [selectedBranch, branchData])
+  }, [selectedBranch, availableBranches])
 
   // Get practitioners from localStorage (filtered by current clinic)
   const branchPractitioners = useMemo(() => {
@@ -330,6 +350,13 @@ export default function WalkinPage() {
       </div>
 
       <div className="max-w-md mx-auto px-4 py-6 space-y-4">
+        {/* No daily rooms warning */}
+        {dailyRooms.length === 0 && (
+          <div className="bento-card p-4 border-amber-200 bg-amber-50">
+            <p className="text-sm font-bold text-amber-700">⚠️ ยังไม่ได้ตั้งค่าห้องตรวจวันนี้</p>
+            <p className="text-xs text-amber-600 mt-1">กรุณาเข้า Dashboard เพื่อเพิ่มห้องตรวจก่อนลงทะเบียน</p>
+          </div>
+        )}
         {/* ═══ BOOKING MODE TOGGLE ═══ */}
         <div className="bento-card p-1.5 flex gap-1.5">
           <button
@@ -418,7 +445,7 @@ export default function WalkinPage() {
               className="w-full px-4 py-3 rounded-2xl border border-gray-200 focus:border-gray-400 focus:outline-none text-sm bg-white transition-colors"
             >
               <option value="">— เลือกสาขา —</option>
-              {branchData.branches.map(branch => (
+              {availableBranches.map(branch => (
                 <option key={branch.id} value={branch.id}>{branch.name}</option>
               ))}
             </select>
