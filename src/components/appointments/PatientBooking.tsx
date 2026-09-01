@@ -540,6 +540,13 @@ export default function PatientBooking() {
                 </select>
               </div>
 
+              {/* Booking time preview */}
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                <p className="text-xs text-blue-600 font-medium">🕐 เวลานัดหมายของคุณ</p>
+                <p className="text-lg font-black text-blue-700 mt-1">{getBookingTime()} น.</p>
+                <p className="text-[10px] text-blue-500 mt-1">(เวลาปัจจุบัน + 30 นาที)</p>
+              </div>
+
               <button
                 onClick={handleConfirm}
                 disabled={!name || phone.length !== 10 || !procedure}
@@ -551,7 +558,7 @@ export default function PatientBooking() {
                 )}
                 style={name && phone.length === 10 && procedure ? { backgroundColor: config.color } : {}}
               >
-                ยืนยันนัดหมาย
+                ✅ ยืนยันนัดหมาย
               </button>
             </div>
           </div>
@@ -563,9 +570,24 @@ export default function PatientBooking() {
             <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center bg-green-100">
               <CheckCircle className="w-8 h-8 text-green-500" />
             </div>
-            <h2 className="text-lg font-bold text-gray-900 mb-2">นัดหมายสำเร็จ!</h2>
-            <p className="text-sm text-gray-500 mb-2">เวลานัด: <span className="font-bold" style={{ color: config.color }}>{result.time} น.</span></p>
-            <p className="text-xs text-orange-500 mb-6">⚠️ หากมาไม่ถึงคลินิกก่อนเวลา {(() => {
+            <h2 className="text-lg font-bold text-gray-900 mb-2">✅ จองคิวสำเร็จ!</h2>
+            
+            {/* Booking time highlight */}
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+              <p className="text-sm text-blue-700 font-medium">คุณได้จองคิวนัดหมายไว้เวลา</p>
+              <p className="text-3xl font-black mt-1" style={{ color: config.color }}>{result.time} น.</p>
+              <p className="text-xs text-blue-600 mt-2">📅 {result.date}</p>
+            </div>
+
+            {/* Counter check-in instruction */}
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+              <p className="text-sm font-bold text-amber-700">📋 เมื่อมาถึงคลินิก</p>
+              <p className="text-sm text-amber-600 mt-1">กรุณาแจ้งที่หน้าเคานเตอร์เพื่อเช็คอิน</p>
+              <p className="text-xs text-amber-500 mt-1">แสดงหมายเลขคิว <strong>{result.number}</strong> แก่เจ้าหน้าที่</p>
+            </div>
+
+            {/* Auto-cancel warning */}
+            <p className="text-xs text-orange-500 mb-4">⚠️ หากมาไม่ถึงคลินิกก่อนเวลา {(() => {
               const [h, m] = result.time.split(':').map(Number)
               const cancelH = h + Math.floor((m + 15) / 60)
               const cancelM = (m + 15) % 60
@@ -581,17 +603,19 @@ export default function PatientBooking() {
                 <span className="text-xs text-gray-500">สาขา</span>
                 <span className="text-sm font-medium text-gray-900">{selectedBranch?.name}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-xs text-gray-500">แพทย์</span>
-                <span className="text-sm font-medium text-gray-900">{result.doctor}</span>
-              </div>
+              {result.doctor && (
+                <div className="flex justify-between">
+                  <span className="text-xs text-gray-500">แพทย์ผู้นัด</span>
+                  <span className="text-sm font-medium text-gray-900">{result.doctor}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-xs text-gray-500">วันนัด</span>
                 <span className="text-sm font-medium text-gray-900">{result.date}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-xs text-gray-500">เวลานัด</span>
-                <span className="text-sm font-bold text-gray-900">{result.time}</span>
+                <span className="text-sm font-bold text-gray-900">{result.time} น.</span>
               </div>
             </div>
 
