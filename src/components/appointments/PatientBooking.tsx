@@ -99,8 +99,33 @@ export default function PatientBooking() {
     return []
   }, [currentClinic])
 
-  // Active branches (with staff)
+  // Get today's daily rooms from localStorage
+  const dailyRooms = useMemo(() => {
+    if (typeof window === 'undefined') return []
+    const saved = localStorage.getItem('clinic-daily-rooms')
+    const savedDate = localStorage.getItem('clinic-daily-rooms-date')
+    const today = new Date().toISOString().split('T')[0]
+    if (savedDate !== today || !saved) return []
+    try {
+      const parsed = JSON.parse(saved)
+      return Array.isArray(parsed) ? parsed.filter((r: any) => r.active) : []
+    } catch { return [] }
+  }, [])
+
+  // Active branches = branches that have at least one daily room today
   const activeBranches = useMemo(() => {
+    // If daily rooms exist, filter by them; otherwise fallback to practitioners
+    if (dailyRooms.length > 0) {
+      const roomBranchIds = new Set(dailyRooms.filter((r: any) => r.branchId).map((r: any) => r.branchId))
+      return branchData.branches
+        .filter(b => b.active && roomBranchIds.has(b.id))
+        .map(b => ({
+          ...b,
+          activeProcedures: b.procedures.filter(p => p.active),
+          practitioners: clinicPractitioners.filter(p => p.branchId === b.id && p.active),
+        }))
+    }
+    // Fallback: filter by practitioners
     return branchData.branches
       .filter(b => b.active)
       .filter(b => clinicPractitioners.some(p => p.branchId === b.id && p.active))
@@ -109,22 +134,34 @@ export default function PatientBooking() {
         activeProcedures: b.procedures.filter(p => p.active),
         practitioners: clinicPractitioners.filter(p => p.branchId === b.id && p.active),
       }))
-  }, [branchData, clinicPractitioners])
+  }, [branchData, clinicPractitioners, dailyRooms])
 
-  // Available staff for selected branch
+  // Available staff for selected branch (filtered by daily rooms)
   const availableStaff = useMemo(() => {
+    let pool = staff.filter(s => s.active)
     if (selectedBranchId) {
-      return staff.filter(s => s.active && s.branchId === selectedBranchId)
+      pool = pool.filter(s => s.branchId === selectedBranchId)
     }
-    return staff.filter(s => s.active)
-  }, [staff, selectedBranchId])
+    // If daily rooms exist, only show staff assigned to today's rooms
+    if (dailyRooms.length > 0) {
+      const roomStaffNames = new Set(dailyRooms.filter((r: any) => r.practitionerName).map((r: any) => r.practitionerName))
+      pool = pool.filter(s => roomStaffNames.has(s.name))
+    }
+    return pool
+  }, [staff, selectedBranchId, dailyRooms])
 
-  // Branch procedures for procedure selection
+  // Branch procedures for procedure selection (filtered by daily rooms)
   const branchProcedures = useMemo(() => {
     if (!selectedBranchId) return []
     const branch = branchData.branches.find(b => b.id === selectedBranchId)
-    return branch?.procedures.filter(p => p.active) || []
-  }, [branchData, selectedBranchId])
+    const procs = branch?.procedures.filter(p => p.active) || []
+    // If daily rooms exist, only show procedures that belong to today's open branches
+    if (dailyRooms.length > 0) {
+      const roomBranchIds = new Set(dailyRooms.filter((r: any) => r.branchId).map((r: any) => r.branchId))
+      if (!roomBranchIds.has(selectedBranchId)) return []
+    }
+    return procs
+  }, [branchData, selectedBranchId, dailyRooms])
 
   const selectedStaff = staff.find(s => s.id === selectedStaffId)
   const selectedBranch = branchData.branches.find(b => b.id === selectedBranchId)
@@ -310,6 +347,14 @@ export default function PatientBooking() {
 
         {/* ═══════ STEP 1: Select Branch ═══════ */}
         {step === 'select-doctor' && (
+          <>
+          {/* No daily rooms warning */}
+          {dailyRooms.length === 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+              <p className="text-sm font-bold text-amber-700">⚠️ ยังไม่ได้ตั้งค่าห้องตรวจวันนี้</p>
+              <p className="text-xs text-amber-600 mt-1">กรุณาติดต่อเจ้าหน้าที่เพื่อตั้งค่าห้องตรวจก่อนจองคิว</p>
+            </div>
+          )}
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h2 className="text-sm font-bold text-gray-900 mb-1">🏢 เลือกสาขา</h2>
             <p className="text-[11px] text-gray-500 mb-4">เลือกสาขาที่ต้องการจองคิว</p>
@@ -391,6 +436,7 @@ export default function PatientBooking() {
               </div>
             )}
           </div>
+          </>
         )}
 
 
