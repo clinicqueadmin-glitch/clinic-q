@@ -82,8 +82,24 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
       } catch {}
     }
     
-    // If no clinic-specific data, start with empty array (fresh clinic)
-    setUsers([])
+    // If no clinic-specific data, auto-add current user as owner
+    const authSession = JSON.parse(localStorage.getItem('clinicq-auth') || '{}')
+    if (authSession?.user) {
+      const ownerUser: UserWithRoles = {
+        id: authSession.user.id,
+        email: authSession.user.email,
+        name: authSession.user.name || '',
+        phone: authSession.user.phone || '',
+        createdAt: authSession.user.createdAt || new Date().toISOString(),
+        roles: ['owner'],
+        branchIds: [],
+        isActive: true,
+        forcePasswordChange: false,
+      }
+      setUsers([ownerUser])
+    } else {
+      setUsers([])
+    }
   }, [currentClinicId, storageKey])
 
   // Save to clinic-specific localStorage
