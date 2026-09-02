@@ -10,7 +10,7 @@ import PhoneInput from '@/components/ui/PhoneInput'
 import { clsx } from 'clsx'
 import { QRCodeSVG } from 'qrcode.react'
 import { clinicConfig, type ClinicType } from '@/lib/queue-data'
-import { getDefaultBranchData, type Practitioner } from '@/lib/branch-data'
+import { getDefaultBranchData, type ClinicBranchData, type Practitioner } from '@/lib/branch-data'
 import { useQueue } from '@/lib/queue-context'
 
 interface SelectedProc {
@@ -25,7 +25,29 @@ export default function WalkinPage() {
   const clinicType = (searchParams.get('clinic') || 'dental') as ClinicType
   const clinicCfg = clinicConfig[clinicType]
   const { queue, setQueue, addQueueItem } = useQueue()
-  const branchData = useMemo(() => getDefaultBranchData(clinicType), [clinicType])
+  // Load branch data from clinic-specific storage, fallback to defaults
+  const branchData = useMemo((): ClinicBranchData => {
+    if (typeof window !== 'undefined') {
+      // Find current clinic ID
+      const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
+      const currentClinic = clinics.find((c: any) => c.type === clinicType)
+      const clinicId = currentClinic?.id
+      
+      if (clinicId) {
+        const saved = localStorage.getItem(`clinic-branch-data-${clinicId}`)
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved)
+            if (parsed && parsed.branches && parsed.branches.length > 0) {
+              return parsed
+            }
+          } catch {}
+        }
+      }
+    }
+    // Fallback to default data
+    return getDefaultBranchData(clinicType)
+  }, [clinicType])
 
   // Auto redirect after registration when called from dashboard (staff mode)
   const isStaffMode = searchParams.get('staff') === '1'

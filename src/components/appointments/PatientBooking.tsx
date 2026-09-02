@@ -14,7 +14,7 @@ import { useQueue } from '@/lib/queue-context'
 import Toast from '@/components/ui/Toast'
 
 import {
-  getDefaultBranchData, getAllActiveProcedures, type Practitioner,
+  getDefaultBranchData, getAllActiveProcedures, type Practitioner, type ClinicBranchData,
   findRoomForProcedure, getPractitionerName,
   type Branch,
 } from '@/lib/branch-data'
@@ -27,7 +27,26 @@ const roomColors = ['#93C5FD', '#A7F3D0', '#FCD34D', '#FDA4AF', '#D8B4FE']
 
 export default function PatientBooking() {
   const { config, currentClinic } = useClinic()
-  const branchData = useMemo(() => getDefaultBranchData(currentClinic || 'dental'), [currentClinic])
+  // Load branch data from clinic-specific storage, fallback to defaults
+  const branchData: ClinicBranchData = useMemo(() => {
+    if (typeof window !== 'undefined') {
+      const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
+      const clinic = clinics.find((c: any) => c.type === currentClinic)
+      const clinicId = clinic?.id
+      if (clinicId) {
+        const saved = localStorage.getItem(`clinic-branch-data-${clinicId}`)
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved)
+            if (parsed && parsed.branches && parsed.branches.length > 0) {
+              return parsed as ClinicBranchData
+            }
+          } catch {}
+        }
+      }
+    }
+    return getDefaultBranchData(currentClinic || 'dental')
+  }, [currentClinic])
   const allProcedures = useMemo(() => getAllActiveProcedures(branchData), [branchData])
   const { assignments, staff } = useSchedule()
   const { queue, setQueue } = useQueue()
