@@ -190,9 +190,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(newSession)
         localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(newSession))
         if (user.forcePasswordChange) setForcePasswordChange(true)
-        // Fetch clinic type
-        const { data: clinic } = await (await import('./supabase')).getSupabase()?.from('clinics').select('type').eq('id', result.clinicId).single()
-        if (clinic) localStorage.setItem('clinic-q-type', clinic.type)
+        // Fetch full clinic data from Supabase and sync to localStorage
+        const sb = (await import('./supabase')).getSupabase()
+        if (sb) {
+          const { data: clinic } = await sb.from('clinics').select('*').eq('id', result.clinicId).single()
+          if (clinic) {
+            localStorage.setItem('clinic-q-type', clinic.type)
+            // Sync clinic to localStorage for Header/Sidebar
+            const existingClinics: Clinic[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.CLINICS) || '[]')
+            if (!existingClinics.find(c => c.id === clinic.id)) {
+              existingClinics.push({
+                id: clinic.id,
+                name: clinic.name,
+                type: clinic.type,
+                color: clinic.color || '#E91E63',
+                ownerId: user.id,
+                isActive: true,
+              })
+              localStorage.setItem(STORAGE_KEYS.CLINICS, JSON.stringify(existingClinics))
+            }
+            // Update clinic settings with name from Supabase
+            localStorage.setItem('clinic-q-settings', JSON.stringify({
+              clinicName: clinic.name,
+              logo: '',
+              operatingDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
+              openTime: '08:00',
+              closeTime: '20:00',
+            }))
+            // Sync membership
+            const { data: memberships } = await sb.from('clinic_memberships').select('*').eq('user_id', user.id).eq('is_active', true)
+            if (memberships) {
+              const existingMemberships: ClinicMembership[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.MEMBERSHIPS) || '[]')
+              for (const m of memberships) {
+                if (!existingMemberships.find(em => em.id === m.id)) {
+                  existingMemberships.push({
+                    id: m.id,
+                    userId: m.user_id,
+                    clinicId: m.clinic_id,
+                    role: m.role,
+                    isActive: m.is_active,
+                    createdAt: m.created_at,
+                  })
+                }
+              }
+              localStorage.setItem(STORAGE_KEYS.MEMBERSHIPS, JSON.stringify(existingMemberships))
+            }
+          }
+        }
         return { success: true }
       }
       // Supabase failed - fallback to localStorage below
