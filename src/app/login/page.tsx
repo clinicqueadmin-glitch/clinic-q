@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
 import { clsx } from 'clsx'
@@ -18,6 +18,12 @@ export default function LoginPage() {
   const [forgotEmail, setForgotEmail] = useState('')
   const [forgotLoading, setForgotLoading] = useState(false)
   const [forgotResult, setForgotResult] = useState<{ success: boolean; message: string } | null>(null)
+
+  // Clear form fields on mount to prevent browser autocomplete
+  useEffect(() => {
+    setEmail('')
+    setPassword('')
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -64,14 +70,14 @@ export default function LoginPage() {
         {/* Login Form */}
         <div className="bg-white rounded-3xl shadow-xl border border-gray-100 p-8">
           <h2 className="text-xl font-bold text-gray-900 mb-6 text-center">เข้าสู่ระบบ</h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">อีเมล</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="your@email.com" className="w-full px-4 py-3 rounded-2xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-teal-300 focus:border-transparent transition-all text-sm" required />
+              <input type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="your@email.com" className="w-full px-4 py-3 rounded-2xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-teal-300 focus:border-transparent transition-all text-sm" required />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">รหัสผ่าน</label>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="w-full px-4 py-3 rounded-2xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-teal-300 focus:border-transparent transition-all text-sm" required />
+              <input type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="w-full px-4 py-3 rounded-2xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-teal-300 focus:border-transparent transition-all text-sm" required />
             </div>
             
             {/* Forgot Password Link */}
