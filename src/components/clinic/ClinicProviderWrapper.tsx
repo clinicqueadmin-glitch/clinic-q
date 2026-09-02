@@ -105,8 +105,8 @@ function ClinicRouter({ children }: { children: ReactNode }) {
     )
   }
 
-  // Not authenticated → redirect to login (but root / shows landing page via page.tsx)
-  if (!isLoading && !isAuthenticated) {
+  // Not authenticated → redirect to login (but root / shows landing page)
+  if (!isLoading && !isAuthenticated && pathname !== '/') {
     if (typeof window !== 'undefined') {
       window.location.href = '/login'
     }
