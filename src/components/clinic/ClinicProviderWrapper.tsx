@@ -6,6 +6,7 @@ import { ClinicProvider, useClinic } from '@/lib/clinic-context'
 import { clinicConfig } from '@/lib/queue-data'
 import { PractitionerProvider } from '@/lib/practitioner-context'
 import { useAuth } from '@/lib/auth-context'
+import { getSupabase, isSupabaseReady } from '@/lib/supabase'
 import SelectClinic from './SelectClinic'
 import Sidebar from '@/components/layout/Sidebar'
 import Header from '@/components/layout/Header'
@@ -32,12 +33,29 @@ function ClinicRouter({ children }: { children: ReactNode }) {
   // Auto-select clinic from auth session when not configured
   useEffect(() => {
     if (!isLoading && isAuthenticated && !isConfigured && currentRole !== 'platform_owner' && session?.currentClinicId) {
-      // Find clinic type from clinicq-clinics by matching clinicId
+      // First try localStorage
       const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
       const matchedClinic = clinics.find((c: any) => c.id === session.currentClinicId)
       const clinicType = matchedClinic?.type || null
       if (clinicType && clinicConfig[clinicType as keyof typeof clinicConfig]) {
         setClinic(clinicType as any)
+        return
+      }
+      
+      // If not in localStorage, fetch from Supabase
+      if (isSupabaseReady()) {
+        const sb = getSupabase()
+        if (sb) {
+          sb.from('clinics').select('type, name').eq('id', session.currentClinicId).single()
+            .then(({ data }: { data: { type: string; name: string } | null }) => {
+              if (data?.type && clinicConfig[data.type as keyof typeof clinicConfig]) {
+                setClinic(data.type as any)
+                // Also save to localStorage for future use
+                const newClinics = [...clinics, { id: session.currentClinicId, type: data.type, name: data.name }]
+                localStorage.setItem('clinicq-clinics', JSON.stringify(newClinics))
+              }
+            })
+        }
       }
     }
   }, [isLoading, isAuthenticated, isConfigured, currentRole, session, setClinic])

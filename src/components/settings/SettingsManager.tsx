@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import {
   Save, RotateCcw, Building, Users, QrCode, Monitor,
   Plus, Edit, Trash2, X, Phone, MapPin, Clock,
@@ -11,6 +11,7 @@ import { clsx } from 'clsx'
 import { QRCodeSVG } from 'qrcode.react'
 import { useClinic } from '@/lib/clinic-context'
 import { useAuth } from '@/lib/auth-context'
+import { getSupabase, isSupabaseReady } from '@/lib/supabase'
 import UserManagement from '@/components/auth/UserManagement'
 import Toast from '@/components/ui/Toast'
 import PhoneInput from '@/components/ui/PhoneInput'
@@ -69,27 +70,60 @@ export default function SettingsManager() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
 
   /* ───── Clinic Settings State ───── */
-  const [clinicName, setClinicName] = useState(() => {
-    if (typeof window !== 'undefined') {
+  const { settings, updateSettings } = useClinic()
+  const [clinicName, setClinicName] = useState(config?.name || 'คลินิกเวชกรรม')
+  const [clinicPhone, setClinicPhone] = useState('02-123-4567')
+  const [clinicAddress, setClinicAddress] = useState('123 ถนนสุขุมวิท แขวงคลองเตย เขตคลองเตย กรุงเทพมหานคร 10110')
+  const [openTime, setOpenTime] = useState('08:00')
+  const [closeTime, setCloseTime] = useState('20:00')
+  const [clinicLogo, setClinicLogo] = useState('')
+  const [operatingDays, setOperatingDays] = useState<string[]>(['mon', 'tue', 'wed', 'thu', 'fri'])
+
+  // Fetch clinic name from Supabase on mount and reset to defaults
+  useEffect(() => {
+    const fetchClinicData = async () => {
+      // First, try to load from localStorage settings
       const saved = localStorage.getItem('clinic-q-settings')
       if (saved) {
         try {
           const parsed = JSON.parse(saved)
-          if (parsed.clinicName) return parsed.clinicName
+          if (parsed.clinicName) setClinicName(parsed.clinicName)
+          if (parsed.openTime) setOpenTime(parsed.openTime)
+          if (parsed.closeTime) setCloseTime(parsed.closeTime)
+          if (parsed.logo) setClinicLogo(parsed.logo)
+          if (parsed.operatingDays) setOperatingDays(parsed.operatingDays)
         } catch {}
       }
+      
+      // Then, fetch from Supabase to get the latest clinic name
+      if (isSupabaseReady()) {
+        const sb = getSupabase()
+        if (sb) {
+          const { data: { user } } = await sb.auth.getUser()
+          if (user) {
+            // Get clinic from memberships
+            const { data: memberships } = await sb.from('clinic_memberships')
+              .select('clinic_id')
+              .eq('user_id', user.id)
+              .eq('is_active', true)
+              .limit(1)
+            
+            if (memberships && memberships.length > 0) {
+              const { data: clinic } = await sb.from('clinics')
+                .select('name, type')
+                .eq('id', memberships[0].clinic_id)
+                .single()
+              
+              if (clinic?.name) {
+                setClinicName(clinic.name)
+              }
+            }
+          }
+        }
+      }
     }
-    return config?.name || 'คลินิกเวชกรรม'
-  })
-  const [clinicPhone, setClinicPhone] = useState('02-123-4567')
-  const [clinicAddress, setClinicAddress] = useState('123 ถนนสุขุมวิท แขวงคลองเตย เขตคลองเตย กรุงเทพมหานคร 10110')
-
-
-  const { settings, updateSettings } = useClinic()
-  const [openTime, setOpenTime] = useState(settings.openTime || '08:00')
-  const [closeTime, setCloseTime] = useState(settings.closeTime || '20:00')
-  const [clinicLogo, setClinicLogo] = useState(settings.logo || '')
-  const [operatingDays, setOperatingDays] = useState<string[]>(settings.operatingDays || ['mon', 'tue', 'wed', 'thu', 'fri'])
+    fetchClinicData()
+  }, [])
 
   /* ───── Staff State ───── */
   const [staff, setStaff] = useState<StaffMember[]>(initialStaff)
