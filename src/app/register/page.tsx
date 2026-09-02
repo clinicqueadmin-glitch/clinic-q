@@ -153,8 +153,19 @@ export default function RegisterPage() {
     ]
     localStorage.setItem(`clinic-rooms-${clinicId}`, JSON.stringify(defaultRooms))
     
-    // 9. Initialize empty user list for this clinic
-    localStorage.setItem(`clinicq-users-with-roles-${clinicId}`, JSON.stringify([]))
+    // 9. Initialize user list with owner (registrant)
+    const ownerUser = {
+      id: userId,
+      email: form.email,
+      name: form.ownerName,
+      phone: form.phone || '',
+      createdAt: now,
+      roles: ['owner'],
+      branchIds: [],
+      isActive: true,
+      forcePasswordChange: true,
+    }
+    localStorage.setItem(`clinicq-users-with-roles-${clinicId}`, JSON.stringify([ownerUser]))
     
     setStep('success')
   }

@@ -95,8 +95,19 @@ export async function supabaseRegister(data: {
     ]
     localStorage.setItem(`clinic-rooms-${clinicId}`, JSON.stringify(defaultRooms))
     
-    // Initialize empty user list for this clinic
-    localStorage.setItem(`clinicq-users-with-roles-${clinicId}`, JSON.stringify([]))
+    // Initialize user list with owner (registrant)
+    const ownerUser = {
+      id: userId,
+      email: data.email,
+      name: data.name,
+      phone: data.phone || '',
+      createdAt: new Date().toISOString(),
+      roles: ['owner'],
+      branchIds: [],
+      isActive: true,
+      forcePasswordChange: true,
+    }
+    localStorage.setItem(`clinicq-users-with-roles-${clinicId}`, JSON.stringify([ownerUser]))
   }
 
   return { success: true, userId }
