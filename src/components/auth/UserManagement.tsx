@@ -45,6 +45,9 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
   const { practitioners, addPractitioner, updatePractitioner, deletePractitioner } = usePractitioners()
   const branchData = getDefaultBranchData(currentClinic || 'dental')
   
+  // Use clinic-specific storage key
+  const storageKey = currentClinicId ? `clinicq-users-with-roles-${currentClinicId}` : 'clinicq-users-with-roles'
+  
   const [users, setUsers] = useState<UserWithRoles[]>([])
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingUser, setEditingUser] = useState<UserWithRoles | null>(null)
@@ -63,11 +66,12 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
 
   const branches = branchData.branches.filter(b => b.active)
 
-  // Load users from localStorage
+  // Load users from clinic-specific localStorage
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (typeof window === 'undefined' || !currentClinicId) return
     
-    const savedUsers = localStorage.getItem('clinicq-users-with-roles')
+    // First try clinic-specific storage
+    const savedUsers = localStorage.getItem(storageKey)
     if (savedUsers) {
       try {
         const parsed = JSON.parse(savedUsers)
@@ -78,56 +82,16 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
       } catch {}
     }
     
-    // Initialize from auth context demo users if no saved data
-    const authUsers = localStorage.getItem('clinicq-users')
-    if (authUsers) {
-      try {
-        const users = JSON.parse(authUsers)
-        if (Array.isArray(users)) {
-          const memberships = JSON.parse(localStorage.getItem('clinicq-memberships') || '[]')
-          const initializedUsers = users.map(user => {
-            const userMemberships = memberships.filter((m: any) => m.userId === user.id && m.isActive)
-            return {
-              id: user.id,
-              email: user.email,
-              name: user.name,
-              phone: user.phone || '',
-              createdAt: user.createdAt,
-              roles: userMemberships.map((m: any) => m.role),
-              branchIds: [],
-              isActive: true,
-              forcePasswordChange: false,
-            }
-          })
-          setUsers(initializedUsers)
-          localStorage.setItem('clinicq-users-with-roles', JSON.stringify(initializedUsers))
-        }
-      } catch {}
-    }
-  }, [])
+    // If no clinic-specific data, start with empty array (fresh clinic)
+    setUsers([])
+  }, [currentClinicId, storageKey])
 
-  // Save to localStorage + sync with auth system
+  // Save to clinic-specific localStorage
   useEffect(() => {
-    if (users.length > 0) {
-      localStorage.setItem('clinicq-users-with-roles', JSON.stringify(users))
-      // Sync with auth system's user store so login can find them
-      // Preserve existing forcePasswordChange status from auth system
-      const existingAuthUsers: Record<string, any>[] = JSON.parse(localStorage.getItem('clinicq-users') || '[]')
-      const authUsers = users.map(u => {
-        const existing = existingAuthUsers.find((eu: any) => eu.id === u.id)
-        return {
-          id: u.id,
-          email: u.email,
-          name: u.name,
-          phone: u.phone || '',
-          createdAt: u.createdAt,
-          // Preserve existing forcePasswordChange, only default to true for new users
-          forcePasswordChange: existing?.forcePasswordChange ?? u.forcePasswordChange ?? true,
-        }
-      })
-      localStorage.setItem('clinicq-users', JSON.stringify(authUsers))
+    if (users.length > 0 && currentClinicId) {
+      localStorage.setItem(storageKey, JSON.stringify(users))
     }
-  }, [users])
+  }, [users, currentClinicId, storageKey])
 
   // Get users with roles for current clinic
   const clinicUsers = useMemo(() => {
