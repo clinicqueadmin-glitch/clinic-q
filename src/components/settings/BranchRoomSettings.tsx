@@ -1,12 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Plus, Edit, Trash2, X, AlertTriangle, Stethoscope,
   ChevronDown, ChevronRight,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useClinic } from '@/lib/clinic-context'
+import { useAuth } from '@/lib/auth-context'
 import {
   type Branch, type Practitioner, type Procedure,
   type ClinicBranchData,
@@ -16,7 +17,32 @@ import Toast from '@/components/ui/Toast'
 
 export default function BranchRoomSettings() {
   const { config, currentClinic } = useClinic()
+  const { currentClinicId } = useAuth()
+  
+  // Use clinic-specific storage key
+  const storageKey = currentClinicId ? `clinic-branch-data-${currentClinicId}` : 'clinic-branch-data'
   const [data, setData] = useState<ClinicBranchData>(() => getDefaultBranchData(currentClinic || 'dental'))
+  
+  // Load from clinic-specific storage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem(storageKey)
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved)
+        if (parsed && parsed.branches && parsed.branches.length > 0) {
+          setData(parsed)
+          return
+        }
+      } catch {}
+    }
+    // If no saved data for this clinic, use defaults
+    setData(getDefaultBranchData(currentClinic || 'dental'))
+  }, [storageKey, currentClinic])
+  
+  // Save to clinic-specific storage
+  useEffect(() => {
+    localStorage.setItem(storageKey, JSON.stringify(data))
+  }, [data, storageKey])
   const [expandedBranch, setExpandedBranch] = useState<string | null>(data.branches[0]?.id || null)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
 

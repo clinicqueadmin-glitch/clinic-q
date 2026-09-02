@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Plus, Edit, Trash2, X } from 'lucide-react'
 import { useClinic } from '@/lib/clinic-context'
+import { useAuth } from '@/lib/auth-context'
 import type { Room } from '@/lib/branch-data'
 import Toast from '@/components/ui/Toast'
 
@@ -18,16 +19,12 @@ const defaultRooms: Room[] = [
 
 export default function RoomSettings() {
   const { config } = useClinic()
+  const { currentClinicId } = useAuth()
   
-  const [rooms, setRooms] = useState<Room[]>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('clinic-rooms')
-      if (saved) {
-        try { return JSON.parse(saved) } catch {}
-      }
-    }
-    return defaultRooms
-  })
+  // Use clinic-specific storage key
+  const storageKey = currentClinicId ? `clinic-rooms-${currentClinicId}` : 'clinic-rooms'
+  
+  const [rooms, setRooms] = useState<Room[]>(defaultRooms)
   
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
   
@@ -43,10 +40,26 @@ export default function RoomSettings() {
   // Delete confirmation
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null)
 
-  // Save to localStorage
+  // Load rooms from clinic-specific storage on mount
   useEffect(() => {
-    localStorage.setItem('clinic-rooms', JSON.stringify(rooms))
-  }, [rooms])
+    const saved = localStorage.getItem(storageKey)
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setRooms(parsed)
+          return
+        }
+      } catch {}
+    }
+    // If no saved rooms for this clinic, use defaults
+    setRooms(defaultRooms)
+  }, [storageKey])
+  
+  // Save to clinic-specific localStorage
+  useEffect(() => {
+    localStorage.setItem(storageKey, JSON.stringify(rooms))
+  }, [rooms, storageKey])
 
   const showToast = (msg: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ message: msg, type })
