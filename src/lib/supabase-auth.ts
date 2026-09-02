@@ -73,6 +73,32 @@ export async function supabaseRegister(data: {
     console.error('Failed to create membership:', memberError)
   }
 
+  // 5. Initialize clinic-specific localStorage data
+  if (typeof window !== 'undefined') {
+    // Set clinic type
+    localStorage.setItem('clinic-q-type', data.clinicType)
+    
+    // Initialize clinic settings with clinic name
+    localStorage.setItem('clinic-q-settings', JSON.stringify({
+      clinicName: data.clinicName,
+      logo: '',
+      operatingDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
+      openTime: '08:00',
+      closeTime: '20:00',
+    }))
+    
+    // Initialize default rooms for this clinic
+    const defaultRooms = [
+      { id: 1, name: 'ห้อง 1', color: '#0891B2', branchId: '', practitionerId: '', slotDuration: 30, workingStartTime: '09:00', workingEndTime: '17:00', active: true },
+      { id: 2, name: 'ห้อง 2', color: '#10B981', branchId: '', practitionerId: '', slotDuration: 30, workingStartTime: '09:00', workingEndTime: '17:00', active: true },
+      { id: 3, name: 'ห้อง 3', color: '#F59E0B', branchId: '', practitionerId: '', slotDuration: 30, workingStartTime: '09:00', workingEndTime: '17:00', active: true },
+    ]
+    localStorage.setItem(`clinic-rooms-${clinicId}`, JSON.stringify(defaultRooms))
+    
+    // Initialize empty user list for this clinic
+    localStorage.setItem(`clinicq-users-with-roles-${clinicId}`, JSON.stringify([]))
+  }
+
   return { success: true, userId }
 }
 

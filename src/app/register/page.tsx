@@ -136,6 +136,26 @@ export default function RegisterPage() {
     // 6. Set default clinic type for ClinicContext
     localStorage.setItem('clinic-q-type', selectedType || 'dental')
     
+    // 7. Initialize clinic-specific settings with clinic name
+    localStorage.setItem('clinic-q-settings', JSON.stringify({
+      clinicName: form.clinicName,
+      logo: '',
+      operatingDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
+      openTime: '08:00',
+      closeTime: '20:00',
+    }))
+    
+    // 8. Initialize default rooms for this clinic
+    const defaultRooms = [
+      { id: 1, name: 'ห้อง 1', color: '#0891B2', branchId: '', practitionerId: '', slotDuration: 30, workingStartTime: '09:00', workingEndTime: '17:00', active: true },
+      { id: 2, name: 'ห้อง 2', color: '#10B981', branchId: '', practitionerId: '', slotDuration: 30, workingStartTime: '09:00', workingEndTime: '17:00', active: true },
+      { id: 3, name: 'ห้อง 3', color: '#F59E0B', branchId: '', practitionerId: '', slotDuration: 30, workingStartTime: '09:00', workingEndTime: '17:00', active: true },
+    ]
+    localStorage.setItem(`clinic-rooms-${clinicId}`, JSON.stringify(defaultRooms))
+    
+    // 9. Initialize empty user list for this clinic
+    localStorage.setItem(`clinicq-users-with-roles-${clinicId}`, JSON.stringify([]))
+    
     setStep('success')
   }
 
