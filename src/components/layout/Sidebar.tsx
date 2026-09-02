@@ -18,6 +18,7 @@ import {
   CreditCard,
   AlertTriangle,
   UserCheck,
+  BookOpen,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useClinic } from '@/lib/clinic-context'
@@ -45,11 +46,13 @@ const menuItems: MenuItem[] = [
   { title: 'ผู้รับบริการ', href: '/patients', icon: Users },
   { title: 'วิเคราะห์ข้อมูล', href: '/analytics', icon: BarChart3, permission: 'view_analytics' },
   { title: 'จัดการคลินิก', href: '/settings', icon: Settings, permission: 'manage_clinic_settings' },
+  { title: 'วิธีการใช้งาน', href: '#guide', icon: BookOpen, permission: 'manage_clinic_settings' },
   { title: 'ราคาและแพ็กเกจ', href: '/pricing', icon: CreditCard, permission: 'manage_clinic_settings' },
 ]
 
 export default function Sidebar() {
   const [isOpen, setIsOpen] = useState(false)
+  const [showGuide, setShowGuide] = useState(false)
   const pathname = usePathname()
   const { config, clearClinic, settings } = useClinic()
   const { user, currentRole, logout } = useAuth()
@@ -151,6 +154,27 @@ export default function Sidebar() {
             {visibleMenuItems.map((item) => {
               const Icon = item.icon
               const isActive = pathname === item.href || (item.href.includes('?') && pathname === item.href.split('?')[0])
+              
+              // Handle #guide link (open SetupGuide)
+              if (item.href === '#guide') {
+                return (
+                  <button
+                    key={item.href}
+                    onClick={() => {
+                      setShowGuide(true)
+                      setIsOpen(false)
+                    }}
+                    className={clsx(
+                      'flex items-center gap-3 px-3 py-2.5 rounded-2xl text-sm font-bold transition-all duration-200 w-full text-left',
+                      'text-gray-600 hover:bg-pink-50 hover:text-pink-600'
+                    )}
+                  >
+                    <Icon className="w-[18px] h-[18px]" />
+                    <span>{item.title}</span>
+                  </button>
+                )
+              }
+              
               return (
                 <Link
                   key={item.href}
@@ -215,6 +239,11 @@ export default function Sidebar() {
         </div>
       </aside>
 
+      {/* Setup Guide */}
+      <SetupGuide
+        open={showGuide}
+        onClose={() => setShowGuide(false)}
+      />
     </>
   )
 }
