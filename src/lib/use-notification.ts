@@ -10,6 +10,14 @@ interface NotificationState {
   subscription: PushSubscription | null
 }
 
+// Singleton AudioContext for better browser compatibility
+let sharedAudioCtx: AudioContext | null = null
+function getAudioCtx(): AudioContext {
+  if (!sharedAudioCtx) sharedAudioCtx = new AudioContext()
+  if (sharedAudioCtx.state === 'suspended') sharedAudioCtx.resume()
+  return sharedAudioCtx
+}
+
 export function useNotification() {
   const [state, setState] = useState<NotificationState>({
     permission: 'default',
@@ -56,26 +64,49 @@ export function useNotification() {
   // Play notification sound
   const playSound = useCallback((type: 'called' | 'completed' | 'cancelled' | 'alert') => {
     try {
-      const ctx = new AudioContext()
-      const notes: Record<string, number[]> = {
-        called:    [523, 659, 784, 1047],  // C5 E5 G5 C6 — happy ascending
-        completed:  [784, 659, 523],        // G5 E5 C5 — descending
-        cancelled:  [440, 349, 294],        // A4 F4 D4 — descending sad
-        alert:      [880, 880, 880],        // A5 × 3 — urgent
-        room:       [440, 554, 659, 880],   // A4 C#5 E5 A5 — welcoming chime
+      const ctx = getAudioCtx()
+      const now = ctx.currentTime
+      
+      const melodies: Record<string, { freq: number; start: number; dur: number; type?: OscillatorType }[]> = {
+        // เรียกคิว: 4 โน้ตสูงขึ้น เสียงดังชัด
+        called: [
+          { freq: 523, start: 0, dur: 0.18 },     // C5
+          { freq: 659, start: 0.15, dur: 0.18 },   // E5
+          { freq: 784, start: 0.30, dur: 0.18 },   // G5
+          { freq: 1047, start: 0.45, dur: 0.35 },  // C6 (hold longer)
+        ],
+        // เสร็จสิ้น: 3 โน้ตลง
+        completed: [
+          { freq: 784, start: 0, dur: 0.15 },
+          { freq: 659, start: 0.12, dur: 0.15 },
+          { freq: 523, start: 0.24, dur: 0.25 },
+        ],
+        // ยกเลิก: 3 โน้ตลงเศร้า
+        cancelled: [
+          { freq: 440, start: 0, dur: 0.15 },
+          { freq: 349, start: 0.12, dur: 0.15 },
+          { freq: 294, start: 0.24, dur: 0.25 },
+        ],
+        // เตือน: 3 เสียงสั้น
+        alert: [
+          { freq: 880, start: 0, dur: 0.1 },
+          { freq: 880, start: 0.15, dur: 0.1 },
+          { freq: 880, start: 0.30, dur: 0.15 },
+        ],
       }
-      const freqs = notes[type] || notes.called
-      freqs.forEach((freq, i) => {
+      
+      const notes = melodies[type] || melodies.called
+      notes.forEach(({ freq, start, dur }) => {
         const osc = ctx.createOscillator()
         const gain = ctx.createGain()
         osc.connect(gain)
         gain.connect(ctx.destination)
         osc.frequency.value = freq
         osc.type = 'sine'
-        gain.gain.setValueAtTime(0.3, ctx.currentTime + i * 0.15)
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.15 + 0.3)
-        osc.start(ctx.currentTime + i * 0.15)
-        osc.stop(ctx.currentTime + i * 0.15 + 0.3)
+        gain.gain.setValueAtTime(0.5, now + start)
+        gain.gain.exponentialRampToValueAtTime(0.01, now + start + dur)
+        osc.start(now + start)
+        osc.stop(now + start + dur)
       })
     } catch {
       // Silent fail if audio not available
