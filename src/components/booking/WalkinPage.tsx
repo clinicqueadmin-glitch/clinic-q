@@ -248,20 +248,15 @@ export default function WalkinPage() {
 
     const primaryProc = selectedProcs[0]
 
-    // Calculate on-time status for appointment
+    // Auto-calculate on-time status for appointment
     let computedIsOnTime = true
     let computedLateMinutes = 0
     if (bookingMode === 'appointment' && appointmentTime) {
       const [ah, am] = appointmentTime.split(':').map(Number)
       const [ch, cm] = timeStr.split(':').map(Number)
       const diffMinutes = (ch * 60 + cm) - (ah * 60 + am)
-      if (isOnTime) {
-        computedIsOnTime = true
-        computedLateMinutes = 0
-      } else {
-        computedIsOnTime = diffMinutes <= 10
-        computedLateMinutes = computedIsOnTime ? 0 : diffMinutes > 0 ? diffMinutes : lateMinutes
-      }
+      computedIsOnTime = diffMinutes <= 10
+      computedLateMinutes = computedIsOnTime ? 0 : diffMinutes
     }
 
     const newQueueItem: Record<string, any> = {
@@ -295,7 +290,7 @@ export default function WalkinPage() {
       number,
       mode: bookingMode,
       apptTime: appointmentTime,
-      onTime: isOnTime,
+      onTime: computedIsOnTime,
       practitioner: practitionerName,
     })
 
@@ -630,55 +625,55 @@ export default function WalkinPage() {
                 />
               </div>
 
-              {/* On time or late */}
+              {/* Auto-calculated arrival status */}
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-2">สถานะการมา</label>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => { setIsOnTime(true); setLateMinutes(0) }}
-                    className={clsx(
-                      'flex-1 py-3 rounded-2xl text-sm font-bold border-2 transition-all',
-                      isOnTime
-                        ? 'border-green-400 bg-green-50 text-green-700'
-                        : 'border-gray-200 bg-white text-gray-500 hover:border-green-300'
-                    )}
-                  >
-                    ✅ มาตามนัด
-                  </button>
-                  <button
-                    onClick={() => {
-                      setIsOnTime(false)
-                      // Auto-calculate late minutes from appointment time vs now
-                      if (appointmentTime) {
-                        const now = new Date()
-                        const [ah, am] = appointmentTime.split(':').map(Number)
-                        const diffMinutes = (now.getHours() * 60 + now.getMinutes()) - (ah * 60 + am)
-                        setLateMinutes(diffMinutes > 0 ? diffMinutes : 0)
-                      } else {
-                        setLateMinutes(0)
-                      }
-                    }}
-                    className={clsx(
-                      'flex-1 py-3 rounded-2xl text-sm font-bold border-2 transition-all',
-                      !isOnTime
-                        ? 'border-orange-400 bg-orange-50 text-orange-700'
-                        : 'border-gray-200 bg-white text-gray-500 hover:border-orange-300'
-                    )}
-                  >
-                    ⚠️ มาล่าช้า
-                  </button>
-                </div>
-                {!isOnTime && (
-                  <div className="mt-2">
-                    <label className="block text-xs text-gray-500 mb-1">ล่าช้ากี่นาที <span className="text-orange-500 font-bold">(คำนวณอัตโนมัติ)</span></label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={lateMinutes}
-                      onChange={(e) => setLateMinutes(parseInt(e.target.value) || 0)}
-                      className="w-full px-4 py-3 rounded-2xl border border-orange-200 focus:border-orange-400 focus:outline-none text-sm bg-orange-50 transition-colors font-bold text-orange-700"
-                    />
-                    <p className="text-[10px] text-gray-400 mt-1">⏱ นัด {appointmentTime || '??:??'} ICT · ปัจจุบัน {new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })} ICT · ล่าช้า {lateMinutes} นาที</p>
+                <label className="block text-xs font-semibold text-gray-600 mb-2">สถานะการมา (คำนวณอัตโนมัติ)</label>
+                {appointmentTime ? (() => {
+                  const now = new Date()
+                  const [ah, am] = appointmentTime.split(':').map(Number)
+                  const nowMinutes = now.getHours() * 60 + now.getMinutes()
+                  const apptMinutes = ah * 60 + am
+                  const diffMinutes = nowMinutes - apptMinutes
+                  const isLate = diffMinutes > 10
+                  const currentLateMinutes = isLate ? diffMinutes : 0
+                  const currentIsOnTime = !isLate
+                  // Update state for submit
+                  if (currentIsOnTime !== isOnTime || currentLateMinutes !== lateMinutes) {
+                    setIsOnTime(currentIsOnTime)
+                    setLateMinutes(currentLateMinutes)
+                  }
+                  return (
+                    <div className={clsx(
+                      'rounded-2xl border-2 p-4 transition-all',
+                      isLate
+                        ? 'border-orange-300 bg-orange-50'
+                        : 'border-green-300 bg-green-50'
+                    )}>
+                      <div className="flex items-center gap-3">
+                        <div className={clsx(
+                          'w-12 h-12 rounded-2xl flex items-center justify-center text-2xl',
+                          isLate ? 'bg-orange-100' : 'bg-green-100'
+                        )}>
+                          {isLate ? '⚠️' : '✅'}
+                        </div>
+                        <div className="flex-1">
+                          <p className={clsx(
+                            'text-sm font-extrabold',
+                            isLate ? 'text-orange-700' : 'text-green-700'
+                          )}>
+                            {isLate ? `มาล่าช้า ${currentLateMinutes} นาที` : 'มาตามนัด'}
+                          </p>
+                          <p className="text-[10px] text-gray-500 mt-0.5">
+                            นัด {appointmentTime} ICT · ปัจจุบัน {now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })} ICT
+                            {isLate && <span className="text-orange-600 font-bold ml-1">· ล่าช้า {currentLateMinutes} นาที</span>}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })() : (
+                  <div className="rounded-2xl border-2 border-dashed border-gray-200 p-4 text-center">
+                    <p className="text-xs text-gray-400">⏱ กรุณาระบุเวลานัดก่อน</p>
                   </div>
                 )}
               </div>
