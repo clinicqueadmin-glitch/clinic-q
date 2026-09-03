@@ -298,7 +298,8 @@ export default function TodayOps() {
 
   // Room Confirm modal (confirm before sending to room)
   const [showRoomConfirm, setShowRoomConfirm] = useState(false)
-  const [roomConfirmData, setRoomConfirmData] = useState<{item: QueueItem; roomId: number; roomName: string; roomColor: string; practitionerName: string} | null>(null)
+  const [roomConfirmData, setRoomConfirmData] = useState<{item: QueueItem; roomId: number; roomName: string; roomColor: string; practitionerName: string; branchMismatch?: boolean; patientBranch?: string; roomBranch?: string} | null>(null)
+  const [showBranchWarning, setShowBranchWarning] = useState(false)
 
   // Add Room modal
   const [showAddRoom, setShowAddRoom] = useState(false)
@@ -555,14 +556,25 @@ export default function TodayOps() {
     setShowRoomSelect(false)
     const pool = rooms || availableRooms
     const selected = pool.find(r => r.room.id === roomId)
+    // Check branch mismatch
+    const patientBranch = branchData.branches.find(b => b.procedures.some(p => p.id === item.procedureId))
+    const roomBranch = branchData.branches.find(b => b.id === selected?.room.branchId)
+    const branchMismatch = patientBranch && roomBranch && patientBranch.id !== roomBranch.id
     setRoomConfirmData({
       item,
       roomId,
       roomName: selected?.room.name || `ห้อง ${roomId}`,
       roomColor: selected?.room.color || config?.color || '#3B82F6',
       practitionerName: selected?.practitionerName || item.assignedDoctor || 'ไม่ระบุ',
+      branchMismatch: !!branchMismatch,
+      patientBranch: patientBranch?.name || '',
+      roomBranch: roomBranch?.name || '',
     })
-    setShowRoomConfirm(true)
+    if (branchMismatch) {
+      setShowBranchWarning(true)
+    } else {
+      setShowRoomConfirm(true)
+    }
   }
 
   // User confirms → actually send to room
@@ -1246,6 +1258,69 @@ export default function TodayOps() {
       )}
 
       {/* ═══════ ROOM CONFIRM MODAL ═══════ */}
+      {/* ═══════ BRANCH MISMATCH WARNING ═══════ */}
+      {showBranchWarning && roomConfirmData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md animate-scale-in">
+            <div className="p-6">
+              <div className="text-center mb-5">
+                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <span className="text-3xl">⚠️</span>
+                </div>
+                <h3 className="text-lg font-bold text-gray-900">คนไข้เข้าห้องคนละสาขา</h3>
+              </div>
+
+              <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-5">
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">👤 คิว</span>
+                    <span className="font-bold text-gray-900">{roomConfirmData.item.number}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">📋 หัตถการ</span>
+                    <span className="font-bold text-gray-900">{roomConfirmData.item.procedure}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">🏥 สาขาคนไข้</span>
+                    <span className="font-bold text-blue-600">{roomConfirmData.patientBranch}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">🚪 ห้องที่เลือก</span>
+                    <span className="font-bold text-red-600">{roomConfirmData.roomName} ({roomConfirmData.roomBranch})</span>
+                  </div>
+                </div>
+                <div className="mt-3 pt-3 border-t border-red-200">
+                  <p className="text-xs text-red-700 font-medium">
+                    ⚠️ หัตถการนี้อยู่สาขา {roomConfirmData.patientBranch} แต่ห้องที่เลือกเป็นสาขา {roomConfirmData.roomBranch}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowBranchWarning(false)
+                    setShowRoomSelect(true)
+                  }}
+                  className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-2xl font-bold text-sm hover:bg-gray-200 transition-colors"
+                >
+                  ⬅️ เลือกห้องใหม่
+                </button>
+                <button
+                  onClick={() => {
+                    setShowBranchWarning(false)
+                    setShowRoomConfirm(true)
+                  }}
+                  className="flex-1 py-3 bg-red-500 text-white rounded-2xl font-bold text-sm hover:bg-red-600 transition-colors shadow-md"
+                >
+                  ✅ ส่งเข้าห้องนี้
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showRoomConfirm && roomConfirmData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm animate-scale-in">
