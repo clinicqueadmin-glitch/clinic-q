@@ -68,13 +68,17 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
   // Confirm modal
   const [showConfirm, setShowConfirm] = useState(false)
 
-  // Filter out practitioners already assigned to other daily rooms
+  // Filter practitioners: must belong to current clinic AND not assigned to other daily rooms
   const activePractitioners = useMemo(() => {
     const assignedIds = new Set(
       dailyRooms.filter(r => r.active && r.practitionerId).map(r => r.practitionerId)
     )
-    return practitioners.filter(p => p.active && !assignedIds.has(p.id))
-  }, [practitioners, dailyRooms])
+    return practitioners.filter(p => 
+      p.active && 
+      !assignedIds.has(p.id) && 
+      p.clinicId && p.clinicId === currentClinicId // Safety: must belong to THIS clinic
+    )
+  }, [practitioners, dailyRooms, currentClinicId])
   const branches = branchData.branches.filter(b => b.active)
 
   // Get selected room data from RoomSettings

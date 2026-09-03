@@ -119,27 +119,25 @@ export default function KioskInterface() {
       const cid = currentClinicObj?.id
       
       if (cid) {
-        // Try clinic-specific storage first
+        // Try clinic-specific storage first — must match clinicId
         const storageKey = `clinic-practitioners-${cid}`
         const saved = localStorage.getItem(storageKey)
         if (saved) {
           try {
             const parsed = JSON.parse(saved)
             if (Array.isArray(parsed)) {
-              return parsed.filter((p: any) => p.active)
+              return parsed.filter((p: any) => p.active && p.clinicId === cid)
             }
           } catch {}
         }
       }
-      // Fallback: try shared key
+      // Fallback: try shared key — strictly filter by clinicId
       const saved = localStorage.getItem('clinic-practitioners')
-      if (saved) {
+      if (saved && cid) {
         try {
           const parsed = JSON.parse(saved)
           if (Array.isArray(parsed)) {
-            return cid
-              ? parsed.filter((p: any) => p.clinicId === cid && p.active)
-              : parsed.filter((p: any) => p.active)
+            return parsed.filter((p: any) => p.clinicId === cid && p.active)
           }
         } catch {}
       }

@@ -129,7 +129,7 @@ export default function PatientBooking() {
         try {
           const parsed = JSON.parse(saved)
           if (Array.isArray(parsed)) {
-            return parsed.filter((p: any) => p.active) as Practitioner[]
+            return parsed.filter((p: any) => p.active && p.clinicId === clinicId) as Practitioner[]
           }
         } catch {}
       }

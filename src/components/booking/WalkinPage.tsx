@@ -131,7 +131,7 @@ export default function WalkinPage() {
         try {
           const parsed = JSON.parse(saved)
           if (Array.isArray(parsed)) {
-            return parsed.filter((p: any) => p.active)
+            return parsed.filter((p: any) => p.active && p.clinicId === clinicId)
           }
         } catch {}
       }

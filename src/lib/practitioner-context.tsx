@@ -37,19 +37,18 @@ function loadPractitioners(clinicType: ClinicType, clinicId?: string | null): Pr
     } catch {}
   }
   
-  // Fallback: try shared key and filter by clinicId
+  // Fallback: try shared key and STRICTLY filter by clinicId
   const sharedSaved = localStorage.getItem('clinic-practitioners')
-  if (sharedSaved) {
+  if (sharedSaved && clinicId) {
     try {
       const parsed = JSON.parse(sharedSaved)
       if (Array.isArray(parsed)) {
-        const filtered = clinicId 
-          ? parsed.filter((p: any) => p.clinicId === clinicId)
-          : parsed
+        // Only include practitioners that explicitly belong to THIS clinic
+        const filtered = parsed.filter((p: any) => p.clinicId && p.clinicId === clinicId)
         return filtered.map((p: any) => ({
           ...p,
           userId: p.userId || undefined,
-          clinicId: p.clinicId || clinicId || undefined,
+          clinicId: clinicId, // Always force the correct clinicId
         }))
       }
     } catch {}
@@ -61,10 +60,10 @@ function loadPractitioners(clinicType: ClinicType, clinicId?: string | null): Pr
 
 // Filter practitioners by current clinic ID
 function filterByClinic(practitioners: Practitioner[], clinicId: string | null): Practitioner[] {
-  if (!clinicId) return practitioners
-  // Strict: only show practitioners that explicitly belong to this clinic
-  // Legacy practitioners without clinicId are NOT shown for any specific clinic
-  return practitioners.filter(p => p.clinicId === clinicId)
+  if (!clinicId) return [] // Never show practitioners without a clinic selected
+  // Strict: only show practitioners that explicitly belong to THIS clinic
+  // Practitioners without clinicId are excluded to prevent cross-clinic leakage
+  return practitioners.filter(p => p.clinicId && p.clinicId === clinicId)
 }
 
 const PractitionerContext = createContext<PractitionerContextType | null>(null)

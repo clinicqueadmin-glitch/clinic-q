@@ -75,8 +75,8 @@ export default function EditRoomModal({ open, room, onClose, onSave, onDelete }:
         .filter(r => r.active && r.practitionerId && r.id !== room?.id)
         .map(r => r.practitionerId)
     )
-    return practitioners.filter(p => p.active && !assignedIds.has(p.id))
-  }, [practitioners, room, dailyRoomKey])
+    return practitioners.filter(p => p.active && !assignedIds.has(p.id) && p.clinicId && p.clinicId === currentClinicId)
+  }, [practitioners, room, dailyRoomKey, currentClinicId])
 
   const branches = branchData.branches.filter(b => b.active)
 
