@@ -198,8 +198,8 @@ export default function PaymentModal({ isOpen, onClose, plan, amount, clinicId, 
                   {/* QR Code display */}
                   <div className="bg-white border-2 border-gray-100 rounded-2xl p-6 mb-4 inline-block">
                     <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData.qrCode)}`}
-                      alt="QR Code"
+                      src={qrData.qrCode}
+                      alt="QR Code PromptPay"
                       className="w-48 h-48 mx-auto"
                     />
                   </div>
@@ -208,7 +208,7 @@ export default function PaymentModal({ isOpen, onClose, plan, amount, clinicId, 
                   <div className="bg-gray-50 rounded-xl p-3 mb-4">
                     <p className="text-xs text-gray-500">บัญชีผู้รับ</p>
                     <p className="text-sm font-bold text-gray-900">{qrData.accountName}</p>
-                    <p className="text-xs text-gray-400 mt-1">โรงพยาบาล/คลินิก</p>
+                    <p className="text-xs text-gray-400 mt-1">PromptPay · {amount.toLocaleString()} บาท</p>
                   </div>
 
                   {/* Copy QR string */}
@@ -261,6 +261,36 @@ export default function PaymentModal({ isOpen, onClose, plan, amount, clinicId, 
                     {slipPreview && (
                       <img src={slipPreview} alt="Slip preview" className="mt-3 rounded-xl max-h-40 mx-auto border" />
                     )}
+                  </div>
+
+                  {/* Manual confirm button */}
+                  <div className="mt-4 pt-4 border-t border-gray-100">
+                    <p className="text-[10px] text-gray-400 mb-2">ชำระเงินแล้วแต่ไม่แนบสลิป?</p>
+                    <button
+                      onClick={() => {
+                        // Manual confirm - skip slip verification
+                        const subKey = `clinicq-subscription-${clinicId}`
+                        const subData = {
+                          plan,
+                          status: 'active',
+                          startDate: new Date().toISOString(),
+                          paidEndDate: new Date(Date.now() + (plan === 'yearly' ? 365 : 30) * 24 * 60 * 60 * 1000).toISOString(),
+                          paymentMethod: 'manual',
+                          paymentRef: 'manual-confirm-' + Date.now(),
+                          paymentDate: new Date().toISOString(),
+                          paymentAmount: amount,
+                        }
+                        localStorage.setItem(subKey, JSON.stringify(subData))
+                        setStep('success')
+                        setTimeout(() => {
+                          onSuccess()
+                          onClose()
+                        }, 2000)
+                      }}
+                      className="w-full py-2 bg-gray-100 text-gray-600 rounded-xl text-xs font-bold hover:bg-gray-200 transition-colors"
+                    >
+                      ✅ ยืนยันการชำระเงินด้วยตนเอง
+                    </button>
                   </div>
                 </>
               ) : null}

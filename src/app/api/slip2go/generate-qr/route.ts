@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
+import PromptPay from 'promptpay-qr'
+import QRCode from 'qrcode'
 
 /**
- * Slip2Go QR Code Generation API
+ * QR Code Generation API (local, no external API needed)
  * POST /api/slip2go/generate-qr
  * 
  * Body: { amount: string, promptPayId?: string, accountName?: string }
  * 
- * Returns: { qrCode: string, accountName: string, amount: string }
+ * Returns: { qrCode: string (base64 PNG), promptPayPayload: string, accountName: string, amount: string }
  */
 export async function POST(request: NextRequest) {
   try {
@@ -17,57 +19,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'กรุณาระบุจำนวนเงินที่ถูกต้อง' }, { status: 400 })
     }
 
-    const apiSecret = process.env.SLIP2GO_API_SECRET
-    const defaultPromptPayId = process.env.SLIP2GO_PROMPTPAY_ID
-    const defaultAccountName = process.env.SLIP2GO_PROMPTPAY_NAME
+    const defaultPromptPayId = process.env.SLIP2GO_PROMPTPAY_ID || '0923644664'
+    const defaultAccountName = process.env.SLIP2GO_PROMPTPAY_NAME || 'ByteBoxx Solution'
 
     const payId = promptPayId || defaultPromptPayId
     const payName = accountName || defaultAccountName
 
-    if (!apiSecret || !payId) {
-      return NextResponse.json({ 
-        error: 'กรุณาตั้งค่า Slip2Go API Secret ใน .env.local',
-        details: {
-          hasApiSecret: !!apiSecret,
-          hasPromptPayId: !!payId
-        }
-      }, { status: 500 })
-    }
+    // Generate PromptPay payload
+    const payload = PromptPay(payId, { amount: parseFloat(amount) })
 
-    // Determine PromptPay type (phone or citizen_id)
-    const promptPayType = payId.length === 10 ? 'phone_number' : 'citizen_id'
-
-    // Call Slip2Go API
-    const response = await fetch('https://api.slip2go.com/api/qr-payment/generate-qr-code', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': apiSecret,
+    // Generate QR Code as base64 PNG
+    const qrCodeBase64 = await QRCode.toDataURL(payload, {
+      width: 300,
+      margin: 2,
+      color: {
+        dark: '#000000',
+        light: '#FFFFFF',
       },
-      body: JSON.stringify({
-        promptPayCode: payId,
-        promptPayType,
-        accountName: payName || 'Clinic-Q Platform',
-        amount: parseFloat(amount).toFixed(2),
-      }),
     })
-
-    const data = await response.json()
-
-    if (data.code !== '200') {
-      return NextResponse.json({ 
-        error: data.message || 'เกิดข้อผิดพลาดในการสร้าง QR Code',
-        slip2goCode: data.code 
-      }, { status: 400 })
-    }
 
     return NextResponse.json({
-      qrCode: data.data.qrCode,
-      accountName: data.data.accountName,
-      amount: data.data.amount,
+      qrCode: qrCodeBase64,
+      promptPayPayload: payload,
+      accountName: payName,
+      amount: parseFloat(amount).toFixed(2),
     })
   } catch (error) {
-    console.error('Slip2Go QR generation error:', error)
-    return NextResponse.json({ error: 'เกิดข้อผิดพลาดของระบบ' }, { status: 500 })
+    console.error('QR generation error:', error)
+    return NextResponse.json({ error: 'เกิดข้อผิดพลาดในการสร้าง QR Code' }, { status: 500 })
   }
 }
