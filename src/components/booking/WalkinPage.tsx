@@ -159,7 +159,28 @@ export default function WalkinPage() {
   // Get practitioners from localStorage (filtered by current clinic)
   const branchPractitioners = useMemo(() => {
     if (typeof window !== 'undefined' && clinicId) {
-      // Try clinic-specific storage first
+      // 1. Try clinicq-users-with-roles (UserManagement storage) — practitioners with provider role
+      const usersKey = `clinicq-users-with-roles-${clinicId}`
+      const usersSaved = localStorage.getItem(usersKey)
+      if (usersSaved) {
+        try {
+          const parsed = JSON.parse(usersSaved)
+          if (Array.isArray(parsed)) {
+            const providers = parsed.filter((u: any) => 
+              u.active &&
+              (u.roles?.includes('provider') || u.role === 'provider')
+            ).map((u: any) => ({
+              id: u.id,
+              name: u.name,
+              active: u.active,
+              clinicId: clinicId,
+              branchId: u.branchIds?.[0] || '',
+            }))
+            if (providers.length > 0) return providers
+          }
+        } catch {}
+      }
+      // 2. Try clinic-practitioners (PractitionerContext storage)
       const storageKey = `clinic-practitioners-${clinicId}`
       const saved = localStorage.getItem(storageKey)
       if (saved) {
@@ -170,7 +191,7 @@ export default function WalkinPage() {
           }
         } catch {}
       }
-      // Fallback: try shared key and filter by clinicId
+      // 3. Fallback: try shared key and filter by clinicId
       const sharedSaved = localStorage.getItem('clinic-practitioners')
       if (sharedSaved) {
         try {
