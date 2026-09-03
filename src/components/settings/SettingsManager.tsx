@@ -152,9 +152,21 @@ export default function SettingsManager() {
   const [tvFontSize, setTvFontSize] = useState<'normal' | 'large' | 'xlarge'>('large')
 
   /* ───── TV Ads State ───── */
-  const [tvAds, setTvAds] = useState<TVAd[]>([
-    { id: '1', type: 'text', url: '', text: '🦷 โปรโมชั่น ขูดหินปูน + ตรวจสุขภาพฟัน 仅 599 บาท (ถึง 30 ก.ย. 69)', duration: 15, active: true },
-  ])
+  const tvAdsKey = currentClinicId ? `clinicq-tv-ads-${currentClinicId}` : 'clinicq-tv-ads'
+  const [tvAds, setTvAds] = useState<TVAd[]>(() => {
+    if (typeof window !== 'undefined' && currentClinicId) {
+      const saved = localStorage.getItem(tvAdsKey)
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved)
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed
+        } catch {}
+      }
+    }
+    return [
+      { id: '1', type: 'text' as const, url: '', text: '🦷 โปรโมชั่นพิเศษ! จองคิวออนไลน์วันนี้', duration: 15, active: true },
+    ]
+  })
   const [showAdModal, setShowAdModal] = useState(false)
   const [editingAd, setEditingAd] = useState<TVAd | null>(null)
   const [adForm, setAdForm] = useState<{ type: 'text'; url: string; text: string; duration: number }>({ type: 'text', url: '', text: '', duration: 10 })
@@ -1267,7 +1279,10 @@ export default function SettingsManager() {
                   if (activeTab === 'clinic') handleSaveClinic()
                   else if (activeTab === 'users') showToastMsg('บันทึกข้อมูลผู้ใช้สำเร็จ!', 'success')
                   else if (activeTab === 'qr') showToastMsg('บันทึกการตั้งค่า QR สำเร็จ!', 'success')
-                  else if (activeTab === 'tv') showToastMsg('บันทึกการตั้งค่าจอ TV สำเร็จ!', 'success')
+                  else if (activeTab === 'tv') {
+                    localStorage.setItem(tvAdsKey, JSON.stringify(tvAds))
+                    showToastMsg('บันทึกการตั้งค่าจอ TV สำเร็จ!', 'success')
+                  }
                   else if (activeTab === 'line') handleSaveLineSettings()
                 }}
                 className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
