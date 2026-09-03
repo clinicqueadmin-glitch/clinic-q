@@ -30,6 +30,12 @@ export function useNotification() {
   useEffect(() => {
     if (typeof window === 'undefined') return
 
+    // Preload TTS voices (some browsers need this)
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.getVoices()
+      window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices()
+    }
+
     const isSupported = 'Notification' in window && 'serviceWorker' in navigator
     setState(prev => ({ ...prev, isSupported }))
 
@@ -168,8 +174,37 @@ export function useNotification() {
     }
   }, [state.permission, state.isServiceWorkerReady, playSound])
 
+  // Speak announcement using TTS (Thai)
+  const speakAnnouncement = useCallback((text: string) => {
+    try {
+      if ('speechSynthesis' in window) {
+        // Cancel any ongoing speech
+        window.speechSynthesis.cancel()
+        const utterance = new SpeechSynthesisUtterance(text)
+        utterance.lang = 'th-TH'
+        utterance.rate = 0.9
+        utterance.pitch = 1.0
+        utterance.volume = 1.0
+        // Try to find a Thai voice
+        const voices = window.speechSynthesis.getVoices()
+        const thaiVoice = voices.find(v => v.lang.startsWith('th'))
+        if (thaiVoice) utterance.voice = thaiVoice
+        window.speechSynthesis.speak(utterance)
+      }
+    } catch {
+      // Silent fail if TTS not available
+    }
+  }, [])
+
   // Queue notification — called when status changes to 'serving'
   const notifyQueueCalled = useCallback(async (queueNumber: string, roomNumber: number, patientName: string, phone?: string, practitionerName?: string) => {
+    // Play melody sound first, then speak announcement
+    playSound('called')
+    // Wait for melody to finish (~0.8s) then speak
+    setTimeout(() => {
+      speakAnnouncement(`ขอเชิญคิวที่ ${queueNumber} เข้าห้องตรวจที่ ${roomNumber}`)
+    }, 900)
+
     // Send browser notification
     const browserResult = await sendNotification({
       title: `🏥 ถึงคิว ${queueNumber} แล้ว!`,
@@ -177,7 +212,6 @@ export function useNotification() {
       tag: `queue-called-${queueNumber}`,
       url: `/track`,
       vibrate: [300, 100, 300, 100, 300],
-      sound: 'called',
     })
 
     // Send LINE notification if phone is provided
@@ -190,7 +224,7 @@ export function useNotification() {
     }
 
     return browserResult
-  }, [sendNotification])
+  }, [sendNotification, playSound, speakAnnouncement])
 
   // Queue completed notification
   const notifyQueueCompleted = useCallback(async (queueNumber: string, patientName?: string, phone?: string) => {
