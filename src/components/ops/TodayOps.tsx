@@ -327,6 +327,14 @@ export default function TodayOps() {
     branchId: '', procedureId: '', practitionerName: '',
   })
   const [cancelReason, setCancelReason] = useState('')
+  const [exceedCloseData, setExceedCloseData] = useState<{
+    patientName: string
+    appointmentTime: string
+    procedureName: string
+    duration: number
+    closeTime: string
+    newItem: any
+  } | null>(null)
 
   const showToastMsg = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ message, type })
@@ -678,7 +686,15 @@ export default function TodayOps() {
       queuePosition: arrivedQueue.filter(q => q.status === 'waiting').length + 1,
     }
     // Warn if appointment would exceed closing time
-    if (wouldExceedClose && !confirm(`⚠️ เตือน: การนัดหมายเวลา ${apptForm.appointmentTime} หัตถการ "${proc?.name}" ใช้เวลา ~${duration} นาที จะเลยเวลาปิดทำการ (${clinicClose})\n\nต้องการดำเนินการต่อหรือไม่?`)) {
+    if (wouldExceedClose) {
+      setExceedCloseData({
+        patientName: apptForm.patientName.trim(),
+        appointmentTime: apptForm.appointmentTime,
+        procedureName: proc?.name || '',
+        duration,
+        closeTime: clinicClose,
+        newItem,
+      })
       return
     }
     addQueueItem(newItem as any)
@@ -1277,6 +1293,86 @@ export default function TodayOps() {
                   className="w-full py-3 rounded-xl font-medium text-gray-500 bg-gray-100 text-sm transition-all hover:bg-gray-200 flex items-center justify-center gap-2"
                 >
                   ⬅️ กลับไปเลือกห้องใหม่
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════ EXCEED CLOSING TIME MODAL ═══════ */}
+      {exceedCloseData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md animate-scale-in">
+            <div className="p-6">
+              <div className="text-center mb-5">
+                <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <span className="text-3xl">⏰</span>
+                </div>
+                <h3 className="text-lg font-bold text-gray-900">คิวนัดนี้อาจเกินเวลาปิดทำการ</h3>
+                <p className="text-sm text-gray-500 mt-2">
+                  เวลาปิดทำการ: <strong>{exceedCloseData.closeTime}</strong> น.
+                </p>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-5">
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">👤 ชื่อคนไข้</span>
+                    <span className="font-bold text-gray-900">{exceedCloseData.patientName}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">⏰ เวลานัด</span>
+                    <span className="font-bold text-gray-900">{exceedCloseData.appointmentTime} น.</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">📋 หัตถการ</span>
+                    <span className="font-bold text-gray-900">{exceedCloseData.procedureName}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">⏱️ ระยะเวลา</span>
+                    <span className="font-bold text-red-600">~{exceedCloseData.duration} นาที</span>
+                  </div>
+                </div>
+                <div className="mt-3 pt-3 border-t border-amber-200">
+                  <p className="text-xs text-amber-700 font-medium">
+                    ⚠️ การรักษาจะเสร็จประมาณ {(() => {
+                      const [h, m] = exceedCloseData.appointmentTime.split(':').map(Number)
+                      const endMin = h * 60 + m + exceedCloseData.duration
+                      return `${Math.floor(endMin / 60).toString().padStart(2, '0')}:${(endMin % 60).toString().padStart(2, '0')}`
+                    })()} น. ซึ่งเลยเวลาปิดทำการ
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    // Cancel appointment with reason
+                    const cancelData = { ...exceedCloseData.newItem, status: 'cancelled', cancelReason: 'คลินิกปิดทำการก่อน', cancelledAt: new Date().toISOString() }
+                    addQueueItem(cancelData as any)
+                    showToastMsg(`ยกเลิกนัด ${exceedCloseData.patientName} — สาเหตุ: คลินิกปิดทำการก่อน`, 'info')
+                    setExceedCloseData(null)
+                    setShowAppointment(false)
+                    setApptForm({ patientName: '', phone: '', appointmentTime: '', isOnTime: true, lateMinutes: 0, branchId: '', procedureId: '', practitionerName: '' })
+                  }}
+                  className="flex-1 py-3 bg-red-50 text-red-600 border-2 border-red-200 rounded-2xl font-bold text-sm hover:bg-red-100 transition-colors"
+                >
+                  ❌ ยกเลิกนัด
+                </button>
+                <button
+                  onClick={() => {
+                    // Proceed with queue
+                    addQueueItem(exceedCloseData.newItem as any)
+                    showToastMsg(`ลงทะเบียนนัดสำเร็จ! ${exceedCloseData.patientName} ⏰ อาจเลยเวลาปิดทำการ`, 'success')
+                    setExceedCloseData(null)
+                    setShowAppointment(false)
+                    setApptForm({ patientName: '', phone: '', appointmentTime: '', isOnTime: true, lateMinutes: 0, branchId: '', procedureId: '', practitionerName: '' })
+                    setTimeout(() => { window.location.href = '/' }, 1000)
+                  }}
+                  className="flex-1 py-3 bg-green-500 text-white rounded-2xl font-bold text-sm hover:bg-green-600 transition-colors shadow-md"
+                >
+                  ✅ เข้าคิว
                 </button>
               </div>
             </div>
