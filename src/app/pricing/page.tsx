@@ -15,6 +15,9 @@ export default function PricingPage() {
   const [trialDaysLeft, setTrialDaysLeft] = useState<number>(30)
   const [isEarlyBird, setIsEarlyBird] = useState(true)
   const [subscriptionEnd, setSubscriptionEnd] = useState('')
+  const [earlyBirdEndDate, setEarlyBirdEndDate] = useState<Date | null>(null)
+  const [earlyBirdExpired, setEarlyBirdExpired] = useState(false)
+  const [countdown, setCountdown] = useState({ hours: 0, minutes: 0, seconds: 0 })
 
   useEffect(() => {
     // Read from clinicq-subscription-{clinicId} (correct key)
@@ -36,10 +39,15 @@ export default function PricingPage() {
             const now = new Date()
             const days = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
             setTrialDaysLeft(Math.max(0, days))
-            // Early Bird = still within 7 days of registration
+            // Early Bird = registration date + 7 days
             const start = data.startDate ? new Date(data.startDate) : new Date()
+            const ebEnd = new Date(start)
+            ebEnd.setDate(ebEnd.getDate() + 7)
+            setEarlyBirdEndDate(ebEnd)
             const daysSinceReg = Math.ceil((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
-            setIsEarlyBird(days > 0 && daysSinceReg <= 7)
+            const ebExpired = now > ebEnd
+            setIsEarlyBird(days > 0 && !ebExpired)
+            setEarlyBirdExpired(ebExpired)
           } else if (data.plan === 'monthly' || data.plan === 'yearly') {
             setIsEarlyBird(false)
           }
@@ -54,6 +62,28 @@ export default function PricingPage() {
       }
     }
   }, [])
+
+  // Countdown timer for Early Bird
+  useEffect(() => {
+    if (!isEarlyBird || !earlyBirdEndDate) return
+    const updateCountdown = () => {
+      const now = new Date()
+      const diff = earlyBirdEndDate.getTime() - now.getTime()
+      if (diff <= 0) {
+        setIsEarlyBird(false)
+        setEarlyBirdExpired(true)
+        setCountdown({ hours: 0, minutes: 0, seconds: 0 })
+        return
+      }
+      const hours = Math.floor(diff / (1000 * 60 * 60))
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000)
+      setCountdown({ hours, minutes, seconds })
+    }
+    updateCountdown()
+    const interval = setInterval(updateCountdown, 1000)
+    return () => clearInterval(interval)
+  }, [isEarlyBird, earlyBirdEndDate])
 
   const features = [
     { icon: Users, label: 'ผู้ใช้ไม่จำกัด', desc: 'เจ้าของคลินิก, เจ้าหน้าที่, ผู้ทำหัตถการ' },
@@ -112,17 +142,42 @@ export default function PricingPage() {
           </div>
         </div>
 
-        {/* ═══ EARLY BIRD BANNER ═══ */}
-        {isEarlyBird && billing === 'yearly' && (
-          <div className="mb-8 p-4 bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-2xl text-center animate-bounce-in">
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <Gift className="w-5 h-5 text-amber-600" />
-              <span className="font-extrabold text-amber-700">🎉 Early Bird Special!</span>
+        {/* ═══ EARLY BIRD BANNER — Big Red Text ═══ */}
+        {billing === 'yearly' && isEarlyBird && earlyBirdEndDate && (() => {
+          const ebEndStr = earlyBirdEndDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })
+          const isLastDay = countdown.hours < 24 && countdown.hours >= 0
+          return (
+            <div className="mb-8 p-6 bg-gradient-to-r from-red-50 via-red-50 to-orange-50 border-2 border-red-400 rounded-3xl text-center shadow-lg shadow-red-100">
+              <div className="flex items-center justify-center gap-2 mb-3">
+                <span className="text-3xl">🔥</span>
+                <span className="text-2xl font-black text-red-600">ทดลองใช้ 30 วัน</span>
+              </div>
+              <div className="bg-red-600 text-white rounded-2xl py-3 px-6 mb-3">
+                <p className="text-xl md:text-2xl font-black">
+                  🎉 พิเศษ! Early Bird 3,999 บาท/ปี
+                </p>
+                <p className="text-sm mt-1 text-red-100">
+                  ประหยัดไปอีก 2,000 บาท! หากสมัครภายใน <b className="text-yellow-300">{ebEndStr}</b>
+                </p>
+              </div>
+              {/* Countdown Timer */}
+              <div className="flex items-center justify-center gap-2 mt-3">
+                <span className="text-sm font-medium text-red-600">⏳ เหลือเวลาอีก</span>
+                <div className="flex gap-1">
+                  <span className="bg-red-600 text-white px-2 py-1 rounded-lg text-sm font-black tabular-nums">{String(countdown.hours).padStart(2, '0')}</span>
+                  <span className="text-red-600 font-bold">:</span>
+                  <span className="bg-red-600 text-white px-2 py-1 rounded-lg text-sm font-black tabular-nums">{String(countdown.minutes).padStart(2, '0')}</span>
+                  <span className="text-red-600 font-bold">:</span>
+                  <span className="bg-red-600 text-white px-2 py-1 rounded-lg text-sm font-black tabular-nums">{String(countdown.seconds).padStart(2, '0')}</span>
+                </div>
+              </div>
             </div>
-            <p className="text-sm text-amber-700">
-              สมัครก่อนหมดอายุทดลอง — ราคาพิเศษ <span className="font-extrabold text-lg">3,999 บาท/ปี</span>
-            </p>
-            <p className="text-xs text-amber-600 mt-1">ประหยัดกว่าปกติ 2,000 บาท! เหลืออีก {trialDaysLeft} วัน</p>
+          )
+        })()}
+        {/* Early Bird Expired Notice */}
+        {billing === 'yearly' && earlyBirdExpired && (
+          <div className="mb-8 p-4 bg-gray-50 border border-gray-200 rounded-2xl text-center">
+            <p className="text-sm text-gray-500">⚠️ Early Bird สิ้นสุดแล้ว — ราคาปกติ <b>5,999 บาท/ปี</b></p>
           </div>
         )}
 
