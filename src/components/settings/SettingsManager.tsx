@@ -64,7 +64,7 @@ const roleColors = { doctor: 'bg-blue-50 text-blue-600', nurse: 'bg-green-50 tex
 
 export default function SettingsManager() {
   const { config, currentClinic } = useClinic()
-  const { currentRole } = useAuth()
+  const { currentRole, currentClinicId } = useAuth()
   const isOwner = currentRole === 'owner' || currentRole === 'platform_owner'
   const [activeTab, setActiveTab] = useState<SettingsTab>('clinic')
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
@@ -79,11 +79,15 @@ export default function SettingsManager() {
   const [clinicLogo, setClinicLogo] = useState('')
   const [operatingDays, setOperatingDays] = useState<string[]>(['mon', 'tue', 'wed', 'thu', 'fri'])
 
+  // Clinic-specific settings key
+  const settingsKey = currentClinicId ? `clinic-q-settings-${currentClinicId}` : 'clinic-q-settings'
+  const lineSettingsKey = currentClinicId ? `clinic-q-line-settings-${currentClinicId}` : 'clinic-q-line-settings'
+
   // Fetch clinic name from Supabase on mount and reset to defaults
   useEffect(() => {
     const fetchClinicData = async () => {
-      // First, try to load from localStorage settings
-      const saved = localStorage.getItem('clinic-q-settings')
+      // First, try to load from localStorage settings (clinic-specific)
+      const saved = localStorage.getItem(settingsKey) || localStorage.getItem('clinic-q-settings')
       if (saved) {
         try {
           const parsed = JSON.parse(saved)
@@ -157,7 +161,7 @@ export default function SettingsManager() {
   /* ───── LINE OA Settings State ───── */
   const [lineChannelSecret, setLineChannelSecret] = useState(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('clinic-q-line-settings')
+      const saved = localStorage.getItem(lineSettingsKey) || localStorage.getItem('clinic-q-line-settings')
       if (saved) {
         try {
           const parsed = JSON.parse(saved)
@@ -169,7 +173,7 @@ export default function SettingsManager() {
   })
   const [lineChannelToken, setLineChannelToken] = useState(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('clinic-q-line-settings')
+      const saved = localStorage.getItem(lineSettingsKey) || localStorage.getItem('clinic-q-line-settings')
       if (saved) {
         try {
           const parsed = JSON.parse(saved)
@@ -181,7 +185,7 @@ export default function SettingsManager() {
   })
   const [lineEnabled, setLineEnabled] = useState(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('clinic-q-line-settings')
+      const saved = localStorage.getItem(lineSettingsKey) || localStorage.getItem('clinic-q-line-settings')
       if (saved) {
         try {
           const parsed = JSON.parse(saved)
@@ -223,7 +227,7 @@ export default function SettingsManager() {
       channelToken: lineChannelToken,
       enabled: lineEnabled,
     }
-    localStorage.setItem('clinic-q-line-settings', JSON.stringify(settings))
+    localStorage.setItem(lineSettingsKey, JSON.stringify(settings))
     showToastMsg('บันทึกการตั้งค่า LINE OA สำเร็จ!', 'success')
   }
 

@@ -140,53 +140,60 @@ const MESSAGE_TEMPLATES = {
 };
 
 /**
- * ดึงการตั้งค่า LINE จาก localStorage
+ * ดึงการตั้งค่า LINE จาก localStorage (clinic-specific)
  */
-export function getLineSettings(): LineConfig | null {
+export function getLineSettings(clinicId?: string): LineConfig | null {
   if (typeof window === 'undefined') return null;
   
-  const saved = localStorage.getItem('clinic-q-line-settings');
-  if (!saved) return null;
-  
-  try {
-    const parsed = JSON.parse(saved);
-    if (parsed.channelToken && parsed.channelSecret && parsed.enabled) {
-      return {
-        channelAccessToken: parsed.channelToken,
-        channelSecret: parsed.channelSecret,
-      };
+  // Try clinic-specific key first, then shared key
+  const keys = clinicId ? [`clinic-q-line-settings-${clinicId}`, 'clinic-q-line-settings'] : ['clinic-q-line-settings'];
+  for (const key of keys) {
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.channelToken && parsed.channelSecret && parsed.enabled) {
+          return {
+            channelAccessToken: parsed.channelToken,
+            channelSecret: parsed.channelSecret,
+          };
+        }
+      } catch {}
     }
-  } catch {}
+  }
   
   return null;
 }
 
 /**
- * ดึง LINE User ID จากหมายเลขโทรศัพท์
+ * ดึง LINE User ID จากหมายเลขโทรศัพท์ (clinic-specific)
  */
-export function getLineUserId(phone: string): string | null {
+export function getLineUserId(phone: string, clinicId?: string): string | null {
   if (typeof window === 'undefined') return null;
   
-  const lineUsers = localStorage.getItem('clinic-q-line-users');
-  if (!lineUsers) return null;
-  
-  try {
-    const users: LineUserProfile[] = JSON.parse(lineUsers);
-    const normalizedPhone = phone.replace(/-/g, '');
-    const user = users.find(u => u.phoneNumber?.replace(/-/g, '') === normalizedPhone);
-    return user?.userId || null;
-  } catch {
-    return null;
+  const keys = clinicId ? [`clinic-q-line-users-${clinicId}`, 'clinic-q-line-users'] : ['clinic-q-line-users'];
+  for (const key of keys) {
+    const lineUsers = localStorage.getItem(key);
+    if (lineUsers) {
+      try {
+        const users: LineUserProfile[] = JSON.parse(lineUsers);
+        const normalizedPhone = phone.replace(/-/g, '');
+        const user = users.find(u => u.phoneNumber?.replace(/-/g, '') === normalizedPhone);
+        return user?.userId || null;
+      } catch {}
+    }
   }
+  return null;
 }
 
 /**
- * บันทึก LINE User Profile
+ * บันทึก LINE User Profile (clinic-specific)
  */
-export function saveLineUserProfile(profile: LineUserProfile): void {
+export function saveLineUserProfile(profile: LineUserProfile, clinicId?: string): void {
   if (typeof window === 'undefined') return;
   
-  const lineUsers = localStorage.getItem('clinic-q-line-users');
+  const storageKey = clinicId ? `clinic-q-line-users-${clinicId}` : 'clinic-q-line-users';
+  const lineUsers = localStorage.getItem(storageKey);
   const users: LineUserProfile[] = lineUsers ? JSON.parse(lineUsers) : [];
   
   const existingIndex = users.findIndex(u => u.userId === profile.userId);
@@ -196,7 +203,7 @@ export function saveLineUserProfile(profile: LineUserProfile): void {
     users.push(profile);
   }
   
-  localStorage.setItem('clinic-q-line-users', JSON.stringify(users));
+  localStorage.setItem(storageKey, JSON.stringify(users));
 }
 
 /**

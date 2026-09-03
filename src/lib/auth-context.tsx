@@ -209,8 +209,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               })
               localStorage.setItem(STORAGE_KEYS.CLINICS, JSON.stringify(existingClinics))
             }
-            // Update clinic settings with name from Supabase
-            localStorage.setItem('clinic-q-settings', JSON.stringify({
+            // Update clinic settings with name from Supabase (clinic-specific)
+            localStorage.setItem(`clinic-q-settings-${clinic.id}`, JSON.stringify({
               clinicName: clinic.name,
               logo: '',
               operatingDays: ['mon', 'tue', 'wed', 'thu', 'fri'],

@@ -21,8 +21,11 @@ function LineBindForm() {
     const clinic = searchParams.get('clinic') || 'dental'
     setClinicId(clinic)
     
-    // Get clinic name from settings
-    const saved = localStorage.getItem('clinic-q-settings')
+    // Get clinic name from settings (clinic-specific)
+    const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
+    const matchedClinic = clinics.find((c: any) => c.type === clinic)
+    const cid = matchedClinic?.id
+    const saved = (cid ? localStorage.getItem(`clinic-q-settings-${cid}`) : null) || localStorage.getItem('clinic-q-settings')
     if (saved) {
       try {
         const parsed = JSON.parse(saved)

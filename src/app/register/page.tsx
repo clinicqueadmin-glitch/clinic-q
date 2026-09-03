@@ -148,7 +148,7 @@ export default function RegisterPage() {
     }))
     
     // 7. Initialize clinic-specific settings with clinic name
-    localStorage.setItem('clinic-q-settings', JSON.stringify({
+    localStorage.setItem(`clinic-q-settings-${clinicId}`, JSON.stringify({
       clinicName: form.clinicName,
       logo: '',
       operatingDays: ['mon', 'tue', 'wed', 'thu', 'fri'],

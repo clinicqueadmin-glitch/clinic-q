@@ -89,8 +89,8 @@ export async function supabaseRegister(data: {
       paidEndDate: null,
     }))
     
-    // Initialize clinic settings with clinic name
-    localStorage.setItem('clinic-q-settings', JSON.stringify({
+    // Initialize clinic settings with clinic name (clinic-specific)
+    localStorage.setItem(`clinic-q-settings-${clinicId}`, JSON.stringify({
       clinicName: data.clinicName,
       logo: '',
       operatingDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
