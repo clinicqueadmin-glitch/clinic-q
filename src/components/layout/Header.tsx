@@ -54,8 +54,36 @@ export default function Header() {
           }
         } catch {}
       } else {
-        // Default: assume trial if no subscription data
-        setTrialInfo({ isTrial: true, daysLeft: 30, endDate: 'ยังไม่กำหนด' })
+        // No subscription data — calculate from registration date
+        try {
+          const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
+          const registeredClinics = JSON.parse(localStorage.getItem('clinicq-registered-clinics') || '[]')
+          const regClinic = clinics.find((c: any) => c.id === currentClinicId) || registeredClinics.find((c: any) => c.id === currentClinicId)
+          const regDate = regClinic?.registeredAt || regClinic?.createdAt
+          if (regDate) {
+            const start = new Date(regDate)
+            const trialEnd = new Date(start)
+            trialEnd.setDate(trialEnd.getDate() + 30)
+            const now = new Date()
+            const daysLeft = Math.ceil((trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+            // Save subscription data for future use
+            localStorage.setItem(`clinicq-subscription-${currentClinicId}`, JSON.stringify({
+              plan: 'trial', status: 'active',
+              startDate: start.toISOString(),
+              trialEndDate: trialEnd.toISOString(),
+              paidEndDate: null,
+            }))
+            setTrialInfo({
+              isTrial: true,
+              daysLeft: Math.max(0, daysLeft),
+              endDate: trialEnd.toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' }),
+            })
+          } else {
+            setTrialInfo({ isTrial: true, daysLeft: 30, endDate: '—' })
+          }
+        } catch {
+          setTrialInfo({ isTrial: true, daysLeft: 30, endDate: '—' })
+        }
       }
     }
   }, [currentClinicId])
@@ -122,13 +150,19 @@ export default function Header() {
               <>🧪 ทดลองใช้ฟรี — เหลืออีก <b>{trialInfo.daysLeft}</b> วัน (หมดอายุ {trialInfo.endDate})</>
             )}
           </span>
-          {(trialInfo.daysLeft <= 7) && (
+          {/* Upgrade button — owner/manager only */}
+          {(currentRole === 'owner' || currentRole === 'manager') && (
             <button 
               onClick={() => router.push('/pricing')}
-              className="px-3 py-1 bg-white rounded-full text-xs font-bold shadow-md hover:shadow-lg transition-shadow"
-              style={{ color: trialInfo.daysLeft <= 3 ? '#DC2626' : '#D97706' }}
+              className={`px-3 py-1 rounded-full text-xs font-bold shadow-md hover:shadow-lg transition-shadow ${
+                trialInfo.daysLeft <= 3
+                  ? 'bg-white text-red-600'
+                  : trialInfo.daysLeft <= 7
+                    ? 'bg-white text-orange-600'
+                    : 'bg-white text-teal-600'
+              }`}
             >
-              อัปเกรดเลย →
+              📦 ไปที่ราคาและแพ็กเกจ →
             </button>
           )}
         </span>

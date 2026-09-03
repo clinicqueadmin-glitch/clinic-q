@@ -66,6 +66,7 @@ export default function SettingsManager() {
   const { config, currentClinic } = useClinic()
   const { currentRole, currentClinicId } = useAuth()
   const isOwner = currentRole === 'owner' || currentRole === 'platform_owner'
+  const canManageSubscription = isOwner || currentRole === 'manager'
   const [activeTab, setActiveTab] = useState<SettingsTab>('clinic')
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
 
@@ -521,8 +522,8 @@ export default function SettingsManager() {
 
         {/* Content */}
         <div className="flex-1">
-          {/* Subscription Info — Owner only */}
-          {isOwner && (() => {
+          {/* Subscription Info — Owner/Manager only */}
+          {canManageSubscription && (() => {
             const subRaw = currentClinicId ? localStorage.getItem(`clinicq-subscription-${currentClinicId}`) : null
             const sub = subRaw ? JSON.parse(subRaw) : null
             const planName = sub?.plan === 'trial' ? '🧪 ทดลองใช้ฟรี' : sub?.plan === 'monthly' ? '📦 รายเดือน' : sub?.plan === 'yearly' ? '📦 รายปี' : '📦 Clinic-Q Professional'
