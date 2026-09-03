@@ -130,7 +130,7 @@ export default function PricingPage() {
             แพ็กเกจเดียว ครบทุกฟีเจอร์
           </h1>
           <p className="text-gray-500 mt-3 text-lg">
-            เริ่มทดลองใช้ฟรี 30 วัน · ไม่ต้องบัตรเครดิต · ไม่มีสัญญาผูกมัด
+            แพ็กเกจเดียว ครบทุกฟีเจอร์ · ไม่มีสัญญาผูกมัด
           </p>
 
           {/* Billing Toggle */}
@@ -304,34 +304,25 @@ export default function PricingPage() {
                 })}
               </div>
 
-              {/* CTA */}
-              <button
-                onClick={() => router.push('/register')}
-                className="w-full py-4 rounded-2xl font-bold text-white bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2 text-lg"
-              >
-                เริ่มทดลองใช้ฟรี 30 วัน <ArrowRight className="w-5 h-5" />
-              </button>
-
-              {/* ═══ Payment Button for Subscribed Users ═══ */}
-              {clinicId && isSubscribed && billing === 'yearly' && (
+              {/* ═══ Payment Button ═══ */}
+              {clinicId ? (
                 <button
                   onClick={() => setShowPayment(true)}
-                  className="w-full mt-3 py-3 rounded-2xl font-bold text-white bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 transition-all shadow-lg flex items-center justify-center gap-2"
+                  className="w-full py-4 rounded-2xl font-bold text-white bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2 text-lg"
                 >
-                  💳 ชำระเงิน {isEarlyBird ? '3,999' : '5,999'} บาท/ปี
+                  💳 ชำระเงิน {billing === 'yearly' ? (isEarlyBird ? '3,999' : '5,999') + ' บาท/ปี' : '599 บาท/เดือน'}
                 </button>
-              )}
-              {clinicId && isSubscribed && billing === 'monthly' && (
+              ) : (
                 <button
-                  onClick={() => setShowPayment(true)}
-                  className="w-full mt-3 py-3 rounded-2xl font-bold text-white bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 transition-all shadow-lg flex items-center justify-center gap-2"
+                  onClick={() => router.push('/login')}
+                  className="w-full py-4 rounded-2xl font-bold text-white bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2 text-lg"
                 >
-                  💳 ชำระเงิน 599 บาท/เดือน
+                  เข้าสู่ระบบเพื่อชำระเงิน <ArrowRight className="w-5 h-5" />
                 </button>
               )}
 
               <p className="text-center text-xs text-gray-400 mt-4">
-                ทดลองฟรี 30 วัน · ไม่ต้องบัตรเครดิต · ยกเลิกเมื่อไหร่ก็ได้
+                ไม่มีสัญญาผูกมัด · ยกเลิกเมื่อไหร่ก็ได้
               </p>
               <p className="text-center text-xs mt-3">
                 ติดต่อ Admin · <a href="https://lin.ee/OqlmFFG" target="_blank" rel="noopener noreferrer" className="text-green-500 font-bold hover:underline">💬 LINE OA</a>
@@ -430,13 +421,13 @@ export default function PricingPage() {
         {/* ═══ CTA ═══ */}
         <div className="mt-16 text-center">
           <div className="bg-gradient-to-r from-teal-500 to-teal-600 rounded-3xl p-8 text-white">
-            <h2 className="text-2xl font-extrabold mb-2">พร้อมที่จะเริ่มต้น?</h2>
-            <p className="text-teal-100 mb-6">สมัครวันนี้ ทดลองใช้ฟรี 30 วัน ไม่ต้องบัตรเครดิต</p>
+            <h2 className="text-2xl font-extrabold mb-2">พร้อมที่จะอัปเกรด?</h2>
+            <p className="text-teal-100 mb-6">สมัครแพ็กเกจวันนี้ · ใช้ได้ทุกฟีเจอร์ · ไม่มีสัญญาผูกมัด</p>
             <button
-              onClick={() => router.push('/register')}
+              onClick={() => clinicId ? setShowPayment(true) : router.push('/login')}
               className="px-8 py-4 rounded-2xl bg-white text-teal-600 font-bold text-lg hover:shadow-xl transition-all shadow-lg inline-flex items-center gap-2"
             >
-              🚀 เริ่มทดลองใช้ฟรี <ArrowRight className="w-5 h-5" />
+              💳 เลือกแพ็กเกจ <ArrowRight className="w-5 h-5" />
             </button>
           </div>
         </div>
