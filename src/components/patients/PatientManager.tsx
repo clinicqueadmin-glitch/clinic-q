@@ -46,8 +46,12 @@ function formatMonthsAgo(lastVisit: string): string {
 
 /** Format date for display */
 function formatDate(dateStr: string): string {
+  if (!dateStr) return '—'
   try {
+    // Handle time-only strings like '14:30'
+    if (/^\d{1,2}:\d{2}$/.test(dateStr)) return dateStr
     const d = new Date(dateStr)
+    if (isNaN(d.getTime())) return dateStr // Invalid date, return as-is
     return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
   } catch {
     return dateStr
@@ -80,8 +84,10 @@ export default function PatientManager() {
       if (!item.phone || item.phone.length < 9) return
       
       const existing = patientMap.get(item.phone)
+      // Use bookedAt or appointmentDate for the visit date, fallback to today
+      const visitDate = item.bookedAt || item.appointmentDate || item.arrivalTime?.split('T')[0] || new Date().toISOString().split('T')[0]
       const visit: VisitRecord = {
-        date: item.completedAt || item.time || '',
+        date: visitDate,
         practitioner: item.assignedDoctor || 'ไม่ระบุ',
         procedure: item.procedure || item.completedProcedures?.map(p => p.name).join(', ') || 'ไม่ระบุ',
         duration: item.totalDuration,
@@ -159,6 +165,9 @@ export default function PatientManager() {
                     {viewingPatient.phone}
                   </a>
                   <p className="text-xs text-gray-400 mt-1">เข้ารับบริการ {viewingPatient.visits.length} ครั้ง</p>
+                  {viewingPatient.visits.length > 0 && (
+                    <p className="text-xs text-blue-600 mt-0.5">📅 มารับบริการล่าสุด: {formatDate(viewingPatient.visits[0].date)}</p>
+                  )}
                 </div>
               </div>
 
