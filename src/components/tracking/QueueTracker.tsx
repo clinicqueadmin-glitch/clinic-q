@@ -512,14 +512,29 @@ export default function QueueTracker() {
                   <div>
                     <div className="flex justify-between text-xs text-gray-500 mb-1">
                       <span>ความคืบหน้า</span>
-                      <span>{trackingInfo.totalWaiting > 0 ? Math.round(((trackingInfo.totalWaiting - (trackingInfo.waitingAhead ?? 0)) / trackingInfo.totalWaiting) * 100) : 100}%</span>
+                      <span>{(() => {
+                        const completed = trackingInfo.completedCount ?? 0
+                        const waitingAhead = trackingInfo.waitingAhead ?? 0
+                        const totalPeople = (trackingInfo.totalWaiting ?? 0) + completed
+                        if (totalPeople === 0) return 100
+                        const progress = Math.round(((completed + ((trackingInfo.totalWaiting ?? 0) - waitingAhead)) / totalPeople) * 100)
+                        return Math.min(100, Math.max(0, progress))
+                      })()}%</span>
                     </div>
                     <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
                       <div className="h-full rounded-full transition-all duration-500" style={{
-                        width: `${trackingInfo.totalWaiting > 0 ? ((trackingInfo.totalWaiting - (trackingInfo.waitingAhead ?? 0)) / trackingInfo.totalWaiting) * 100 : 100}%`,
+                        width: `${(() => {
+                          const completed = trackingInfo.completedCount ?? 0
+                          const waitingAhead = trackingInfo.waitingAhead ?? 0
+                          const totalPeople = (trackingInfo.totalWaiting ?? 0) + completed
+                          if (totalPeople === 0) return 100
+                          const progress = ((completed + ((trackingInfo.totalWaiting ?? 0) - waitingAhead)) / totalPeople) * 100
+                          return Math.min(100, Math.max(0, progress))
+                        })()}%`,
                         backgroundColor: accentColor,
                       }} />
                     </div>
+                    <p className="text-[10px] text-gray-400 mt-1">เสร็จแล้ว {trackingInfo.completedCount ?? 0} / {(trackingInfo.totalWaiting ?? 0) + (trackingInfo.completedCount ?? 0)} คน</p>
                   </div>
                 </div>
               )}
