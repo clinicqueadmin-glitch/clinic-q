@@ -753,8 +753,8 @@ export default function SettingsManager() {
                         />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-gray-900 mb-1">สถานะคิวแยกตามสาขา</p>
-                        <p className="text-xs text-gray-500 mb-3">แสดงจำนวนคิวรอ + เวลาคาดการณ์ แยกตามสาขา พร้อม auto-refresh ทุก 30 วินาที</p>
+                        <p className="text-sm font-bold text-gray-900 mb-1">สถานะคิวปัจจุบัน</p>
+                        <p className="text-xs text-gray-500 mb-3">แสดงจำนวนคิวรอ + เวลาคาดการณ์ ของคลินิก พร้อม auto-refresh ทุก 30 วินาที</p>
                         <div className="flex flex-wrap gap-2">
                           <button
                             onClick={() => {
