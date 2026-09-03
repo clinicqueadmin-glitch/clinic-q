@@ -17,6 +17,27 @@ export default function Header() {
   const userRef = useRef<HTMLDivElement>(null)
   const { user, currentRole, currentClinicId, getUserClinics, logout } = useAuth()
   
+  // Check if platform owner is viewing a clinic
+  const [isViewingAsOwner, setIsViewingAsOwner] = useState(false)
+  useEffect(() => {
+    try {
+      const authRaw = localStorage.getItem('clinicq-auth')
+      if (authRaw) {
+        const auth = JSON.parse(authRaw)
+        setIsViewingAsOwner(!!auth.isViewingAsOwner)
+      }
+    } catch {}
+  }, [])
+  
+  const backToPlatform = () => {
+    const platformSession = localStorage.getItem('clinicq-platform-session')
+    if (platformSession) {
+      localStorage.setItem('clinicq-auth', platformSession)
+      localStorage.removeItem('clinicq-platform-session')
+    }
+    window.location.href = '/platform'
+  }
+  
   // Get role config (handle both clinic role and platform role)
   const getRoleDisplay = () => {
     if (currentRole === 'platform_owner') {
@@ -172,20 +193,32 @@ export default function Header() {
       <div className="flex items-center justify-between px-4 md:px-6 py-4">
         {/* Back + Home Buttons */}
         <div className="flex items-center gap-1 mr-3">
-          <button
-            onClick={() => router.back()}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            title="กลับไปหน้าก่อนหน้า"
-          >
-            <ArrowLeft className="w-5 h-5 text-gray-600" />
-          </button>
-          <button
-            onClick={() => router.push('/')}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            title="กลับหน้าหลัก"
-          >
-            <Home className="w-5 h-5 text-gray-600" />
-          </button>
+          {isViewingAsOwner ? (
+            <button
+              onClick={backToPlatform}
+              className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-xl text-xs font-bold hover:from-red-600 hover:to-pink-600 transition-all shadow-md"
+              title="กลับไป Platform Dashboard"
+            >
+              👑 กลับ Platform
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={() => router.back()}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                title="กลับไปหน้าก่อนหน้า"
+              >
+                <ArrowLeft className="w-5 h-5 text-gray-600" />
+              </button>
+              <button
+                onClick={() => router.push('/')}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                title="กลับหน้าหลัก"
+              >
+                <Home className="w-5 h-5 text-gray-600" />
+              </button>
+            </>
+          )}
         </div>
 
         {/* Search - Desktop */}

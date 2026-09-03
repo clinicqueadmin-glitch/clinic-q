@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
   Building2, Users, Activity, AlertTriangle, CheckCircle,
   Clock, TrendingUp, Search, Crown,
@@ -55,6 +55,24 @@ export default function PlatformDashboard() {
   const [platformClinics, setPlatformClinics] = useState<ClinicWithStats[]>([])
   const [allUsers, setAllUsers] = useState<Array<{ id: string; name: string; email: string; role: string; clinicType: string; color: string }>>([])
   const [isLoading, setIsLoading] = useState(true)
+
+  // Enter clinic as platform owner
+  const enterClinic = useCallback((clinicId: string, clinicType: string) => {
+    // Save platform owner session for back navigation
+    const authRaw = localStorage.getItem('clinicq-auth') || localStorage.getItem('clinicq-auth-session')
+    if (authRaw) {
+      localStorage.setItem('clinicq-platform-session', authRaw)
+    }
+    // Create owner session for this clinic
+    const clinicSession = {
+      user: { id: 'platform-owner', email: 'admin@clinicq.com', name: 'เจ้าของระบบ', role: 'platform_owner' },
+      currentClinicId: clinicId,
+      isViewingAsOwner: true, // Flag to indicate platform owner is viewing
+    }
+    localStorage.setItem('clinicq-auth', JSON.stringify(clinicSession))
+    localStorage.setItem('clinic-q-type', clinicType)
+    window.location.href = '/'
+  }, [])
 
   // Load clinics from Supabase
   useEffect(() => {
@@ -503,10 +521,7 @@ export default function PlatformDashboard() {
                       </td>
                       <td className="py-3 px-3 text-center">
                         <button
-                          onClick={() => {
-                            localStorage.setItem('clinic-q-type', clinic.type)
-                            window.location.href = '/'
-                          }}
+                          onClick={() => enterClinic(clinic.id, clinic.type)}
                           className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 transition-all shadow-sm"
                         >
                           <ExternalLink className="w-3 h-3" />
