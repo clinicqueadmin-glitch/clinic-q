@@ -12,6 +12,7 @@ import { useQueue, type BookingMode, type DifficultyLevel, type CompletedProcedu
 import { useNotification } from '@/lib/use-notification'
 import Toast from '@/components/ui/Toast'
 import AddRoomModal from '@/components/dashboard/AddRoomModal'
+import EditRoomModal from '@/components/dashboard/EditRoomModal'
 import {
   getDefaultBranchData, getAllActiveProcedures,
   findRoomForProcedure, getOvertimeStatus, getQueueWaitInfo,
@@ -283,6 +284,7 @@ export default function TodayOps() {
 
   // Add Room modal
   const [showAddRoom, setShowAddRoom] = useState(false)
+  const [editingRoom, setEditingRoom] = useState<Room | null>(null)
 
   // Complete Queue modal
   const [showComplete, setShowComplete] = useState(false)
@@ -580,6 +582,30 @@ export default function TodayOps() {
       } catch {}
     }
     showToastMsg(`เพิ่มห้องตรวจวันนี้สำเร็จ!`, 'success')
+  }
+
+  // Edit room handler
+  const handleEditRoom = (updated: Room) => {
+    // Refresh daily rooms from localStorage
+    const saved = localStorage.getItem(dailyRoomKey)
+    if (saved) {
+      try {
+        setDailyRooms(JSON.parse(saved))
+      } catch {}
+    }
+    showToastMsg(`แก้ไข ${updated.name} สำเร็จ!`, 'success')
+  }
+
+  // Delete room handler
+  const handleDeleteRoom = (roomId: number) => {
+    // Refresh daily rooms from localStorage
+    const saved = localStorage.getItem(dailyRoomKey)
+    if (saved) {
+      try {
+        setDailyRooms(JSON.parse(saved))
+      } catch {}
+    }
+    showToastMsg(`ลบห้องออกจากรายการวันนี้แล้ว`, 'info')
   }
 
   const handleRegisterAppointment = () => {
@@ -1522,6 +1548,15 @@ export default function TodayOps() {
                   <div className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-400">ว่าง</div>
                 )}
               </div>
+              {/* Edit button (only when room is not serving) */}
+              {!room.serving && !isProvider && (
+                <button
+                  onClick={() => setEditingRoom(room)}
+                  className="mt-2 px-3 py-1 rounded-lg text-xs font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                >
+                  ✏️ แก้ไข
+                </button>
+              )}
               {room.serving && (() => {
                 const ot = room.serving.servingAt ? getOvertimeStatus(branchData, room.serving.procedureId, room.serving.servingAt, now.getTime()) : null
                 return (
@@ -1807,6 +1842,15 @@ export default function TodayOps() {
         open={showAddRoom}
         onClose={() => setShowAddRoom(false)}
         onSave={handleAddRoom}
+      />
+
+      {/* ═══════ EDIT ROOM MODAL ═══════ */}
+      <EditRoomModal
+        open={!!editingRoom}
+        room={editingRoom}
+        onClose={() => setEditingRoom(null)}
+        onSave={handleEditRoom}
+        onDelete={handleDeleteRoom}
       />
 
       {/* Setup Guide for new clinics */}
