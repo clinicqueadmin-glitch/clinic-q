@@ -123,20 +123,28 @@ export default function QueueStatusBoard() {
     return effectiveQueue.filter(q => q.status === 'cancelled')
   }, [effectiveQueue])
 
-  // ═══ Read daily rooms from localStorage ═══
+  // ═══ Read daily rooms from clinic-specific localStorage ═══
   const dailyRooms = useMemo(() => {
     if (typeof window === 'undefined') return []
-    try {
-      const saved = localStorage.getItem('clinic-daily-rooms')
-      const savedDate = localStorage.getItem('clinic-daily-rooms-date')
-      const today = new Date().toISOString().split('T')[0]
-      if (savedDate === today && saved) {
-        const rooms: Room[] = JSON.parse(saved)
-        return rooms.filter(r => r.active)
-      }
-    } catch {}
+    const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
+    const matched = clinics.find((c: any) => c.type === clinicType)
+    const cid = matched?.id
+    const today = new Date().toISOString().split('T')[0]
+    const keys = cid ? [`clinic-daily-rooms-${cid}`, 'clinic-daily-rooms'] : ['clinic-daily-rooms']
+    const dateKeys = cid ? [`clinic-daily-rooms-date-${cid}`, 'clinic-daily-rooms-date'] : ['clinic-daily-rooms-date']
+    for (let i = 0; i < keys.length; i++) {
+      try {
+        const saved = localStorage.getItem(keys[i])
+        const savedDate = localStorage.getItem(dateKeys[i])
+        if (savedDate === today && saved) {
+          const rooms: Room[] = JSON.parse(saved)
+          // Only show rooms with practitioners assigned
+          return rooms.filter(r => r.active && r.practitionerId)
+        }
+      } catch {}
+    }
     return []
-  }, [refreshTick])
+  }, [clinicType, refreshTick])
 
   // ═══ Per-room status ═══
   const roomStatuses = useMemo(() => {

@@ -146,24 +146,10 @@ export default function TodayOps() {
       const saved = localStorage.getItem(dailyRoomKey)
       const savedDate = localStorage.getItem(dailyDateKey)
       const today = new Date().toISOString().split('T')[0]
-      // If date doesn't match today, clear daily rooms and auto-populate from RoomSettings
+      // If date doesn't match today, clear daily rooms (new day — user adds rooms manually)
       if (savedDate !== today) {
         localStorage.removeItem(dailyRoomKey)
         localStorage.setItem(dailyDateKey, today)
-        // Auto-populate daily rooms from RoomSettings template
-        const templateRooms = localStorage.getItem(roomKey)
-        if (templateRooms) {
-          try {
-            const parsed = JSON.parse(templateRooms)
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              const activeRooms = parsed.filter((r: Room) => r.active)
-              if (activeRooms.length > 0) {
-                localStorage.setItem(dailyRoomKey, JSON.stringify(activeRooms))
-                return activeRooms
-              }
-            }
-          } catch {}
-        }
         return []
       }
       if (saved) {
@@ -203,47 +189,19 @@ export default function TodayOps() {
     return () => clearInterval(interval)
   }, [currentClinic])
   
-  // Merge RoomSettings + daily schedule for dashboard display
+  // Dashboard shows ONLY daily rooms that have been configured (with practitioner + branch)
   const allActiveRooms = useMemo(() => {
-    // Start with rooms from daily schedule (these have practitioner, branch, time)
-    const activeDailyRooms = dailyRooms.filter(r => r.active)
-    
-    // If no daily rooms, use rooms from RoomSettings
-    if (activeDailyRooms.length === 0) {
-      return savedRooms.filter(r => r.active).map(room => ({
-        ...room,
-        name: room.name || `ห้อง ${room.id}`,
-        color: room.color || '#93C5FD',
-        branchId: room.branchId || '',
-        practitionerId: room.practitionerId || '',
-      }))
-    }
-    
-    // Use daily rooms (they already have room info from RoomSettings + practitioner/branch/time)
-    return activeDailyRooms.map(room => ({
+    // Only show daily rooms that have a practitioner assigned
+    return dailyRooms.filter(r => r.active && r.practitionerId).map(room => ({
       ...room,
       name: room.name || `ห้อง ${room.id}`,
       color: room.color || '#93C5FD',
     }))
-  }, [savedRooms, dailyRooms, branchData])
+  }, [dailyRooms])
 
-  // Auto-sync: when savedRooms change (RoomSettings updated), update daily rooms too
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const savedDate = localStorage.getItem(dailyDateKey)
-    const today = new Date().toISOString().split('T')[0]
-    // Only sync if today's daily rooms haven't been manually configured
-    // (no practitioner assigned to any room means it's auto-populated)
-    if (savedDate === today && dailyRooms.length > 0) return
-    if (savedRooms.length === 0) return
-    // Auto-populate from savedRooms
-    const activeRooms = savedRooms.filter(r => r.active)
-    if (activeRooms.length > 0) {
-      setDailyRooms(activeRooms)
-      localStorage.setItem(dailyRoomKey, JSON.stringify(activeRooms))
-      localStorage.setItem(dailyDateKey, today)
-    }
-  }, [savedRooms])
+  // NOTE: Daily rooms are NOT auto-populated from RoomSettings.
+  // Users must manually add rooms via the Add Room modal on the dashboard each day.
+  // This ensures each room has a practitioner and branch assigned.
   
   // Listen for localStorage changes (when RoomSettings or daily schedule is updated)
   useEffect(() => {

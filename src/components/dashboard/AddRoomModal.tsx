@@ -106,10 +106,14 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
     }
   }, [selectedRoom])
 
-  // Available rooms (rooms that are active in RoomSettings AND not already selected today)
+  // Available rooms: active in RoomSettings AND not already fully configured (has practitioner) in daily rooms
   const availableRooms = useMemo(() => {
-    const usedRoomIds = new Set(dailyRooms.filter(r => r.active).map(r => r.id))
-    return savedRooms.filter(r => r.active && !usedRoomIds.has(r.id))
+    // Rooms that have a practitioner assigned in daily schedule are "used"
+    const fullyConfiguredRoomIds = new Set(
+      dailyRooms.filter(r => r.active && r.practitionerId).map(r => r.id)
+    )
+    // Show rooms that: are active in Settings AND don't have a practitioner assigned today
+    return savedRooms.filter(r => r.active && !fullyConfiguredRoomIds.has(r.id))
   }, [savedRooms, dailyRooms])
 
   // Show confirm dialog before saving
