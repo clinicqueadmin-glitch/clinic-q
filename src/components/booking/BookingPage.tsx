@@ -15,18 +15,36 @@ import PhoneInput from '@/components/ui/PhoneInput'
 
 export default function BookingPage() {
   const searchParams = useSearchParams()
-  const clinicType = (searchParams.get('clinic') || 'dental') as ClinicType
-
-  const clinicCfg = clinicConfig[clinicType]
+  const urlClinicType = searchParams.get('clinic') as ClinicType | null
   const { queue, setQueue } = useQueue()
 
-  // Find current clinic ID from localStorage
-  const clinicId = useMemo(() => {
-    if (typeof window === 'undefined') return null
-    const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
-    const current = clinics.find((c: any) => c.type === clinicType)
-    return current?.id || null
-  }, [clinicType])
+  // Detect clinic ID and type from localStorage
+  const { clinicId, clinicType, clinicCfg } = useMemo(() => {
+    if (typeof window !== 'undefined') {
+      const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
+      if (urlClinicType) {
+        const found = clinics.find((c: any) => c.type === urlClinicType)
+        return {
+          clinicId: found?.id || null,
+          clinicType: urlClinicType,
+          clinicCfg: clinicConfig[urlClinicType] || clinicConfig['dental'],
+        }
+      }
+      if (clinics.length > 0) {
+        const userClinic = clinics[0]
+        return {
+          clinicId: userClinic.id,
+          clinicType: (userClinic.type || 'dental') as ClinicType,
+          clinicCfg: clinicConfig[(userClinic.type || 'dental') as ClinicType] || clinicConfig['dental'],
+        }
+      }
+    }
+    return {
+      clinicId: null,
+      clinicType: 'dental' as ClinicType,
+      clinicCfg: clinicConfig['dental'],
+    }
+  }, [urlClinicType])
 
   // Load branch data from clinic-specific storage, fallback to defaults
   const branchData = useMemo(() => {

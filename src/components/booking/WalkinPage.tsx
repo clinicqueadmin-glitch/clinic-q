@@ -22,17 +22,38 @@ interface SelectedProc {
 export default function WalkinPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const clinicType = (searchParams.get('clinic') || 'dental') as ClinicType
-  const clinicCfg = clinicConfig[clinicType]
+  const urlClinicType = searchParams.get('clinic') as ClinicType | null
   const { queue, setQueue, addQueueItem } = useQueue()
   
-  // Find current clinic ID from localStorage
-  const clinicId = useMemo(() => {
-    if (typeof window === 'undefined') return null
-    const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
-    const current = clinics.find((c: any) => c.type === clinicType)
-    return current?.id || null
-  }, [clinicType])
+  // Detect clinic ID and type from localStorage (clinicq-clinics has the user's actual clinic)
+  const { clinicId, clinicType, clinicCfg } = useMemo(() => {
+    if (typeof window !== 'undefined') {
+      const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
+      // If URL has ?clinic= use that, otherwise use the first clinic from localStorage
+      if (urlClinicType) {
+        const found = clinics.find((c: any) => c.type === urlClinicType)
+        return {
+          clinicId: found?.id || null,
+          clinicType: urlClinicType,
+          clinicCfg: clinicConfig[urlClinicType] || clinicConfig['dental'],
+        }
+      }
+      // No URL param — use the user's clinic from localStorage
+      if (clinics.length > 0) {
+        const userClinic = clinics[0]
+        return {
+          clinicId: userClinic.id,
+          clinicType: (userClinic.type || 'dental') as ClinicType,
+          clinicCfg: clinicConfig[(userClinic.type || 'dental') as ClinicType] || clinicConfig['dental'],
+        }
+      }
+    }
+    return {
+      clinicId: null,
+      clinicType: 'dental' as ClinicType,
+      clinicCfg: clinicConfig['dental'],
+    }
+  }, [urlClinicType])
   
   // Clinic-specific storage keys
   const dailyRoomKey = clinicId ? `clinic-daily-rooms-${clinicId}` : 'clinic-daily-rooms'
