@@ -2,7 +2,7 @@
 // Clinic-Q Subscription Types & Plans
 // ═══════════════════════════════════════════
 
-export type SubscriptionPlan = 'trial' | 'clinicq'
+export type SubscriptionPlan = 'trial' | 'clinicq' | 'monthly' | 'yearly'
 export type SubscriptionStatus = 'active' | 'expired' | 'cancelled' | 'suspended'
 
 export interface Subscription {

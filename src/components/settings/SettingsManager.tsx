@@ -522,24 +522,35 @@ export default function SettingsManager() {
         {/* Content */}
         <div className="flex-1">
           {/* Subscription Info — Owner only */}
-          {isOwner && (
-            <div className="mb-4 p-4 bg-gradient-to-r from-teal-50 to-emerald-50 border border-teal-200 rounded-2xl">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center">
-                    <CreditCard className="w-5 h-5 text-teal-600" />
+          {isOwner && (() => {
+            const subRaw = currentClinicId ? localStorage.getItem(`clinicq-subscription-${currentClinicId}`) : null
+            const sub = subRaw ? JSON.parse(subRaw) : null
+            const planName = sub?.plan === 'trial' ? '🧪 ทดลองใช้ฟรี' : sub?.plan === 'monthly' ? '📦 รายเดือน' : sub?.plan === 'yearly' ? '📦 รายปี' : '📦 Clinic-Q Professional'
+            const startDate = sub?.startDate ? new Date(sub.startDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'
+            const endDate = sub?.plan === 'trial' && sub?.trialEndDate
+              ? new Date(sub.trialEndDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })
+              : sub?.paidEndDate ? new Date(sub.paidEndDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })
+              : '—'
+            const daysLeft = sub?.trialEndDate ? Math.max(0, Math.ceil((new Date(sub.trialEndDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : null
+            return (
+              <div className="mb-4 p-4 bg-gradient-to-r from-teal-50 to-emerald-50 border border-teal-200 rounded-2xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center">
+                      <CreditCard className="w-5 h-5 text-teal-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-teal-800">{planName} — Clinic-Q Professional</p>
+                      <p className="text-xs text-teal-600">สมัครเมื่อ: {startDate} · หมดอายุ: {endDate}{daysLeft !== null && daysLeft <= 7 ? ` · เหลืออีก ${daysLeft} วัน` : ''}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm font-bold text-teal-800">📦 แพ็กเกจ Clinic-Q Professional</p>
-                    <p className="text-xs text-teal-600">สมัครเมื่อ: 1 สิงหาคม 2569 · หมดอายุ: 1 สิงหาคม 2570</p>
-                  </div>
+                  <a href="/pricing" className="px-3 py-1.5 bg-teal-500 text-white text-xs font-bold rounded-lg hover:bg-teal-600 transition-colors">
+                    จัดการแพ็กเกจ
+                  </a>
                 </div>
-                <a href="/pricing" className="px-3 py-1.5 bg-teal-500 text-white text-xs font-bold rounded-lg hover:bg-teal-600 transition-colors">
-                  จัดการแพ็กเกจ
-                </a>
               </div>
-            </div>
-          )}
+            )
+          })()}
 
           <div className="card p-6">
 

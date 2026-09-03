@@ -17,22 +17,41 @@ export default function PricingPage() {
   const [subscriptionEnd, setSubscriptionEnd] = useState('')
 
   useEffect(() => {
-    const auth = localStorage.getItem('clinicQ_auth')
-    if (auth) {
+    // Read from clinicq-subscription-{clinicId} (correct key)
+    const authRaw = localStorage.getItem('clinicq-auth') || localStorage.getItem('clinicq-auth-session')
+    let clinicId: string | null = null
+    if (authRaw) {
       try {
-        const data = JSON.parse(auth)
-        if (data.trialEndDate) {
-          const end = new Date(data.trialEndDate)
-          const now = new Date()
-          const days = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-          setTrialDaysLeft(Math.max(0, days))
-          setIsEarlyBird(days > 0)
-        }
-        if (data.subscriptionEndDate) {
-          const d = new Date(data.subscriptionEndDate)
-          setSubscriptionEnd(d.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' }))
-        }
+        const auth = JSON.parse(authRaw)
+        clinicId = auth.currentClinicId || auth.clinicId || null
       } catch {}
+    }
+    if (clinicId) {
+      const subRaw = localStorage.getItem(`clinicq-subscription-${clinicId}`)
+      if (subRaw) {
+        try {
+          const data = JSON.parse(subRaw)
+          if (data.plan === 'trial' && data.trialEndDate) {
+            const end = new Date(data.trialEndDate)
+            const now = new Date()
+            const days = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+            setTrialDaysLeft(Math.max(0, days))
+            // Early Bird = still within 7 days of registration
+            const start = data.startDate ? new Date(data.startDate) : new Date()
+            const daysSinceReg = Math.ceil((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
+            setIsEarlyBird(days > 0 && daysSinceReg <= 7)
+          } else if (data.plan === 'monthly' || data.plan === 'yearly') {
+            setIsEarlyBird(false)
+          }
+          if (data.paidEndDate) {
+            const d = new Date(data.paidEndDate)
+            setSubscriptionEnd(d.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' }))
+          } else if (data.trialEndDate) {
+            const d = new Date(data.trialEndDate)
+            setSubscriptionEnd(d.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' }))
+          }
+        } catch {}
+      }
     }
   }, [])
 
