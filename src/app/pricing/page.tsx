@@ -271,7 +271,7 @@ export default function PricingPage() {
                             ประหยัด 2,000 บาท
                           </span>
                         </div>
-                        <p className="text-sm text-amber-600 mt-2 font-medium">🎉 ราคา Early Bird — ก่อนหมดอายุทดลอง</p>
+                        <p className="text-sm text-amber-600 mt-2 font-medium">🎉 ราคา Early Bird — สมัครภายใน 7 วันหลังสมัคร</p>
                       </>
                     ) : (
                       <>
