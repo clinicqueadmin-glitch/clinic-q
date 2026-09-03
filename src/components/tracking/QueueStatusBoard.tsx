@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Clock, Users, Stethoscope, ArrowLeft, Timer, Activity, CheckCircle, ChevronDown, ChevronRight, X, Home } from 'lucide-react'
+import { Clock, Users, Stethoscope, ArrowLeft, Activity, CheckCircle, ChevronDown, ChevronRight, X, Home } from 'lucide-react'
 import Link from 'next/link'
 import { useQueue, type QueueItem } from '@/lib/queue-context'
 import { useClinic } from '@/lib/clinic-context'
@@ -262,29 +262,20 @@ export default function QueueStatusBoard() {
 
       <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
         {/* ═══════ SUMMARY CARDS ═══════ */}
-        <div className="grid grid-cols-3 gap-3">
-          <div className="bento-card p-3 text-center">
-            <div className="w-8 h-8 rounded-lg mx-auto mb-1.5 flex items-center justify-center" style={{ backgroundColor: `${accentColor}15` }}>
-              <Stethoscope className="w-4 h-4" style={{ color: accentColor }} />
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bento-card p-4 text-center">
+            <div className="w-10 h-10 rounded-xl mx-auto mb-2 flex items-center justify-center" style={{ backgroundColor: `${accentColor}15` }}>
+              <Stethoscope className="w-5 h-5" style={{ color: accentColor }} />
             </div>
-            <p className="text-2xl font-black" style={{ color: accentColor }}>{dailyRooms.length}</p>
-            <p className="text-[10px] text-gray-500 mt-0.5">ห้องทำหัตถการ</p>
+            <p className="text-3xl font-black" style={{ color: accentColor }}>{dailyRooms.length}</p>
+            <p className="text-xs text-gray-500 mt-0.5">ห้องทำหัตถการ</p>
           </div>
-          <div className="bento-card p-3 text-center">
-            <div className="w-8 h-8 rounded-lg mx-auto mb-1.5 flex items-center justify-center bg-amber-50">
-              <Timer className="w-4 h-4 text-amber-500" />
+          <div className="bento-card p-4 text-center">
+            <div className="w-10 h-10 rounded-xl mx-auto mb-2 flex items-center justify-center bg-emerald-50">
+              <Users className="w-5 h-5 text-emerald-500" />
             </div>
-            <p className="text-2xl font-black text-amber-600">
-              {arrivedWaiting.length > 0 ? `~${totalEstimatedWait}` : '0'}
-            </p>
-            <p className="text-[10px] text-gray-500 mt-0.5">นาที รอทั้งหมด</p>
-          </div>
-          <div className="bento-card p-3 text-center">
-            <div className="w-8 h-8 rounded-lg mx-auto mb-1.5 flex items-center justify-center bg-emerald-50">
-              <Users className="w-4 h-4 text-emerald-500" />
-            </div>
-            <p className="text-2xl font-black text-emerald-600">{arrivedWaiting.length + serving.length}</p>
-            <p className="text-[10px] text-gray-500 mt-0.5">คิวทั้งหมด</p>
+            <p className="text-3xl font-black text-emerald-600">{arrivedWaiting.length}</p>
+            <p className="text-xs text-gray-500 mt-0.5">คิวรอตอนนี้</p>
           </div>
         </div>
 
@@ -307,53 +298,41 @@ export default function QueueStatusBoard() {
           </div>
         )}
 
-        {/* ═══════ BRANCH SUMMARY ═══════ */}
-        {arrivedWaiting.length > 0 && (
-          <div className="bento-card p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Stethoscope className="w-4 h-4 text-gray-400" />
-              <h2 className="font-bold text-gray-700 text-sm">สาขาที่มีคนไข้รอ</h2>
-            </div>
-            <div className="space-y-2">
-              {(() => {
-                // Group waiting by branch
-                const branchMap = new Map<string, { name: string; count: number; waitMinutes: number }>()
-                arrivedWaiting.forEach(item => {
-                  const branch = branchData.branches.find(b => b.id === item.branchId)
-                  const branchName = branch?.name || 'ไม่ระบุสาขา'
-                  const existing = branchMap.get(item.branchId || 'unknown')
-                  if (existing) {
-                    existing.count++
-                    existing.waitMinutes += getEstimatedDuration(branchData, item.procedureId)
-                  } else {
-                    branchMap.set(item.branchId || 'unknown', {
-                      name: branchName,
-                      count: 1,
-                      waitMinutes: getEstimatedDuration(branchData, item.procedureId),
-                    })
-                  }
-                })
-                return Array.from(branchMap.entries()).map(([id, info]) => (
-                  <div key={id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${accentColor}15` }}>
-                        <span className="text-sm">🏥</span>
-                      </div>
-                      <div>
-                        <p className="text-sm font-bold text-gray-900">{info.name}</p>
-                        <p className="text-[10px] text-gray-500">{info.count} คิวรอ</p>
-                      </div>
+        {/* ═══════ BRANCH SUMMARY (per room) ═══════ */}
+        <div className="bento-card p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Stethoscope className="w-4 h-4 text-gray-400" />
+            <h2 className="font-bold text-gray-700 text-sm">สาขาที่มีคนไข้รอ (แยกตามห้อง)</h2>
+          </div>
+          <div className="space-y-2">
+            {roomStatuses.map(({ room, waitingCount, waitMinutes, isFree, branchName }) => {
+              const bgColor = room.color || '#93C5FD'
+              return (
+                <div key={room.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: bgColor }}>
+                      <span className="text-xs font-bold text-white">{room.id}</span>
                     </div>
-                    <div className="text-right">
-                      <p className="text-lg font-black" style={{ color: accentColor }}>~{info.waitMinutes}</p>
-                      <p className="text-[10px] text-gray-500">นาที</p>
+                    <div>
+                      <p className="text-sm font-bold text-gray-900">{branchName || room.name}</p>
+                      <p className="text-[10px] text-gray-500">{waitingCount} คนรอ</p>
                     </div>
                   </div>
-                ))
-              })()}
-            </div>
+                  <div className="text-right">
+                    {isFree ? (
+                      <span className="text-sm font-bold text-green-600">ว่าง</span>
+                    ) : (
+                      <>
+                        <p className="text-lg font-black" style={{ color: accentColor }}>~{waitMinutes}</p>
+                        <p className="text-[10px] text-gray-500">นาที</p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
-        )}
+        </div>
 
         {/* ═══════ ROOM STATUS ═══════ */}
         {dailyRooms.length > 0 && (
