@@ -21,18 +21,26 @@ interface PractitionerContextType {
 function loadPractitioners(clinicType: ClinicType, clinicId?: string | null): Practitioner[] {
   if (typeof window === 'undefined') return []
   
-  // Try clinic-specific storage first
+  // Try clinic-specific storage first — strictly filter by clinicId
   const storageKey = clinicId ? `clinic-practitioners-${clinicId}` : 'clinic-practitioners'
   const saved = localStorage.getItem(storageKey)
-  if (saved) {
+  if (saved && clinicId) {
     try {
       const parsed = JSON.parse(saved)
       if (Array.isArray(parsed)) {
-        return parsed.map((p: any) => ({
+        // Only include practitioners that explicitly belong to THIS clinic
+        // Legacy practitioners without clinicId are excluded to prevent cross-clinic leakage
+        const filtered = parsed.filter((p: any) => p.clinicId === clinicId)
+        const cleaned = filtered.map((p: any) => ({
           ...p,
           userId: p.userId || undefined,
-          clinicId: p.clinicId || clinicId || undefined,
+          clinicId: clinicId, // Always force correct clinicId
         }))
+        // Auto-clean: save cleaned data back to remove cross-clinic leakage permanently
+        if (filtered.length !== parsed.length) {
+          localStorage.setItem(storageKey, JSON.stringify(cleaned))
+        }
+        return cleaned
       }
     } catch {}
   }
