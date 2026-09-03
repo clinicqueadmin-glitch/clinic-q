@@ -162,6 +162,30 @@ export default function PlatformDashboard() {
     })
   }, [])
 
+  // Duplicate/expired clinics (same name, expired trial)
+  const duplicateExpiredClinics = useMemo(() => {
+    const nameMap = new Map<string, ClinicWithStats[]>()
+    platformClinics.forEach(c => {
+      const normalizedName = c.name.toLowerCase().trim()
+      if (!nameMap.has(normalizedName)) nameMap.set(normalizedName, [])
+      nameMap.get(normalizedName)!.push(c)
+    })
+    const duplicates: ClinicWithStats[] = []
+    nameMap.forEach((clinics, name) => {
+      if (clinics.length > 1) {
+        clinics.forEach(c => {
+          const trial = getTrialStatus(c.expiresAt)
+          if (trial === 'expired') duplicates.push(c)
+        })
+      }
+    })
+    return duplicates.sort((a, b) => {
+      const da = getDaysRemaining(a.expiresAt) ?? 0
+      const db = getDaysRemaining(b.expiresAt) ?? 0
+      return da - db
+    })
+  }, [platformClinics])
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30">
       <div className="max-w-7xl mx-auto px-4 py-8">
@@ -422,7 +446,51 @@ export default function PlatformDashboard() {
           </div>
         </div>
 
-        {/* ═══ Section 3: คลินิกใกล้หมดอายุ ═══ */}
+        {/* ═══ Section 3: คลินิกสมัครซ้ำหลังหมดอายุ ═══ */}
+        {duplicateExpiredClinics.length > 0 && (
+          <div id="duplicates" className="bg-white rounded-3xl shadow-sm border border-red-100 p-6 mb-8 scroll-mt-20">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-red-500 to-pink-500 flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h2 className="text-lg font-extrabold text-gray-900">🔄 คลินิกสมัครซ้ำ (หมดอายุแล้ว)</h2>
+                <p className="text-xs text-gray-400">คลินิกที่มีชื่อซ้ำกันและหมดอายุทดลองใช้งานแล้ว {duplicateExpiredClinics.length} คลินิก</p>
+              </div>
+            </div>
+            <div className="space-y-3">
+              {duplicateExpiredClinics.map(clinic => {
+                const daysLeft = getDaysRemaining(clinic.expiresAt)
+                return (
+                  <div key={clinic.id} className="rounded-2xl border border-red-200 bg-red-50/50 p-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold shadow-md bg-red-400">
+                        {clinic.prefix}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-bold text-gray-900">{clinic.name}</p>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700">
+                            สมัครซ้ำ
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5">{clinic.type} · หมดอายุแล้ว</p>
+                      </div>
+                      <div className="text-right">
+                        <div className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-sm font-bold bg-red-100 text-red-700">
+                          ✗ หมดอายุ
+                        </div>
+                        <p className="text-[10px] text-gray-400 mt-1">หมดอายุ: {clinic.expiresAt}</p>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ═══ Section 4: คลินิกใกล้หมดอายุ ═══ */}
         <div id="expiring" className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 scroll-mt-20">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">

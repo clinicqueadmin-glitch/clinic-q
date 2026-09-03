@@ -38,6 +38,7 @@ const platformMenuItems: MenuItem[] = [
   { title: 'แดชบอร์ด Platform', href: '/platform', icon: Crown },
   { title: 'ผู้ใช้งาน Platform', href: '/platform#users', icon: UserCheck },
   { title: 'การชำระเงิน', href: '/platform#payments', icon: CreditCard },
+  { title: 'คลินิกสมัครซ้ำ (หมดอายุ)', href: '/platform#duplicates', icon: AlertTriangle },
   { title: 'คลินิกใกล้หมดอายุ', href: '/platform#expiring', icon: AlertTriangle },
 ]
 
