@@ -304,10 +304,10 @@ export default function TVDisplay() {
   const currentAd = activeAds[currentAdIndex % activeAds.length]
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white overflow-hidden relative">
       {/* Called Alert */}
       {showAlert && lastCalled && (
-        <TVCalledAlert queue={lastCalled} clinic={config ? { name: config.name, nameEn: config.nameEn || config.name, color: config.color, bg: config.bg, icon: config.prefix, prefix: config.prefix } : { name: 'Clinic', nameEn: 'Clinic', color: '#93C5FD', bg: '#EFF6FF', icon: 'Q', prefix: 'Q' }} onDismiss={() => setShowAlert(false)} />
+        <TVCalledAlert queue={lastCalled} clinic={config ? { name: settings?.clinicName || config.name, nameEn: config.nameEn || config.name, color: config.color, bg: config.bg, icon: config.prefix, prefix: config.prefix } : { name: 'Clinic', nameEn: 'Clinic', color: '#93C5FD', bg: '#EFF6FF', icon: 'Q', prefix: 'Q' }} onDismiss={() => setShowAlert(false)} />
       )}
 
       {/* Room Notification — procedure only, NO patient name */}
@@ -345,7 +345,7 @@ export default function TVDisplay() {
             </div>
           )}
           <div>
-            <h1 className="text-lg font-bold">{config?.name || 'Clinic-Q'}</h1>
+            <h1 className="text-lg font-bold">{settings?.clinicName || config?.name || 'Clinic-Q'}</h1>
             <p className="text-[10px] text-gray-400">จอแสดงคิว</p>
           </div>
         </div>
@@ -454,7 +454,7 @@ export default function TVDisplay() {
             </div>
 
             {/* Stats Footer */}
-            <div className="p-3 border-t border-white/10 grid grid-cols-3 gap-2">
+            <div className="p-3 border-t border-white/10 grid grid-cols-3 gap-2 relative">
               <div className="text-center p-2 rounded-xl bg-green-500/10">
                 <p className="text-xl font-bold text-green-400 tabular-nums">{stats.serving}</p>
                 <p className="text-[9px] text-gray-500">กำลังทำ</p>
@@ -471,8 +471,16 @@ export default function TVDisplay() {
           </div>
         </div>
 
-        {/* Bottom Section: Ad Area */}
+        {/* Bottom Section: Ad Area + Branding */}
         <div className="border-t border-white/10">
+          {/* Clinic-Q Branding — bottom left */}
+          <div className="absolute bottom-3 left-3 flex items-center gap-2 opacity-40 hover:opacity-80 transition-opacity">
+            <img src="/brand-logo.png" alt="Clinic-Q" className="w-6 h-6 rounded-lg" />
+            <div>
+              <p className="text-[10px] font-bold text-white/70">Clinic-Q</p>
+              <p className="text-[8px] text-white/50">Smart Clinic, Smooth Queue</p>
+            </div>
+          </div>
           {/* Rotating Ad Display */}
           {activeAds.length > 0 && (
             <div className="h-32">

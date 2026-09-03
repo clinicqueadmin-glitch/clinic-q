@@ -46,6 +46,20 @@ export default function BookingPage() {
     }
   }, [urlClinicType])
 
+  // Load actual clinic name from settings
+  const clinicDisplayName = useMemo(() => {
+    if (typeof window !== 'undefined' && clinicId) {
+      const saved = localStorage.getItem(`clinic-q-settings-${clinicId}`)
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved)
+          if (parsed.clinicName) return parsed.clinicName
+        } catch {}
+      }
+    }
+    return clinicCfg.name
+  }, [clinicId, clinicCfg])
+
   // Load branch data from clinic-specific storage, fallback to defaults
   const branchData = useMemo(() => {
     if (typeof window !== 'undefined' && clinicId) {
@@ -147,7 +161,7 @@ export default function BookingPage() {
             <CheckCircle className="w-8 h-8 text-emerald-500" />
           </div>
           <h1 className="text-xl font-bold text-gray-900 mb-1">✅ จองคิวสำเร็จ!</h1>
-          <p className="text-sm text-gray-500 mb-4">{clinicCfg.icon} {clinicCfg.name}</p>
+          <p className="text-sm text-gray-500 mb-4">{clinicCfg.icon} {clinicDisplayName}</p>
 
           {/* Booking Time Highlight */}
           <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-4">
@@ -238,7 +252,7 @@ export default function BookingPage() {
             </div>
             <div>
               <h1 className="text-white font-bold text-lg">📱 จองคิวออนไลน์</h1>
-              <p className="text-white/70 text-xs">{clinicCfg.icon} {clinicCfg.name}</p>
+              <p className="text-white/70 text-xs">{clinicCfg.icon} {clinicDisplayName}</p>
             </div>
           </div>
         </div>
@@ -259,7 +273,7 @@ export default function BookingPage() {
         {/* Form */}
         <div className="bento-card p-5 space-y-4">
           <h2 className="text-base font-bold text-gray-900">
-            📱 จองคิวออนไลน์ — {clinicCfg.name}
+            📱 จองคิวออนไลน์ — {clinicDisplayName}
           </h2>
 
           {/* Name */}
@@ -347,9 +361,7 @@ export default function BookingPage() {
         </div>
 
         {/* Footer */}
-        <p className="text-center text-[11px] text-gray-400">
-          {clinicCfg.name} — Clinic-Q
-        </p>
+        <p className="text-center text-[11px] text-gray-400">{clinicDisplayName} — Clinic-Q</p>
       </div>
     </div>
   )
