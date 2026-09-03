@@ -53,24 +53,56 @@ function RoomStatus({ serving, branchData }: { serving: QueueItem; branchData: a
 export default function TVDisplay() {
   const { queue, setQueue } = useQueue()
   const { config, currentClinic, settings } = useClinic()
-  const branchData = useMemo(() => getDefaultBranchData(currentClinic || 'dental'), [currentClinic])
+  // Load branch data from clinic-specific storage
+  const branchData = useMemo(() => {
+    if (typeof window !== 'undefined') {
+      const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
+      const matched = clinics.find((c: any) => c.type === (currentClinic || 'dental'))
+      const cid = matched?.id
+      if (cid) {
+        const saved = localStorage.getItem(`clinic-branch-data-${cid}`)
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved)
+            if (parsed && parsed.branches && parsed.branches.length > 0) return parsed as ReturnType<typeof getDefaultBranchData>
+          } catch {}
+        }
+        const sharedSaved = localStorage.getItem('clinic-branch-data')
+        if (sharedSaved) {
+          try {
+            const parsed = JSON.parse(sharedSaved)
+            if (parsed && parsed.branches && parsed.branches.length > 0) return parsed as ReturnType<typeof getDefaultBranchData>
+          } catch {}
+        }
+      }
+    }
+    return getDefaultBranchData(currentClinic || 'dental')
+  }, [currentClinic])
   
-  // Read daily rooms from localStorage (only show rooms added for today)
+  // Read daily rooms from clinic-specific localStorage (only show rooms added for today)
   const activeRooms = useMemo(() => {
     if (typeof window === 'undefined') return branchData.rooms.filter(r => r.active)
-    const saved = localStorage.getItem('clinic-daily-rooms')
-    const savedDate = localStorage.getItem('clinic-daily-rooms-date')
+    // Try clinic-specific key first
+    const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
+    const matched = clinics.find((c: any) => c.type === (currentClinic || 'dental'))
+    const cid = matched?.id
     const today = new Date().toISOString().split('T')[0]
-    if (savedDate === today && saved) {
-      try {
-        const dailyRooms: Room[] = JSON.parse(saved)
-        const active = dailyRooms.filter((r) => r.active)
-        if (active.length > 0) return active
-      } catch {}
+    const keys = cid ? [`clinic-daily-rooms-${cid}`, 'clinic-daily-rooms'] : ['clinic-daily-rooms']
+    const dateKeys = cid ? [`clinic-daily-rooms-date-${cid}`, 'clinic-daily-rooms-date'] : ['clinic-daily-rooms-date']
+    for (let i = 0; i < keys.length; i++) {
+      const saved = localStorage.getItem(keys[i])
+      const savedDate = localStorage.getItem(dateKeys[i])
+      if (savedDate === today && saved) {
+        try {
+          const dailyRooms: Room[] = JSON.parse(saved)
+          const active = dailyRooms.filter((r) => r.active)
+          if (active.length > 0) return active
+        } catch {}
+      }
     }
     // Fallback: show all active rooms from branch data
     return branchData.rooms.filter(r => r.active)
-  }, [branchData])
+  }, [branchData, currentClinic])
 
   const [lastCalled, setLastCalled] = useState<QueueItem | null>(null)
   const [showAlert, setShowAlert] = useState(false)

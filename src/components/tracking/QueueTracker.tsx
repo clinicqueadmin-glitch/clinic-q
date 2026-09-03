@@ -154,8 +154,31 @@ export default function QueueTracker() {
     return () => { sb.removeChannel(channel) }
   }, [useSupabase, currentClinic, query, fetchAllFromSupabase])
 
-  // Branch data for wait time calculation
-  const branchData = useMemo(() => getDefaultBranchData(currentClinic || 'dental'), [currentClinic])
+  // Branch data for wait time calculation (load from clinic-specific storage)
+  const branchData = useMemo(() => {
+    if (typeof window !== 'undefined') {
+      const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
+      const matched = clinics.find((c: any) => c.type === (currentClinic || 'dental'))
+      const cid = matched?.id
+      if (cid) {
+        const saved = localStorage.getItem(`clinic-branch-data-${cid}`)
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved)
+            if (parsed && parsed.branches && parsed.branches.length > 0) return parsed as ReturnType<typeof getDefaultBranchData>
+          } catch {}
+        }
+        const sharedSaved = localStorage.getItem('clinic-branch-data')
+        if (sharedSaved) {
+          try {
+            const parsed = JSON.parse(sharedSaved)
+            if (parsed && parsed.branches && parsed.branches.length > 0) return parsed as ReturnType<typeof getDefaultBranchData>
+          } catch {}
+        }
+      }
+    }
+    return getDefaultBranchData(currentClinic || 'dental')
+  }, [currentClinic])
 
   // Determine which queue source to use
   const effectiveQueue = useSupabase && liveQueue.length > 0 ? liveQueue : queue

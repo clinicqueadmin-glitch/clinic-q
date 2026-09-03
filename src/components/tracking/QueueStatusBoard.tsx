@@ -67,7 +67,33 @@ export default function QueueStatusBoard() {
   }, [queue, clinicType, refreshTick])
   const clinicCfg = clinicConfig[clinicType]
   const accentColor = clinicCfg.color
-  const branchData = useMemo(() => getDefaultBranchData(clinicType), [clinicType])
+
+  // Find clinic ID and load branch data from clinic-specific storage
+  const clinicId = useMemo(() => {
+    if (typeof window === 'undefined') return null
+    const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
+    const current = clinics.find((c: any) => c.type === clinicType)
+    return current?.id || null
+  }, [clinicType])
+  const branchData = useMemo(() => {
+    if (typeof window !== 'undefined' && clinicId) {
+      const saved = localStorage.getItem(`clinic-branch-data-${clinicId}`)
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved)
+          if (parsed && parsed.branches && parsed.branches.length > 0) return parsed as ReturnType<typeof getDefaultBranchData>
+        } catch {}
+      }
+      const sharedSaved = localStorage.getItem('clinic-branch-data')
+      if (sharedSaved) {
+        try {
+          const parsed = JSON.parse(sharedSaved)
+          if (parsed && parsed.branches && parsed.branches.length > 0) return parsed as ReturnType<typeof getDefaultBranchData>
+        } catch {}
+      }
+    }
+    return getDefaultBranchData(clinicType)
+  }, [clinicId, clinicType])
 
   // Auto-refresh clock
   useEffect(() => {
