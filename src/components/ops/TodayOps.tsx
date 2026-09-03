@@ -186,7 +186,25 @@ export default function TodayOps() {
       } catch {}
     }
     checkClosingTime()
-    const interval = setInterval(checkClosingTime, 60000) // Check every minute
+    // Also check for midnight reset — detect date change
+    const checkMidnight = () => {
+      const savedDate = localStorage.getItem(dailyDateKey)
+      const today = new Date().toISOString().split('T')[0]
+      if (savedDate && savedDate !== today) {
+        // New day! Reset everything
+        localStorage.removeItem(dailyRoomKey)
+        localStorage.removeItem(`clinicq-queue-${currentClinic}-${savedDate}`)
+        localStorage.setItem(dailyDateKey, today)
+        setDailyRooms([])
+        // Reload page to refresh queue
+        window.location.reload()
+      }
+    }
+    checkMidnight()
+    const interval = setInterval(() => {
+      checkClosingTime()
+      checkMidnight()
+    }, 60000) // Check every minute
     return () => clearInterval(interval)
   }, [currentClinic])
   
@@ -626,6 +644,13 @@ export default function TodayOps() {
     const diffMinutes = (ch * 60 + cm) - (ah * 60 + am)
     const isOnTime = diffMinutes <= 10
     const lateMins = isOnTime ? 0 : diffMinutes
+    // Check if appointment + estimated duration exceeds closing time
+    const duration = proc?.estimatedDuration || 30
+    const apptEndMinutes = ah * 60 + am + duration
+    const clinicClose = settings.closeTime || '20:00'
+    const [closeH, closeM] = clinicClose.split(':').map(Number)
+    const closeMinutes = closeH * 60 + closeM
+    const wouldExceedClose = apptEndMinutes > closeMinutes
 
     const newItem: Omit<QueueItem, 'id'> = {
       number: `E${(queue.length + 100).toString().padStart(3, '0')}`,
@@ -652,8 +677,12 @@ export default function TodayOps() {
       hn: `HN${(queue.length + 100).toString()}`,
       queuePosition: arrivedQueue.filter(q => q.status === 'waiting').length + 1,
     }
+    // Warn if appointment would exceed closing time
+    if (wouldExceedClose && !confirm(`⚠️ เตือน: การนัดหมายเวลา ${apptForm.appointmentTime} หัตถการ "${proc?.name}" ใช้เวลา ~${duration} นาที จะเลยเวลาปิดทำการ (${clinicClose})\n\nต้องการดำเนินการต่อหรือไม่?`)) {
+      return
+    }
     addQueueItem(newItem as any)
-    showToastMsg(`ลงทะเบียนนัดสำเร็จ! ${apptForm.patientName} ${isOnTime ? '✓ มาตามนัด' : `⚠ ช้า ${lateMins} น.`}`, 'success')
+    showToastMsg(`ลงทะเบียนนัดสำเร็จ! ${apptForm.patientName} ${isOnTime ? '✓ มาตามนัด' : `⚠ ช้า ${lateMins} น.`}${wouldExceedClose ? ' ⏰ อาจเลยเวลาปิดทำการ' : ''}`, 'success')
     setShowAppointment(false)
     setApptForm({ patientName: '', phone: '', appointmentTime: '', isOnTime: true, lateMinutes: 0, branchId: '', procedureId: '', practitionerName: '' })
     // Redirect to main page after 1 second

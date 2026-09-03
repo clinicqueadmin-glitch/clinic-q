@@ -62,8 +62,11 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
   const [selectedRoomId, setSelectedRoomId] = useState<number | ''>('')
   const [selectedPractitionerId, setSelectedPractitionerId] = useState('')
   const [selectedBranchId, setSelectedBranchId] = useState('')
-  const [startTime, setStartTime] = useState(settings.openTime || '09:00')
-  const [endTime, setEndTime] = useState(settings.closeTime || '17:00')
+  const clinicOpenTime = settings.openTime || '08:00'
+  const clinicCloseTime = settings.closeTime || '20:00'
+  const [startTime, setStartTime] = useState(clinicOpenTime)
+  const [endTime, setEndTime] = useState(clinicCloseTime)
+  const [timeError, setTimeError] = useState('')
 
   // Confirm modal
   const [showConfirm, setShowConfirm] = useState(false)
@@ -120,9 +123,28 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
     return savedRooms.filter(r => r.active && !fullyConfiguredRoomIds.has(r.id))
   }, [savedRooms, dailyRooms])
 
+  // Validate time is within clinic hours
+  const validateTime = (start: string, end: string) => {
+    if (start < clinicOpenTime) {
+      setTimeError(`เวลาเริ่มต้นต้องไม่ก่อน ${clinicOpenTime} (เวลาเปิดทำการ)`) 
+      return false
+    }
+    if (end > clinicCloseTime) {
+      setTimeError(`เวลาสิ้นสุดต้องไม่เกิน ${clinicCloseTime} (เวลาปิดทำการ)`)
+      return false
+    }
+    if (start >= end) {
+      setTimeError('เวลาเริ่มต้องน้อยกว่าเวลาสิ้นสุด')
+      return false
+    }
+    setTimeError('')
+    return true
+  }
+
   // Show confirm dialog before saving
   const handleConfirm = () => {
     if (selectedRoomId === '' || !selectedRoom) return
+    if (!validateTime(startTime, endTime)) return
     setShowConfirm(true)
   }
 
@@ -157,8 +179,9 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
     setSelectedRoomId('')
     setSelectedPractitionerId('')
     setSelectedBranchId('')
-    setStartTime(settings.openTime || '09:00')
-    setEndTime(settings.closeTime || '17:00')
+    setStartTime(clinicOpenTime)
+    setEndTime(clinicCloseTime)
+    setTimeError('')
     setShowConfirm(false)
     onClose()
   }
@@ -258,6 +281,17 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
               </select>
             </div>
 
+            {/* Clinic hours info */}
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+              <p className="text-xs text-blue-700">
+                ⏰ เวลาเปิดทำการของคลินิก: <b>{clinicOpenTime} - {clinicCloseTime}</b> — ห้องตรวจต้องอยู่ในช่วงเวลานี้
+              </p>
+            </div>
+            {timeError && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+                <p className="text-xs text-red-600 font-medium">⚠️ {timeError}</p>
+              </div>
+            )}
             {/* Time */}
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -267,7 +301,15 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
                 <input
                   type="time"
                   value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
+                  min={clinicOpenTime}
+                  max={clinicCloseTime}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setStartTime(v)
+                    if (v < clinicOpenTime) setTimeError(`เวลาเริ่มต้องไม่ก่อน ${clinicOpenTime}`)
+                    else if (v >= endTime) setTimeError('เวลาเริ่มต้องน้อยกว่าเวลาสิ้นสุด')
+                    else setTimeError('')
+                  }}
                   className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-2 focus:outline-none text-sm"
                 />
               </div>
@@ -278,7 +320,15 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
                 <input
                   type="time"
                   value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
+                  min={startTime}
+                  max={clinicCloseTime}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setEndTime(v)
+                    if (v > clinicCloseTime) setTimeError(`เวลาสิ้นสุดต้องไม่เกิน ${clinicCloseTime}`)
+                    else if (v <= startTime) setTimeError('เวลาสิ้นสุดต้องมากกว่าเวลาเริ่ม')
+                    else setTimeError('')
+                  }}
                   className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-2 focus:outline-none text-sm"
                 />
               </div>
