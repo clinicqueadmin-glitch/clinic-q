@@ -56,16 +56,16 @@ export default function PlatformDashboard() {
   const [allUsers, setAllUsers] = useState<Array<{ id: string; name: string; email: string; role: string; clinicType: string; color: string }>>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  // Enter clinic as platform owner
+  // Enter clinic as platform owner — pretend to be clinic owner
   const enterClinic = useCallback((clinicId: string, clinicType: string) => {
     // Save platform owner session for back navigation
     const authRaw = localStorage.getItem('clinicq-auth') || localStorage.getItem('clinicq-auth-session')
     if (authRaw) {
       localStorage.setItem('clinicq-platform-session', authRaw)
     }
-    // Create owner session for this clinic
+    // Create session as clinic owner so the full dashboard loads
     const clinicSession = {
-      user: { id: 'platform-owner', email: 'admin@clinicq.com', name: 'เจ้าของระบบ', role: 'platform_owner' },
+      user: { id: 'platform-owner', email: 'admin@clinicq.com', name: 'เจ้าของระบบ', role: 'owner' },
       currentClinicId: clinicId,
       isViewingAsOwner: true, // Flag to indicate platform owner is viewing
     }

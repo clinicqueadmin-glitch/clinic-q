@@ -32,7 +32,14 @@ export default function Header() {
   const backToPlatform = () => {
     const platformSession = localStorage.getItem('clinicq-platform-session')
     if (platformSession) {
-      localStorage.setItem('clinicq-auth', platformSession)
+      // Restore platform_owner role
+      try {
+        const parsed = JSON.parse(platformSession)
+        parsed.user.role = 'platform_owner'
+        localStorage.setItem('clinicq-auth', JSON.stringify(parsed))
+      } catch {
+        localStorage.setItem('clinicq-auth', platformSession)
+      }
       localStorage.removeItem('clinicq-platform-session')
     }
     window.location.href = '/platform'

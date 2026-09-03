@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useMemo, type ReactNode } from 'react'
+import { useState, useCallback, useMemo, useEffect, type ReactNode } from 'react'
 import { createContext, useContext } from 'react'
 import { type ClinicType } from './queue-data'
 import { getDefaultBranchData } from './branch-data'
@@ -78,7 +78,12 @@ const PractitionerContext = createContext<PractitionerContextType | null>(null)
 
 export function PractitionerProvider({ children, clinicType, clinicId }: { children: ReactNode; clinicType: ClinicType; clinicId?: string | null }) {
   const [practitioners, setPractitioners] = useState<Practitioner[]>(() => loadPractitioners(clinicType, clinicId))
-  
+
+  // Reload practitioners when clinicId changes (e.g. platform owner enters a clinic)
+  useEffect(() => {
+    setPractitioners(loadPractitioners(clinicType, clinicId))
+  }, [clinicId, clinicType])
+
   // Filter practitioners by current clinic
   const filteredPractitioners = useMemo(() => {
     return filterByClinic(practitioners, clinicId || null)
