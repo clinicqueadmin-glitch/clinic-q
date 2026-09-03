@@ -86,13 +86,25 @@ export default function TodayOps() {
   const { practitioners } = usePractitioners()
   const [branchData, setBranchData] = useState(() => getDefaultBranchData(currentClinic || 'dental'))
   
-  // Load branch data from clinic-specific storage
+  // Load branch data from clinic-specific storage, with fallbacks
   useEffect(() => {
     if (typeof window !== 'undefined' && currentClinicId) {
+      // Try clinic-specific storage first
       const saved = localStorage.getItem(`clinic-branch-data-${currentClinicId}`)
       if (saved) {
         try {
           const parsed = JSON.parse(saved)
+          if (parsed && parsed.branches && parsed.branches.length > 0) {
+            setBranchData(parsed)
+            return
+          }
+        } catch {}
+      }
+      // Fallback: try shared key
+      const sharedSaved = localStorage.getItem('clinic-branch-data')
+      if (sharedSaved) {
+        try {
+          const parsed = JSON.parse(sharedSaved)
           if (parsed && parsed.branches && parsed.branches.length > 0) {
             setBranchData(parsed)
             return

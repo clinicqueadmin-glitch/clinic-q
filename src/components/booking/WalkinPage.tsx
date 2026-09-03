@@ -41,10 +41,21 @@ export default function WalkinPage() {
   // Load branch data from clinic-specific storage, fallback to defaults
   const branchData = useMemo((): ClinicBranchData => {
     if (typeof window !== 'undefined' && clinicId) {
+      // Try clinic-specific storage first
       const saved = localStorage.getItem(`clinic-branch-data-${clinicId}`)
       if (saved) {
         try {
           const parsed = JSON.parse(saved)
+          if (parsed && parsed.branches && parsed.branches.length > 0) {
+            return parsed as ClinicBranchData
+          }
+        } catch {}
+      }
+      // Fallback: try shared key and filter by clinicId
+      const sharedSaved = localStorage.getItem('clinic-branch-data')
+      if (sharedSaved) {
+        try {
+          const parsed = JSON.parse(sharedSaved)
           if (parsed && parsed.branches && parsed.branches.length > 0) {
             return parsed as ClinicBranchData
           }
@@ -93,11 +104,14 @@ export default function WalkinPage() {
     } catch { return [] }
   }, [dailyRoomKey, dailyDateKey])
 
-  // Available branches = branches that have at least one daily room today
+  // Available branches = branches that have at least one daily room today (only active branches)
   const availableBranches = useMemo(() => {
-    if (dailyRooms.length === 0) return branchData.branches // fallback: show all if no daily rooms
+    const activeBranches = branchData.branches.filter(b => b.active)
+    if (dailyRooms.length === 0) return activeBranches // fallback: show active branches only
     const branchIds = new Set(dailyRooms.filter((r: any) => r.branchId).map((r: any) => r.branchId))
-    return branchData.branches.filter(b => branchIds.has(b.id))
+    const filtered = branchData.branches.filter(b => b.active && branchIds.has(b.id))
+    // If no daily room branches match, show all active branches as fallback
+    return filtered.length > 0 ? filtered : activeBranches
   }, [dailyRooms, branchData])
 
   // Get procedures for selected branch (filtered by daily rooms)

@@ -34,10 +34,21 @@ export default function PatientBooking() {
       const clinic = clinics.find((c: any) => c.type === currentClinic)
       const clinicId = clinic?.id
       if (clinicId) {
+        // Try clinic-specific storage first
         const saved = localStorage.getItem(`clinic-branch-data-${clinicId}`)
         if (saved) {
           try {
             const parsed = JSON.parse(saved)
+            if (parsed && parsed.branches && parsed.branches.length > 0) {
+              return parsed as ClinicBranchData
+            }
+          } catch {}
+        }
+        // Fallback: try shared key
+        const sharedSaved = localStorage.getItem('clinic-branch-data')
+        if (sharedSaved) {
+          try {
+            const parsed = JSON.parse(sharedSaved)
             if (parsed && parsed.branches && parsed.branches.length > 0) {
               return parsed as ClinicBranchData
             }
