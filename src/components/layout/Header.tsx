@@ -95,24 +95,43 @@ export default function Header() {
     <>
     {/* Trial Status Banner */}
     {trialInfo && trialInfo.isTrial && currentRole !== 'platform_owner' && (
-      <div className={`px-4 py-2 text-center text-sm font-medium ${
+      <div className={`px-4 py-2.5 text-center text-sm font-medium ${
         trialInfo.daysLeft <= 3 
-          ? 'bg-red-50 text-red-700 border-b border-red-200'
+          ? 'bg-gradient-to-r from-red-500 to-red-600 text-white'
           : trialInfo.daysLeft <= 7 
-            ? 'bg-amber-50 text-amber-700 border-b border-amber-200'
-            : 'bg-teal-50 text-teal-700 border-b border-teal-200'
+            ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-white'
+            : 'bg-gradient-to-r from-teal-400 to-teal-500 text-white'
       }`}>
-        {trialInfo.daysLeft <= 3 ? (
-          <span className="flex items-center justify-center gap-2">
-            <AlertTriangle className="w-4 h-4" />
-            ⚠️ ทดลองใช้จะหมดอายุใน {trialInfo.daysLeft} วัน ({trialInfo.endDate}) — <button onClick={() => router.push('/pricing')} className="underline font-bold">อัปเกรดเลย</button>
+        <span className="flex items-center justify-center gap-3">
+          {/* Countdown Number */}
+          <span className={`inline-flex items-center justify-center w-10 h-10 rounded-full text-lg font-black ${
+            trialInfo.daysLeft <= 3 
+              ? 'bg-white text-red-600'
+              : trialInfo.daysLeft <= 7 
+                ? 'bg-white text-orange-600'
+                : 'bg-white text-teal-600'
+          }`}>
+            {trialInfo.daysLeft}
           </span>
-        ) : (
-          <span className="flex items-center justify-center gap-2">
-            <Clock className="w-4 h-4" />
-            🧪 ทดลองใช้ฟรี — เหลืออีก {trialInfo.daysLeft} วัน (หมดอายุ {trialInfo.endDate})
+          <span>
+            {trialInfo.daysLeft <= 3 ? (
+              <>⚠️ เหลือเวลาอีก <b>{trialInfo.daysLeft}</b> วัน — หมดอายุ {trialInfo.endDate}</>
+            ) : trialInfo.daysLeft <= 7 ? (
+              <>🧪 เหลือเวลาอีก <b>{trialInfo.daysLeft}</b> วัน — หมดอายุ {trialInfo.endDate}</>
+            ) : (
+              <>🧪 ทดลองใช้ฟรี — เหลืออีก <b>{trialInfo.daysLeft}</b> วัน (หมดอายุ {trialInfo.endDate})</>
+            )}
           </span>
-        )}
+          {(trialInfo.daysLeft <= 7) && (
+            <button 
+              onClick={() => router.push('/pricing')}
+              className="px-3 py-1 bg-white rounded-full text-xs font-bold shadow-md hover:shadow-lg transition-shadow"
+              style={{ color: trialInfo.daysLeft <= 3 ? '#DC2626' : '#D97706' }}
+            >
+              อัปเกรดเลย →
+            </button>
+          )}
+        </span>
       </div>
     )}
     <header className="sticky top-0 z-30 bg-white border-b border-gray-200">
