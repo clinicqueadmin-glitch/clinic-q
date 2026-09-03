@@ -8,6 +8,7 @@ import {
   MonitorPlay, BarChart3, Users, QrCode, Bell, Database,
 } from 'lucide-react'
 import { clsx } from 'clsx'
+import PaymentModal from '@/components/payment/PaymentModal'
 
 export default function PricingPage() {
   const router = useRouter()
@@ -18,19 +19,23 @@ export default function PricingPage() {
   const [earlyBirdEndDate, setEarlyBirdEndDate] = useState<Date | null>(null)
   const [earlyBirdExpired, setEarlyBirdExpired] = useState(false)
   const [countdown, setCountdown] = useState({ hours: 0, minutes: 0, seconds: 0 })
+  const [showPayment, setShowPayment] = useState(false)
+  const [clinicId, setClinicId] = useState<string | null>(null)
+  const [isSubscribed, setIsSubscribed] = useState(false)
 
   useEffect(() => {
     // Read from clinicq-subscription-{clinicId} (correct key)
     const authRaw = localStorage.getItem('clinicq-auth') || localStorage.getItem('clinicq-auth-session')
-    let clinicId: string | null = null
+    let foundClinicId: string | null = null
     if (authRaw) {
       try {
         const auth = JSON.parse(authRaw)
-        clinicId = auth.currentClinicId || auth.clinicId || null
+        foundClinicId = auth.currentClinicId || auth.clinicId || null
       } catch {}
     }
-    if (clinicId) {
-      const subRaw = localStorage.getItem(`clinicq-subscription-${clinicId}`)
+    if (foundClinicId) {
+      setClinicId(foundClinicId)
+      const subRaw = localStorage.getItem(`clinicq-subscription-${foundClinicId}`)
       if (subRaw) {
         try {
           const data = JSON.parse(subRaw)
@@ -50,6 +55,7 @@ export default function PricingPage() {
             setEarlyBirdExpired(ebExpired)
           } else if (data.plan === 'monthly' || data.plan === 'yearly') {
             setIsEarlyBird(false)
+            setIsSubscribed(true)
           }
           if (data.paidEndDate) {
             const d = new Date(data.paidEndDate)
@@ -306,6 +312,24 @@ export default function PricingPage() {
                 เริ่มทดลองใช้ฟรี 30 วัน <ArrowRight className="w-5 h-5" />
               </button>
 
+              {/* ═══ Payment Button for Subscribed Users ═══ */}
+              {clinicId && isSubscribed && billing === 'yearly' && (
+                <button
+                  onClick={() => setShowPayment(true)}
+                  className="w-full mt-3 py-3 rounded-2xl font-bold text-white bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 transition-all shadow-lg flex items-center justify-center gap-2"
+                >
+                  💳 ชำระเงิน {isEarlyBird ? '3,999' : '5,999'} บาท/ปี
+                </button>
+              )}
+              {clinicId && isSubscribed && billing === 'monthly' && (
+                <button
+                  onClick={() => setShowPayment(true)}
+                  className="w-full mt-3 py-3 rounded-2xl font-bold text-white bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 transition-all shadow-lg flex items-center justify-center gap-2"
+                >
+                  💳 ชำระเงิน 599 บาท/เดือน
+                </button>
+              )}
+
               <p className="text-center text-xs text-gray-400 mt-4">
                 ทดลองฟรี 30 วัน · ไม่ต้องบัตรเครดิต · ยกเลิกเมื่อไหร่ก็ได้
               </p>
@@ -416,6 +440,21 @@ export default function PricingPage() {
             </button>
           </div>
         </div>
+
+        {/* ═══ PAYMENT MODAL ═══ */}
+        {showPayment && clinicId && (
+          <PaymentModal
+            isOpen={showPayment}
+            onClose={() => setShowPayment(false)}
+            plan={billing}
+            amount={billing === 'yearly' ? (isEarlyBird ? 3999 : 5999) : 599}
+            clinicId={clinicId}
+            onSuccess={() => {
+              setIsSubscribed(true)
+              window.location.reload()
+            }}
+          />
+        )}
 
         {/* ═══ FOOTER ═══ */}
         <div className="mt-12 text-center">
