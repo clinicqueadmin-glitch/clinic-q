@@ -5,7 +5,7 @@ import { clsx } from 'clsx'
 import {
   ChevronLeft, ChevronRight, ArrowLeft, ChevronDown, ChevronUp,
 } from 'lucide-react'
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts'
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts'
 import { useQueue, type QueueItem, type DifficultyLevel, type CompletedProcedure } from '@/lib/queue-context'
 import { useClinic } from '@/lib/clinic-context'
 import { getDefaultBranchData, type ClinicBranchData, type Procedure } from '@/lib/branch-data'
@@ -888,80 +888,7 @@ export default function Analytics() {
         </div>
       </div>
 
-      {/* ═══ Practitioner Performance Line Chart ═══ */}
-      {doctorStats.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-          <h3 className="text-base font-bold text-gray-900 mb-1">📈 กราฟเปรียบเทียบประสิทธิภาพ</h3>
-          <p className="text-xs text-gray-400 mb-5">เวลาเฉลี่ยแยกตามประเภทหัตถการของแต่ละผู้ทำหัตถการ</p>
-          
-          {/* Patient Count Bar Chart */}
-          <div className="mb-6">
-            <p className="text-sm font-medium text-gray-700 mb-3">👥 จำนวนผู้รับบริการ</p>
-            <div className="h-48">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={doctorStats.map(doc => ({ name: doc.name.split(' ')[0], patients: doc.patients }))}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="patients" stroke="#3B82F6" strokeWidth={3} name="จำนวนคนไข้" dot={{ r: 6 }} activeDot={{ r: 8 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
 
-          {/* Procedure-specific Average Time Chart */}
-          <div>
-            <p className="text-sm font-medium text-gray-700 mb-3">⏱ เวลาเฉลี่ยแยกตามหัตถการ (นาที/คน)</p>
-            {/* Build chart data: one row per practitioner, one field per procedure */}
-            {(() => {
-              // Collect all procedure names across all practitioners
-              const allProcs = new Set<string>()
-              doctorStats.forEach(doc => {
-                doc.procedures?.forEach(p => allProcs.add(p.name))
-              })
-              const procNames = Array.from(allProcs).slice(0, 6) // max 6 procedures
-              const procColors = ['#3B82F6', '#22C55E', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899']
-              
-              const chartData = doctorStats.map(doc => {
-                const row: Record<string, any> = { name: doc.name.split(' ')[0] }
-                procNames.forEach(procName => {
-                  const proc = doc.procedures?.find((p: any) => p.name === procName)
-                  row[procName] = proc?.avgTime || 0
-                })
-                return row
-              })
-
-              return (
-                <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                      <YAxis tick={{ fontSize: 11 }} label={{ value: 'นาที', angle: -90, position: 'insideLeft', fontSize: 11 }} />
-                      <Tooltip formatter={(value: any) => `${value} นาที`} />
-                      <Legend wrapperStyle={{ fontSize: 11 }} />
-                      {procNames.map((procName, idx) => (
-                        <Line
-                          key={procName}
-                          type="monotone"
-                          dataKey={procName}
-                          stroke={procColors[idx % procColors.length]}
-                          strokeWidth={2}
-                          name={procName}
-                          dot={{ r: 4 }}
-                          activeDot={{ r: 6 }}
-                        />
-                      ))}
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              )
-            })()}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
