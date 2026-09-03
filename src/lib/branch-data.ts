@@ -302,9 +302,10 @@ export function getExpectedMinutes(data: ClinicBranchData, procedureId: string):
 
 // ═══ Get overtime status ═══
 // ═══ Calculate queue position and estimated wait time ═══
+// Now accounts for time already spent by currently serving patients
 export function getQueueWaitInfo(
   data: ClinicBranchData,
-  queue: { id: string; procedureId: string; status: string; arrived: boolean; assignedRoom: number }[],
+  queue: { id: string; procedureId: string; status: string; arrived: boolean; assignedRoom: number; servingAt?: number }[],
   targetId: string
 ): { position: number; aheadCount: number; estimatedWaitMinutes: number; aheadDetails: { id: string; procedureId: string; duration: number }[] } {
   // Get all arrived waiting items, ordered by created_at (queue order)
@@ -322,7 +323,20 @@ export function getQueueWaitInfo(
     duration: getEstimatedDuration(data, item.procedureId),
   }))
 
-  const estimatedWaitMinutes = aheadDetails.reduce((sum, d) => sum + d.duration, 0)
+  let estimatedWaitMinutes = aheadDetails.reduce((sum, d) => sum + d.duration, 0)
+
+  // ═══ Add remaining time from currently serving patients ═══
+  // For each room that has a serving patient, calculate remaining time
+  const servingItems = queue.filter(q => q.status === 'serving' && q.servingAt)
+  const now = Date.now()
+  servingItems.forEach(serving => {
+    const totalDuration = getEstimatedDuration(data, serving.procedureId)
+    const elapsedMinutes = Math.round((now - (serving.servingAt || now)) / 60000)
+    const remainingMinutes = Math.max(0, totalDuration - elapsedMinutes)
+    // Add remaining time only if this serving patient is ahead in the same room
+    // (simplified: add remaining time from all serving rooms)
+    estimatedWaitMinutes += remainingMinutes
+  })
 
   return {
     position: targetIndex + 1,

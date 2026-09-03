@@ -1590,11 +1590,16 @@ export default function TodayOps() {
                 const ot = room.serving.servingAt ? getOvertimeStatus(branchData, room.serving.procedureId, room.serving.servingAt, now.getTime()) : null
                 return (
                   <>
-                    {/* Procedure + elapsed timer */}
+                    {/* Procedure + elapsed timer + remaining time */}
                     <div className="mt-2 px-2 py-1 rounded-lg text-xs font-bold" style={{ backgroundColor: `${room.color}15`, color: room.color }}>
                       <span className="truncate block">{room.serving.procedure}</span>
-                      <span className="font-mono text-sm">⏱ {room.serving.servingAt ? Math.max(1, Math.floor((now.getTime() - room.serving.servingAt) / 60000)) : 0} น.</span>
-                      {ot && <span className="text-[10px] font-normal text-gray-500"> / {ot.expected} น.</span>}
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-sm">⏱ {room.serving.servingAt ? Math.max(1, Math.floor((now.getTime() - room.serving.servingAt) / 60000)) : 0} น.</span>
+                        {ot && <span className="text-[10px] font-normal text-gray-500"> / {ot.expected} น.</span>}
+                      </div>
+                      {ot && !ot.isOvertime && (
+                        <p className="text-[10px] font-normal mt-0.5">⏳ เหลืออีก ~{Math.max(0, ot.expected - Math.floor((now.getTime() - (room.serving.servingAt || now.getTime())) / 60000))} นาที</p>
+                      )}
                     </div>
                     {/* Overtime warning */}
                     {ot?.isOvertime && (
