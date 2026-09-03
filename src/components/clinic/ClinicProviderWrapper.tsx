@@ -10,6 +10,7 @@ import { getSupabase, isSupabaseReady } from '@/lib/supabase'
 import SelectClinic from './SelectClinic'
 import Sidebar from '@/components/layout/Sidebar'
 import Header from '@/components/layout/Header'
+import TrialExpiredScreen from '@/components/auth/TrialExpiredScreen'
 
 function AppShell({ children }: { children: ReactNode }) {
   return (
@@ -140,6 +141,49 @@ function ClinicRouter({ children }: { children: ReactNode }) {
   // Platform owner without clinic - still show shell
   if (!isConfigured && currentRole === 'platform_owner') {
     return <AppShell>{children}</AppShell>
+  }
+
+  // ═══ Trial Expiry Check ═══
+  // Skip for platform owner and public routes
+  const isPublicRoute = pathname === '/login' || pathname.startsWith('/login') || pathname === '/register' || pathname === '/pricing' || pathname === '/terms' || pathname === '/privacy' || pathname === '/tv' || pathname === '/kiosk' || pathname === '/book' || pathname.startsWith('/book') || pathname === '/walkin' || pathname.startsWith('/walkin') || pathname === '/track' || pathname.startsWith('/track') || pathname === '/queue-status' || pathname.startsWith('/queue-status')
+  if (currentRole !== 'platform_owner' && isAuthenticated && currentClinicId && !isPublicRoute) {
+    try {
+      const saved = localStorage.getItem(`clinicq-subscription-${currentClinicId}`)
+      if (saved) {
+        const data = JSON.parse(saved)
+        if (data.plan === 'trial' && data.status === 'active' && data.trialEndDate) {
+          const endDate = new Date(data.trialEndDate)
+          const now = new Date()
+          if (now > endDate) {
+            const daysExpired = Math.ceil((now.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24))
+            return <TrialExpiredScreen daysExpired={daysExpired} clinicName={currentClinic || undefined} />
+          }
+        }
+      } else {
+        // No subscription data found — check registration date
+        const registeredClinics = JSON.parse(localStorage.getItem('clinicq-registered-clinics') || '[]')
+        const registeredClinic = registeredClinics.find((c: any) => c.id === currentClinicId)
+        if (registeredClinic?.registeredAt) {
+          const regDate = new Date(registeredClinic.registeredAt)
+          const now = new Date()
+          const daysSinceReg = Math.ceil((now.getTime() - regDate.getTime()) / (1000 * 60 * 60 * 24))
+          if (daysSinceReg > 30) {
+            // Trial expired but no subscription data — create it now
+            const trialEnd = new Date(regDate)
+            trialEnd.setDate(trialEnd.getDate() + 30)
+            localStorage.setItem(`clinicq-subscription-${currentClinicId}`, JSON.stringify({
+              plan: 'trial',
+              status: 'active',
+              startDate: regDate.toISOString(),
+              trialEndDate: trialEnd.toISOString(),
+              paidEndDate: null,
+            }))
+            const daysExpired = daysSinceReg - 30
+            return <TrialExpiredScreen daysExpired={daysExpired} clinicName={currentClinic || undefined} />
+          }
+        }
+      }
+    } catch {}
   }
 
   return <PractitionerProvider clinicType={currentClinic || 'dental'} clinicId={currentClinicId}><AppShell>{children}</AppShell></PractitionerProvider>
