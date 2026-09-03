@@ -78,6 +78,17 @@ export async function supabaseRegister(data: {
     // Set clinic type
     localStorage.setItem('clinic-q-type', data.clinicType)
     
+    // Store trial end date (30 days from now)
+    const trialEnd = new Date()
+    trialEnd.setDate(trialEnd.getDate() + 30)
+    localStorage.setItem(`clinicq-subscription-${clinicId}`, JSON.stringify({
+      plan: 'trial',
+      status: 'active',
+      startDate: new Date().toISOString(),
+      trialEndDate: trialEnd.toISOString(),
+      paidEndDate: null,
+    }))
+    
     // Initialize clinic settings with clinic name
     localStorage.setItem('clinic-q-settings', JSON.stringify({
       clinicName: data.clinicName,

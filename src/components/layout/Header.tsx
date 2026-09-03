@@ -1,9 +1,10 @@
 'use client'
 
-import { Bell, Search, User, ChevronDown, X, Home, ArrowLeft, Building2 } from 'lucide-react'
+import { Bell, Search, User, ChevronDown, X, Home, ArrowLeft, Building2, Clock, AlertTriangle } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
+import { useClinic } from '@/lib/clinic-context'
 import { roleConfig, platformRoleConfig, type ClinicRole } from '@/lib/auth-types'
 
 export default function Header() {
@@ -29,6 +30,35 @@ export default function Header() {
   // Get current clinic name
   const clinics = getUserClinics()
   const currentClinic = clinics.find(c => c.id === currentClinicId)
+  
+  // Trial status
+  const [trialInfo, setTrialInfo] = useState<{ isTrial: boolean; daysLeft: number; endDate: string } | null>(null)
+  
+  useEffect(() => {
+    if (currentClinicId && typeof window !== 'undefined') {
+      const saved = localStorage.getItem(`clinicq-subscription-${currentClinicId}`)
+      if (saved) {
+        try {
+          const data = JSON.parse(saved)
+          if (data.plan === 'trial' && data.status === 'active') {
+            const end = new Date(data.trialEndDate)
+            const now = new Date()
+            const daysLeft = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+            setTrialInfo({
+              isTrial: true,
+              daysLeft: Math.max(0, daysLeft),
+              endDate: end.toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' }),
+            })
+          } else {
+            setTrialInfo(null)
+          }
+        } catch {}
+      } else {
+        // Default: assume trial if no subscription data
+        setTrialInfo({ isTrial: true, daysLeft: 30, endDate: 'ยังไม่กำหนด' })
+      }
+    }
+  }, [currentClinicId])
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -62,6 +92,29 @@ export default function Header() {
   const unreadCount = notifications.filter(n => n.unread).length
 
   return (
+    <>
+    {/* Trial Status Banner */}
+    {trialInfo && trialInfo.isTrial && currentRole !== 'platform_owner' && (
+      <div className={`px-4 py-2 text-center text-sm font-medium ${
+        trialInfo.daysLeft <= 3 
+          ? 'bg-red-50 text-red-700 border-b border-red-200'
+          : trialInfo.daysLeft <= 7 
+            ? 'bg-amber-50 text-amber-700 border-b border-amber-200'
+            : 'bg-teal-50 text-teal-700 border-b border-teal-200'
+      }`}>
+        {trialInfo.daysLeft <= 3 ? (
+          <span className="flex items-center justify-center gap-2">
+            <AlertTriangle className="w-4 h-4" />
+            ⚠️ ทดลองใช้จะหมดอายุใน {trialInfo.daysLeft} วัน ({trialInfo.endDate}) — <button onClick={() => router.push('/pricing')} className="underline font-bold">อัปเกรดเลย</button>
+          </span>
+        ) : (
+          <span className="flex items-center justify-center gap-2">
+            <Clock className="w-4 h-4" />
+            🧪 ทดลองใช้ฟรี — เหลืออีก {trialInfo.daysLeft} วัน (หมดอายุ {trialInfo.endDate})
+          </span>
+        )}
+      </div>
+    )}
     <header className="sticky top-0 z-30 bg-white border-b border-gray-200">
       <div className="flex items-center justify-between px-4 md:px-6 py-4">
         {/* Back + Home Buttons */}
@@ -259,5 +312,6 @@ export default function Header() {
         </div>
       )}
     </header>
+    </>
   )
 }

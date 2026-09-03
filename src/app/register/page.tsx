@@ -136,6 +136,17 @@ export default function RegisterPage() {
     // 6. Set default clinic type for ClinicContext
     localStorage.setItem('clinic-q-type', selectedType || 'dental')
     
+    // 6.1 Store trial end date (30 days from now)
+    const trialEnd = new Date()
+    trialEnd.setDate(trialEnd.getDate() + 30)
+    localStorage.setItem(`clinicq-subscription-${clinicId}`, JSON.stringify({
+      plan: 'trial',
+      status: 'active',
+      startDate: now,
+      trialEndDate: trialEnd.toISOString(),
+      paidEndDate: null,
+    }))
+    
     // 7. Initialize clinic-specific settings with clinic name
     localStorage.setItem('clinic-q-settings', JSON.stringify({
       clinicName: form.clinicName,
