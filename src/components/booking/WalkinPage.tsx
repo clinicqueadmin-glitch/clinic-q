@@ -25,29 +25,35 @@ export default function WalkinPage() {
   const clinicType = (searchParams.get('clinic') || 'dental') as ClinicType
   const clinicCfg = clinicConfig[clinicType]
   const { queue, setQueue, addQueueItem } = useQueue()
+  
+  // Find current clinic ID from localStorage
+  const clinicId = useMemo(() => {
+    if (typeof window === 'undefined') return null
+    const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
+    const current = clinics.find((c: any) => c.type === clinicType)
+    return current?.id || null
+  }, [clinicType])
+  
+  // Clinic-specific storage keys
+  const dailyRoomKey = clinicId ? `clinic-daily-rooms-${clinicId}` : 'clinic-daily-rooms'
+  const dailyDateKey = clinicId ? `clinic-daily-rooms-date-${clinicId}` : 'clinic-daily-rooms-date'
+  
   // Load branch data from clinic-specific storage, fallback to defaults
   const branchData = useMemo((): ClinicBranchData => {
-    if (typeof window !== 'undefined') {
-      // Find current clinic ID
-      const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
-      const currentClinic = clinics.find((c: any) => c.type === clinicType)
-      const clinicId = currentClinic?.id
-      
-      if (clinicId) {
-        const saved = localStorage.getItem(`clinic-branch-data-${clinicId}`)
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved)
-            if (parsed && parsed.branches && parsed.branches.length > 0) {
-              return parsed
-            }
-          } catch {}
-        }
+    if (typeof window !== 'undefined' && clinicId) {
+      const saved = localStorage.getItem(`clinic-branch-data-${clinicId}`)
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved)
+          if (parsed && parsed.branches && parsed.branches.length > 0) {
+            return parsed as ClinicBranchData
+          }
+        } catch {}
       }
     }
     // Fallback to default data
     return getDefaultBranchData(clinicType)
-  }, [clinicType])
+  }, [clinicId, clinicType])
 
   // Auto redirect after registration when called from dashboard (staff mode)
   const isStaffMode = searchParams.get('staff') === '1'
@@ -77,15 +83,15 @@ export default function WalkinPage() {
   // Get today's daily rooms from localStorage
   const dailyRooms = useMemo(() => {
     if (typeof window === 'undefined') return []
-    const saved = localStorage.getItem('clinic-daily-rooms')
-    const savedDate = localStorage.getItem('clinic-daily-rooms-date')
+    const saved = localStorage.getItem(dailyRoomKey)
+    const savedDate = localStorage.getItem(dailyDateKey)
     const today = new Date().toISOString().split('T')[0]
     if (savedDate !== today || !saved) return []
     try {
       const parsed = JSON.parse(saved)
       return Array.isArray(parsed) ? parsed.filter((r: any) => r.active) : []
     } catch { return [] }
-  }, [])
+  }, [dailyRoomKey, dailyDateKey])
 
   // Available branches = branches that have at least one daily room today
   const availableBranches = useMemo(() => {
@@ -103,27 +109,31 @@ export default function WalkinPage() {
 
   // Get practitioners from localStorage (filtered by current clinic)
   const branchPractitioners = useMemo(() => {
-    if (typeof window !== 'undefined') {
-      // Find current clinic ID from clinicq-clinics
-      const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
-      const currentClinic = clinics.find((c: any) => c.type === clinicType)
-      const clinicId = currentClinic?.id
-      
-      const saved = localStorage.getItem('clinic-practitioners')
+    if (typeof window !== 'undefined' && clinicId) {
+      // Try clinic-specific storage first
+      const storageKey = `clinic-practitioners-${clinicId}`
+      const saved = localStorage.getItem(storageKey)
       if (saved) {
         try {
           const parsed = JSON.parse(saved)
           if (Array.isArray(parsed)) {
-            // Filter by clinicId if available, otherwise show all active
-            return clinicId 
-              ? parsed.filter((p: any) => p.clinicId === clinicId && p.active)
-              : parsed.filter((p: any) => p.active)
+            return parsed.filter((p: any) => p.active)
+          }
+        } catch {}
+      }
+      // Fallback: try shared key and filter by clinicId
+      const sharedSaved = localStorage.getItem('clinic-practitioners')
+      if (sharedSaved) {
+        try {
+          const parsed = JSON.parse(sharedSaved)
+          if (Array.isArray(parsed)) {
+            return parsed.filter((p: any) => p.clinicId === clinicId && p.active)
           }
         } catch {}
       }
     }
     return []
-  }, [clinicType])
+  }, [clinicId])
 
   // Add procedure to list
   const addProcedure = () => {

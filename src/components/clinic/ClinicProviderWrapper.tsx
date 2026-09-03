@@ -146,8 +146,10 @@ function ClinicRouter({ children }: { children: ReactNode }) {
 }
 
 export default function ClinicProviderWrapper({ children }: { children: ReactNode }) {
+  // Get clinicId from auth context
+  const { currentClinicId } = useAuth()
   return (
-    <ClinicProvider>
+    <ClinicProvider clinicId={currentClinicId}>
       <ClinicRouter>{children}</ClinicRouter>
     </ClinicProvider>
   )

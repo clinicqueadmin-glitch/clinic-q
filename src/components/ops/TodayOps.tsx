@@ -77,9 +77,31 @@ function getElapsedMinutes(timeStr: string | undefined): number | null {
 
 export default function TodayOps() {
   const { config, currentClinic, settings } = useClinic()
-  const { user, currentRole } = useAuth()
+  const { user, currentRole, currentClinicId } = useAuth()
+  // Clinic-specific storage keys
+  const roomKey = currentClinicId ? `clinic-rooms-${currentClinicId}` : 'clinic-rooms'
+  const dailyRoomKey = currentClinicId ? `clinic-daily-rooms-${currentClinicId}` : 'clinic-daily-rooms'
+  const dailyDateKey = currentClinicId ? `clinic-daily-rooms-date-${currentClinicId}` : 'clinic-daily-rooms-date'
+  const settingsKey = currentClinicId ? `clinic-q-settings-${currentClinicId}` : 'clinic-q-settings'
   const { practitioners } = usePractitioners()
   const [branchData, setBranchData] = useState(() => getDefaultBranchData(currentClinic || 'dental'))
+  
+  // Load branch data from clinic-specific storage
+  useEffect(() => {
+    if (typeof window !== 'undefined' && currentClinicId) {
+      const saved = localStorage.getItem(`clinic-branch-data-${currentClinicId}`)
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved)
+          if (parsed && parsed.branches && parsed.branches.length > 0) {
+            setBranchData(parsed)
+            return
+          }
+        } catch {}
+      }
+    }
+    setBranchData(getDefaultBranchData(currentClinic || 'dental'))
+  }, [currentClinicId, currentClinic])
   
   // Setup guide for new clinics
   const [showSetupGuide, setShowSetupGuide] = useState(() => {
@@ -98,25 +120,24 @@ export default function TodayOps() {
   // Read room settings from localStorage (RoomSettings - basic room info)
   const [savedRooms, setSavedRooms] = useState<Room[]>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('clinic-rooms')
+      const saved = localStorage.getItem(roomKey)
       if (saved) {
         try { return JSON.parse(saved) } catch {}
       }
     }
-    // New clinics start with no rooms - user must add them via settings
     return []
   })
   
   // Read daily room schedule from separate localStorage (practitioner, branch, time for today)
   const [dailyRooms, setDailyRooms] = useState<Room[]>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('clinic-daily-rooms')
-      const savedDate = localStorage.getItem('clinic-daily-rooms-date')
+      const saved = localStorage.getItem(dailyRoomKey)
+      const savedDate = localStorage.getItem(dailyDateKey)
       const today = new Date().toISOString().split('T')[0]
       // If date doesn't match today, clear daily rooms (new day)
       if (savedDate !== today) {
-        localStorage.removeItem('clinic-daily-rooms')
-        localStorage.setItem('clinic-daily-rooms-date', today)
+        localStorage.removeItem(dailyRoomKey)
+        localStorage.setItem(dailyDateKey, today)
         return []
       }
       if (saved) {
@@ -129,7 +150,7 @@ export default function TodayOps() {
   // Reset daily rooms when clinic closes
   useEffect(() => {
     const checkClosingTime = () => {
-      const savedSettings = localStorage.getItem('clinic-q-settings')
+      const savedSettings = localStorage.getItem(settingsKey)
       if (!savedSettings) return
       try {
         const settings = JSON.parse(savedSettings)
@@ -140,12 +161,12 @@ export default function TodayOps() {
         const closeMinutes = closeHour * 60 + closeMin
         // If past closing time, clear daily rooms and queue
         if (currentMinutes >= closeMinutes) {
-          const savedDate = localStorage.getItem('clinic-daily-rooms-date')
+          const savedDate = localStorage.getItem(dailyDateKey)
           const today = now.toISOString().split('T')[0]
           if (savedDate === today) {
-            localStorage.removeItem('clinic-daily-rooms')
+            localStorage.removeItem(dailyRoomKey)
             localStorage.removeItem(`clinicq-queue-${currentClinic}-${today}`)
-            localStorage.setItem('clinic-daily-rooms-date', '')
+            localStorage.setItem(dailyDateKey, '')
             setDailyRooms([])
           }
         }
@@ -183,12 +204,12 @@ export default function TodayOps() {
   // Listen for localStorage changes (when RoomSettings or daily schedule is updated)
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'clinic-rooms' && e.newValue) {
+      if (e.key === roomKey && e.newValue) {
         try {
           setSavedRooms(JSON.parse(e.newValue))
         } catch {}
       }
-      if (e.key === 'clinic-daily-rooms' && e.newValue) {
+      if (e.key === dailyRoomKey && e.newValue) {
         try {
           setDailyRooms(JSON.parse(e.newValue))
         } catch {}
@@ -196,7 +217,7 @@ export default function TodayOps() {
     }
     window.addEventListener('storage', handleStorageChange)
     return () => window.removeEventListener('storage', handleStorageChange)
-  }, [])
+  }, [roomKey, dailyRoomKey])
   const allProcedures = useMemo(() => getAllActiveProcedures(branchData), [branchData])
 
   // Provider sees only their assigned room(s)
@@ -550,7 +571,7 @@ export default function TodayOps() {
   // Add new room handler
   const handleAddRoom = () => {
     // Refresh daily rooms from localStorage
-    const saved = localStorage.getItem('clinic-daily-rooms')
+    const saved = localStorage.getItem(dailyRoomKey)
     if (saved) {
       try {
         setDailyRooms(JSON.parse(saved))

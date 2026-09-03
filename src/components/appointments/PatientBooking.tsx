@@ -96,41 +96,58 @@ export default function PatientBooking() {
     )
   }, [maxDistance])
 
+  // Find current clinic ID
+  const currentClinicObj = useMemo(() => {
+    if (typeof window === 'undefined') return null
+    const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
+    return clinics.find((c: any) => c.type === (currentClinic || 'dental')) || null
+  }, [currentClinic])
+  const clinicId = currentClinicObj?.id
+  
+  // Clinic-specific keys
+  const dailyRoomKey = clinicId ? `clinic-daily-rooms-${clinicId}` : 'clinic-daily-rooms'
+  const dailyDateKey = clinicId ? `clinic-daily-rooms-date-${clinicId}` : 'clinic-daily-rooms-date'
+
   // Load practitioners from localStorage (filtered by current clinic)
   const clinicPractitioners = useMemo(() => {
-    if (typeof window !== 'undefined') {
-      // Find current clinic ID from clinicq-clinics
-      const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
-      const currentClinicObj = clinics.find((c: any) => c.type === (currentClinic || 'dental'))
-      const clinicId = currentClinicObj?.id
-      
-      const saved = localStorage.getItem('clinic-practitioners')
+    if (typeof window !== 'undefined' && clinicId) {
+      // Try clinic-specific storage first
+      const storageKey = `clinic-practitioners-${clinicId}`
+      const saved = localStorage.getItem(storageKey)
       if (saved) {
         try {
           const parsed = JSON.parse(saved)
           if (Array.isArray(parsed)) {
-            return clinicId
-              ? parsed.filter((p: any) => p.clinicId === clinicId && p.active) as Practitioner[]
-              : parsed.filter((p: any) => p.active) as Practitioner[]
+            return parsed.filter((p: any) => p.active) as Practitioner[]
+          }
+        } catch {}
+      }
+      // Fallback: try shared key and filter by clinicId
+      const sharedSaved = localStorage.getItem('clinic-practitioners')
+      if (sharedSaved) {
+        try {
+          const parsed = JSON.parse(sharedSaved)
+          if (Array.isArray(parsed)) {
+            return parsed.filter((p: any) => p.clinicId === clinicId && p.active) as Practitioner[]
           }
         } catch {}
       }
     }
     return []
-  }, [currentClinic])
+  }, [clinicId])
 
   // Get today's daily rooms from localStorage
   const dailyRooms = useMemo(() => {
     if (typeof window === 'undefined') return []
-    const saved = localStorage.getItem('clinic-daily-rooms')
-    const savedDate = localStorage.getItem('clinic-daily-rooms-date')
+    const saved = localStorage.getItem(dailyRoomKey)
+    const savedDate = localStorage.getItem(dailyDateKey)
     const today = new Date().toISOString().split('T')[0]
     if (savedDate !== today || !saved) return []
     try {
       const parsed = JSON.parse(saved)
       return Array.isArray(parsed) ? parsed.filter((r: any) => r.active) : []
     } catch { return [] }
-  }, [])
+  }, [dailyRoomKey, dailyDateKey])
 
   // Active branches = branches that have at least one daily room today
   const activeBranches = useMemo(() => {

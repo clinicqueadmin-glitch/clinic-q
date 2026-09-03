@@ -35,10 +35,13 @@ const defaultSettings: ClinicSettings = {
   operatingDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
 }
 
-export function ClinicProvider({ children }: { children: ReactNode }) {
+export function ClinicProvider({ children, clinicId }: { children: ReactNode; clinicId?: string | null }) {
   const [currentClinic, setCurrentClinic] = useState<ClinicType | null>(null)
   const [isLoaded, setIsLoaded] = useState(false)
   const [settings, setSettings] = useState<ClinicSettings>(defaultSettings)
+  
+  // Clinic-specific settings key
+  const settingsKey = clinicId ? `clinic-q-settings-${clinicId}` : 'clinic-q-settings'
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -46,8 +49,8 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
     if (saved && clinicConfig[saved]) {
       setCurrentClinic(saved)
     }
-    // Load settings
-    const savedSettings = localStorage.getItem('clinic-q-settings')
+    // Load settings from clinic-specific key first
+    const savedSettings = localStorage.getItem(settingsKey) || localStorage.getItem('clinic-q-settings')
     if (savedSettings) {
       try {
         const parsed = JSON.parse(savedSettings)
@@ -55,7 +58,7 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
       } catch {}
     }
     setIsLoaded(true)
-  }, [])
+  }, [settingsKey])
 
   const setClinic = useCallback((clinic: ClinicType) => {
     setCurrentClinic(clinic)
@@ -70,10 +73,10 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
   const updateSettings = useCallback((newSettings: Partial<ClinicSettings>) => {
     setSettings(prev => {
       const updated = { ...prev, ...newSettings }
-      localStorage.setItem('clinic-q-settings', JSON.stringify(updated))
+      localStorage.setItem(settingsKey, JSON.stringify(updated))
       return updated
     })
-  }, [])
+  }, [settingsKey])
 
   const config = currentClinic ? clinicConfig[currentClinic] : null
 

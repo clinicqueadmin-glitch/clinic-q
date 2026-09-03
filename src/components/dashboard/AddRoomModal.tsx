@@ -3,7 +3,8 @@
 import { useState, useMemo, useEffect } from 'react'
 import { X, Clock, User, Stethoscope, AlertTriangle } from 'lucide-react'
 import { useClinic } from '@/lib/clinic-context'
-import { getDefaultBranchData, type Room } from '@/lib/branch-data'
+import { useAuth } from '@/lib/auth-context'
+import { getDefaultBranchData, type ClinicBranchData, type Room } from '@/lib/branch-data'
 import { usePractitioners } from '@/lib/practitioner-context'
 
 interface AddRoomModalProps {
@@ -14,13 +15,32 @@ interface AddRoomModalProps {
 
 export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProps) {
   const { currentClinic, settings } = useClinic()
+  const { currentClinicId } = useAuth()
   const { practitioners } = usePractitioners()
-  const branchData = useMemo(() => getDefaultBranchData(currentClinic || 'dental'), [currentClinic])
+  // Load branch data from clinic-specific storage
+  const branchData: ClinicBranchData = useMemo(() => {
+    if (typeof window !== 'undefined' && currentClinicId) {
+      const saved = localStorage.getItem(`clinic-branch-data-${currentClinicId}`)
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved)
+          if (parsed && parsed.branches && parsed.branches.length > 0) {
+            return parsed as ClinicBranchData
+          }
+        } catch {}
+      }
+    }
+    return getDefaultBranchData(currentClinic || 'dental')
+  }, [currentClinicId, currentClinic])
+  
+  // Clinic-specific keys
+  const roomKey = currentClinicId ? `clinic-rooms-${currentClinicId}` : 'clinic-rooms'
+  const dailyRoomKey = currentClinicId ? `clinic-daily-rooms-${currentClinicId}` : 'clinic-daily-rooms'
 
   // Read rooms from RoomSettings (localStorage - source of truth for room info)
   const [savedRooms] = useState<Room[]>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('clinic-rooms')
+      const saved = localStorage.getItem(roomKey)
       if (saved) {
         try { return JSON.parse(saved) } catch {}
       }
@@ -31,7 +51,7 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
   // Read daily room schedule from separate localStorage key
   const [dailyRooms, setDailyRooms] = useState<Room[]>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('clinic-daily-rooms')
+      const saved = localStorage.getItem(dailyRoomKey)
       if (saved) {
         try { return JSON.parse(saved) } catch {}
       }
@@ -120,7 +140,7 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
     // Save to daily rooms localStorage
     const updatedDailyRooms = [...dailyRooms, dailyRoom]
     setDailyRooms(updatedDailyRooms)
-    localStorage.setItem('clinic-daily-rooms', JSON.stringify(updatedDailyRooms))
+    localStorage.setItem(dailyRoomKey, JSON.stringify(updatedDailyRooms))
 
     // Callback to refresh parent
     onSave()

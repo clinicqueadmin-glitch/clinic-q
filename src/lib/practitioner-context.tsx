@@ -18,12 +18,12 @@ interface PractitionerContextType {
   getPractitionersByClinicId: (clinicId: string) => Practitioner[]
 }
 
-const STORAGE_KEY = 'clinic-practitioners'
-
-function loadPractitioners(clinicType: ClinicType): Practitioner[] {
+function loadPractitioners(clinicType: ClinicType, clinicId?: string | null): Practitioner[] {
   if (typeof window === 'undefined') return []
   
-  const saved = localStorage.getItem(STORAGE_KEY)
+  // Try clinic-specific storage first
+  const storageKey = clinicId ? `clinic-practitioners-${clinicId}` : 'clinic-practitioners'
+  const saved = localStorage.getItem(storageKey)
   if (saved) {
     try {
       const parsed = JSON.parse(saved)
@@ -31,7 +31,25 @@ function loadPractitioners(clinicType: ClinicType): Practitioner[] {
         return parsed.map((p: any) => ({
           ...p,
           userId: p.userId || undefined,
-          clinicId: p.clinicId || undefined,
+          clinicId: p.clinicId || clinicId || undefined,
+        }))
+      }
+    } catch {}
+  }
+  
+  // Fallback: try shared key and filter by clinicId
+  const sharedSaved = localStorage.getItem('clinic-practitioners')
+  if (sharedSaved) {
+    try {
+      const parsed = JSON.parse(sharedSaved)
+      if (Array.isArray(parsed)) {
+        const filtered = clinicId 
+          ? parsed.filter((p: any) => p.clinicId === clinicId)
+          : parsed
+        return filtered.map((p: any) => ({
+          ...p,
+          userId: p.userId || undefined,
+          clinicId: p.clinicId || clinicId || undefined,
         }))
       }
     } catch {}
@@ -52,7 +70,7 @@ function filterByClinic(practitioners: Practitioner[], clinicId: string | null):
 const PractitionerContext = createContext<PractitionerContextType | null>(null)
 
 export function PractitionerProvider({ children, clinicType, clinicId }: { children: ReactNode; clinicType: ClinicType; clinicId?: string | null }) {
-  const [practitioners, setPractitioners] = useState<Practitioner[]>(() => loadPractitioners(clinicType))
+  const [practitioners, setPractitioners] = useState<Practitioner[]>(() => loadPractitioners(clinicType, clinicId))
   
   // Filter practitioners by current clinic
   const filteredPractitioners = useMemo(() => {
@@ -60,8 +78,9 @@ export function PractitionerProvider({ children, clinicType, clinicId }: { child
   }, [practitioners, clinicId])
 
   const saveToStorage = useCallback((data: Practitioner[]) => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
-  }, [])
+    const storageKey = clinicId ? `clinic-practitioners-${clinicId}` : 'clinic-practitioners'
+    localStorage.setItem(storageKey, JSON.stringify(data))
+  }, [clinicId])
 
   const updatePractitioner = useCallback((id: string, updates: Partial<Practitioner>) => {
     setPractitioners(prev => {
