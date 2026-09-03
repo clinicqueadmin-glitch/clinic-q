@@ -19,6 +19,9 @@ interface ClinicWithStats extends PlatformClinic {
   totalUsers: number
   branches: number
   rooms: number
+  phone: string
+  isEarlyBird: boolean
+  planType: 'trial' | 'monthly' | 'yearly'
 }
 
 const roleLabels: Record<string, string> = {
@@ -74,18 +77,72 @@ export default function PlatformDashboard() {
           const { count: users } = await sb.from('clinic_memberships')
             .select('*', { count: 'exact', head: true })
             .eq('clinic_id', c.id)
+          // Get owner info from memberships
+          const { data: ownerMembership } = await sb.from('clinic_memberships')
+            .select('user_id, role')
+            .eq('clinic_id', c.id)
+            .eq('role', 'owner')
+            .limit(1)
+            .single()
+          let ownerName = ''
+          let ownerEmail = ''
+          if (ownerMembership?.user_id) {
+            const { data: ownerUser } = await sb.from('users')
+              .select('name, email')
+              .eq('id', ownerMembership.user_id)
+              .limit(1)
+              .single()
+            if (ownerUser) {
+              ownerName = ownerUser.name || ''
+              ownerEmail = ownerUser.email || ''
+            }
+          }
+          // Get subscription from localStorage
+          let planType: 'trial' | 'monthly' | 'yearly' = 'trial'
+          let isEarlyBird = false
+          let expiresAt: string | null = null
+          let registeredAt = c.created_at || ''
+          try {
+            const subRaw = localStorage.getItem(`clinicq-subscription-${c.id}`)
+            if (subRaw) {
+              const sub = JSON.parse(subRaw)
+              planType = sub.plan || 'trial'
+              if (sub.paidEndDate) expiresAt = new Date(sub.paidEndDate).toLocaleDateString('th-TH')
+              else if (sub.trialEndDate) expiresAt = new Date(sub.trialEndDate).toLocaleDateString('th-TH')
+              if (sub.startDate) registeredAt = new Date(sub.startDate).toLocaleDateString('th-TH')
+              // Check Early Bird (registered within 7 days)
+              if (sub.startDate && sub.plan === 'yearly') {
+                const start = new Date(sub.startDate)
+                const ebEnd = new Date(start)
+                ebEnd.setDate(ebEnd.getDate() + 7)
+                isEarlyBird = sub.paymentAmount === 3999 || (new Date() <= ebEnd)
+              }
+            }
+          } catch {}
+          // Get phone from clinic settings
+          let phone = ''
+          try {
+            const settingsRaw = localStorage.getItem(`clinic-q-settings-${c.id}`)
+            if (settingsRaw) {
+              const settings = JSON.parse(settingsRaw)
+              phone = settings.phone || ''
+            }
+          } catch {}
           return {
             id: c.id,
             name: c.name,
             type: c.type || 'dental',
             prefix: c.prefix || 'Q',
             color: c.color || '#9333EA',
-            ownerName: '',
-            ownerEmail: '',
-            package: 'clinicq' as PackageType,
+            ownerName,
+            ownerEmail,
+            phone,
+            package: planType === 'trial' ? 'free_trial' : 'clinicq' as PackageType,
+            planType,
+            isEarlyBird,
             status: 'active' as const,
-            registeredAt: c.created_at || '',
-            expiresAt: null,
+            registeredAt,
+            expiresAt,
             totalQueuesToday: queuesToday || 0,
             totalQueuesMonth: 0,
             totalUsers: users || 0,
@@ -316,7 +373,7 @@ export default function PlatformDashboard() {
           )}
         </div>
 
-        {/* ═══ Section 2: การชำระเงิน ═══ */}
+        {/* ═══ Section 2: คลินิกทั้งหมด ═══ */}
         <div id="payments" className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 mb-8 scroll-mt-20">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
@@ -324,8 +381,8 @@ export default function PlatformDashboard() {
                 <CreditCard className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h2 className="text-lg font-extrabold text-gray-900">💰 การชำระเงิน</h2>
-                <p className="text-xs text-gray-400">คลินิกที่ใช้งานอยู่ {stats.active} คลินิก</p>
+                <h2 className="text-lg font-extrabold text-gray-900">💰 รายชื่อคลินิกทั้งหมด</h2>
+                <p className="text-xs text-gray-400">ทดลองใช้ {stats.free} คลินิก · ชำระเงิน {stats.paid} คลินิก</p>
               </div>
             </div>
             <div className="flex gap-1.5">
@@ -340,39 +397,42 @@ export default function PlatformDashboard() {
                       : 'bg-white text-gray-500 hover:bg-gray-50 border border-gray-200'
                   )}
                 >
-                  {f === 'all' ? 'ทั้งหมด' : packageConfig[f as PackageType]?.label}
+                  {f === 'all' ? 'ทั้งหมด' : f === 'free_trial' ? 'ทดลองใช้' : 'ชำระเงิน'}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Package Distribution */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-            {(Object.entries(packageConfig) as [PackageType, typeof packageConfig[PackageType]][]).map(([key, pkg]) => {
-              const count = platformClinics.filter(c => c.package === key && c.status === 'active').length
-              return (
-                <div key={key} className="rounded-2xl p-4 border border-gray-100" style={{ backgroundColor: pkg.bgColor }}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: pkg.color }} />
-                    <span className="text-xs font-bold" style={{ color: pkg.color }}>{pkg.label}</span>
-                  </div>
-                  <p className="text-2xl font-extrabold text-gray-900">{count}</p>
-                  <p className="text-[10px] text-gray-400 mt-1">คลินิก</p>
-                </div>
-              )
-            })}
+          {/* Summary Cards */}
+          <div className="grid grid-cols-3 gap-3 mb-6">
+            <div className="rounded-2xl p-4 bg-blue-50 border border-blue-100">
+              <p className="text-xs font-bold text-blue-600">🧪 ทดลองใช้</p>
+              <p className="text-2xl font-extrabold text-blue-700 mt-1">{stats.free}</p>
+              <p className="text-[10px] text-blue-500">คลินิก</p>
+            </div>
+            <div className="rounded-2xl p-4 bg-green-50 border border-green-100">
+              <p className="text-xs font-bold text-green-600">⭐ ชำระเงิน</p>
+              <p className="text-2xl font-extrabold text-green-700 mt-1">{stats.paid}</p>
+              <p className="text-[10px] text-green-500">คลินิก</p>
+            </div>
+            <div className="rounded-2xl p-4 bg-amber-50 border border-amber-100">
+              <p className="text-xs font-bold text-amber-600">🔥 Early Bird</p>
+              <p className="text-2xl font-extrabold text-amber-700 mt-1">{platformClinics.filter(c => c.isEarlyBird).length}</p>
+              <p className="text-[10px] text-amber-500">คลินิก</p>
+            </div>
           </div>
 
-          {/* Payment Table */}
+          {/* Detailed Table */}
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-100">
-                  <th className="text-left text-[10px] font-bold text-gray-400 uppercase pb-3 px-3">คลินิก</th>
-                  <th className="text-left text-[10px] font-bold text-gray-400 uppercase pb-3 px-3">เจ้าของ</th>
-                  <th className="text-center text-[10px] font-bold text-gray-400 uppercase pb-3 px-3">Package</th>
-                  <th className="text-center text-[10px] font-bold text-gray-400 uppercase pb-3 px-3">คิว/เดือน</th>
-                  <th className="text-center text-[10px] font-bold text-gray-400 uppercase pb-3 px-3">ผู้ใช้</th>
+                  <th className="text-left text-[10px] font-bold text-gray-400 uppercase pb-3 px-3">ชื่อคลินิก</th>
+                  <th className="text-left text-[10px] font-bold text-gray-400 uppercase pb-3 px-3">ประเภท</th>
+                  <th className="text-left text-[10px] font-bold text-gray-400 uppercase pb-3 px-3">เบอร์โทร</th>
+                  <th className="text-left text-[10px] font-bold text-gray-400 uppercase pb-3 px-3">ชื่อผู้สมัคร</th>
+                  <th className="text-left text-[10px] font-bold text-gray-400 uppercase pb-3 px-3">Email</th>
+                  <th className="text-center text-[10px] font-bold text-gray-400 uppercase pb-3 px-3">วันสมัคร</th>
                   <th className="text-center text-[10px] font-bold text-gray-400 uppercase pb-3 px-3">วันหมดอายุ</th>
                   <th className="text-center text-[10px] font-bold text-gray-400 uppercase pb-3 px-3">สถานะ</th>
                   <th className="text-center text-[10px] font-bold text-gray-400 uppercase pb-3 px-3"></th>
@@ -380,9 +440,10 @@ export default function PlatformDashboard() {
               </thead>
               <tbody>
                 {activeClinics.map(clinic => {
-                  const pkg = packageConfig[clinic.package]
                   const trial = getTrialStatus(clinic.expiresAt)
                   const daysLeft = getDaysRemaining(clinic.expiresAt)
+                  const isTrial = clinic.planType === 'trial'
+                  const isPaid = clinic.planType === 'yearly' || clinic.planType === 'monthly'
                   return (
                     <tr key={clinic.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
                       <td className="py-3 px-3">
@@ -392,43 +453,57 @@ export default function PlatformDashboard() {
                           </div>
                           <div>
                             <p className="text-sm font-bold text-gray-800">{clinic.name}</p>
-                            <p className="text-[10px] text-gray-400">{clinic.type}</p>
+                            {clinic.isEarlyBird && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 mt-1">
+                                🔥 Early Bird
+                              </span>
+                            )}
                           </div>
                         </div>
                       </td>
-                      <td className="py-3 px-3 text-xs text-gray-500">{clinic.ownerName}</td>
-                      <td className="py-3 px-3 text-center">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold" style={{ backgroundColor: pkg.bgColor, color: pkg.color }}>
-                          {clinic.package === 'clinicq' ? <Star className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
-                          {pkg.label}
-                        </span>
+                      <td className="py-3 px-3">
+                        <span className="text-xs text-gray-600">{clinicTypeLabels[clinic.type] || clinic.type}</span>
                       </td>
-                      <td className="py-3 px-3 text-center text-sm font-bold text-gray-700">{clinic.totalQueuesMonth}</td>
-                      <td className="py-3 px-3 text-center text-sm font-bold text-gray-700">{clinic.totalUsers}</td>
+                      <td className="py-3 px-3">
+                        <span className="text-xs text-gray-600">{clinic.phone || '-'}</span>
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="text-xs font-medium text-gray-800">{clinic.ownerName || '-'}</span>
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="text-xs text-gray-500">{clinic.ownerEmail || '-'}</span>
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        <span className="text-xs text-gray-500">{clinic.registeredAt || '-'}</span>
+                      </td>
                       <td className="py-3 px-3 text-center">
                         {clinic.expiresAt ? (
-                          <span className={clsx('text-xs font-bold', trial === 'expiring' ? 'text-amber-600' : trial === 'expired' ? 'text-red-600' : 'text-gray-500')}>
-                            {clinic.expiresAt}
-                            {daysLeft !== null && daysLeft > 0 && <span className="text-[10px] ml-1">({daysLeft} วัน)</span>}
-                          </span>
+                          <div>
+                            <span className={clsx('text-xs font-bold', trial === 'expiring' ? 'text-amber-600' : trial === 'expired' ? 'text-red-600' : 'text-gray-600')}>
+                              {clinic.expiresAt}
+                            </span>
+                            {daysLeft !== null && daysLeft > 0 && (
+                              <p className="text-[10px] text-gray-400">(เหลือ {daysLeft} วัน)</p>
+                            )}
+                          </div>
                         ) : (
-                          <span className="text-xs text-blue-600 font-bold">ไม่จำกัด</span>
+                          <span className="text-xs text-gray-400">-</span>
                         )}
                       </td>
                       <td className="py-3 px-3 text-center">
-                        <span className={clsx('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold',
-                          trial === 'active' ? 'bg-green-100 text-green-700' :
-                          trial === 'expiring' ? 'bg-amber-100 text-amber-700' :
-                          trial === 'expired' ? 'bg-red-100 text-red-700' :
-                          'bg-blue-100 text-blue-700'
-                        )}>
-                          {trial === 'active' ? '✓ ปกติ' : trial === 'expiring' ? '⚠ ใกล้หมด' : trial === 'expired' ? '✗ หมดอายุ' : '∞ ไม่จำกัด'}
-                        </span>
+                        {isTrial ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-100 text-blue-700">
+                            🧪 ทดลองใช้
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-green-100 text-green-700">
+                            ⭐ {clinic.planType === 'yearly' ? 'รายปี' : 'รายเดือน'}
+                          </span>
+                        )}
                       </td>
                       <td className="py-3 px-3 text-center">
                         <button
                           onClick={() => {
-                            // Switch to this clinic and go to dashboard
                             localStorage.setItem('clinic-q-type', clinic.type)
                             window.location.href = '/'
                           }}
@@ -444,6 +519,9 @@ export default function PlatformDashboard() {
               </tbody>
             </table>
           </div>
+          {activeClinics.length === 0 && (
+            <div className="text-center py-8 text-gray-400 text-sm">ไม่พบคลินิก</div>
+          )}
         </div>
 
         {/* ═══ Section 3: คลินิกสมัครซ้ำหลังหมดอายุ ═══ */}
