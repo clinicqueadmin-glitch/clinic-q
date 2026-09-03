@@ -122,27 +122,71 @@ export default function PatientBooking() {
   // Load practitioners from localStorage (filtered by current clinic)
   const clinicPractitioners = useMemo(() => {
     if (typeof window !== 'undefined' && clinicId) {
-      // Try clinic-specific storage first
+      const result: Practitioner[] = []
+      const seenIds = new Set<string>()
+
+      // 1. Try clinicq-users-with-roles (UserManagement storage)
+      const usersKey = `clinicq-users-with-roles-${clinicId}`
+      const usersSaved = localStorage.getItem(usersKey)
+      if (usersSaved) {
+        try {
+          const parsed = JSON.parse(usersSaved)
+          if (Array.isArray(parsed)) {
+            parsed.filter((u: any) =>
+              (u.isActive !== false) &&
+              (u.roles?.includes('practitioner') || u.role === 'practitioner')
+            ).forEach((u: any) => {
+              if (!seenIds.has(u.id)) {
+                seenIds.add(u.id)
+                result.push({
+                  id: u.id,
+                  name: u.name,
+                  phone: u.phone || '',
+                  branchId: u.branchIds?.[0] || '',
+                  active: u.isActive !== false,
+                  userId: u.id,
+                  clinicId: clinicId,
+                } as Practitioner)
+              }
+            })
+          }
+        } catch {}
+      }
+
+      // 2. Try clinic-practitioners storage
       const storageKey = `clinic-practitioners-${clinicId}`
       const saved = localStorage.getItem(storageKey)
       if (saved) {
         try {
           const parsed = JSON.parse(saved)
           if (Array.isArray(parsed)) {
-            return parsed.filter((p: any) => p.active && p.clinicId === clinicId) as Practitioner[]
+            parsed.filter((p: any) => p.active && p.clinicId === clinicId).forEach((p: any) => {
+              if (!seenIds.has(p.id)) {
+                seenIds.add(p.id)
+                result.push(p as Practitioner)
+              }
+            })
           }
         } catch {}
       }
-      // Fallback: try shared key and filter by clinicId
+
+      // 3. Fallback: shared key
       const sharedSaved = localStorage.getItem('clinic-practitioners')
       if (sharedSaved) {
         try {
           const parsed = JSON.parse(sharedSaved)
           if (Array.isArray(parsed)) {
-            return parsed.filter((p: any) => p.clinicId === clinicId && p.active) as Practitioner[]
+            parsed.filter((p: any) => p.clinicId === clinicId && p.active).forEach((p: any) => {
+              if (!seenIds.has(p.id)) {
+                seenIds.add(p.id)
+                result.push(p as Practitioner)
+              }
+            })
           }
         } catch {}
       }
+
+      return result
     }
     return []
   }, [clinicId])

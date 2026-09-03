@@ -159,27 +159,36 @@ export default function WalkinPage() {
   // Get practitioners from localStorage (filtered by current clinic)
   const branchPractitioners = useMemo(() => {
     if (typeof window !== 'undefined' && clinicId) {
-      // 1. Try clinicq-users-with-roles (UserManagement storage) — practitioners with provider role
+      // Collect practitioners from multiple sources
+      const result: { id: string; name: string; active: boolean; clinicId: string; branchId: string }[] = []
+      const seenIds = new Set<string>()
+
+      // 1. Try clinicq-users-with-roles (UserManagement storage) — users with practitioner role
       const usersKey = `clinicq-users-with-roles-${clinicId}`
       const usersSaved = localStorage.getItem(usersKey)
       if (usersSaved) {
         try {
           const parsed = JSON.parse(usersSaved)
           if (Array.isArray(parsed)) {
-            const providers = parsed.filter((u: any) => 
-              u.active &&
-              (u.roles?.includes('provider') || u.role === 'provider')
-            ).map((u: any) => ({
-              id: u.id,
-              name: u.name,
-              active: u.active,
-              clinicId: clinicId,
-              branchId: u.branchIds?.[0] || '',
-            }))
-            if (providers.length > 0) return providers
+            parsed.filter((u: any) => 
+              (u.isActive !== false) &&
+              (u.roles?.includes('practitioner') || u.role === 'practitioner')
+            ).forEach((u: any) => {
+              if (!seenIds.has(u.id)) {
+                seenIds.add(u.id)
+                result.push({
+                  id: u.id,
+                  name: u.name,
+                  active: u.isActive !== false,
+                  clinicId: clinicId,
+                  branchId: u.branchIds?.[0] || '',
+                })
+              }
+            })
           }
         } catch {}
       }
+
       // 2. Try clinic-practitioners (PractitionerContext storage)
       const storageKey = `clinic-practitioners-${clinicId}`
       const saved = localStorage.getItem(storageKey)
@@ -187,20 +196,45 @@ export default function WalkinPage() {
         try {
           const parsed = JSON.parse(saved)
           if (Array.isArray(parsed)) {
-            return parsed.filter((p: any) => p.active && p.clinicId === clinicId)
+            parsed.filter((p: any) => p.active && p.clinicId === clinicId).forEach((p: any) => {
+              if (!seenIds.has(p.id)) {
+                seenIds.add(p.id)
+                result.push({
+                  id: p.id,
+                  name: p.name,
+                  active: p.active,
+                  clinicId: clinicId,
+                  branchId: p.branchId || '',
+                })
+              }
+            })
           }
         } catch {}
       }
-      // 3. Fallback: try shared key and filter by clinicId
+
+      // 3. Fallback: shared key filtered by clinicId
       const sharedSaved = localStorage.getItem('clinic-practitioners')
       if (sharedSaved) {
         try {
           const parsed = JSON.parse(sharedSaved)
           if (Array.isArray(parsed)) {
-            return parsed.filter((p: any) => p.clinicId === clinicId && p.active)
+            parsed.filter((p: any) => p.clinicId === clinicId && p.active).forEach((p: any) => {
+              if (!seenIds.has(p.id)) {
+                seenIds.add(p.id)
+                result.push({
+                  id: p.id,
+                  name: p.name,
+                  active: true,
+                  clinicId: clinicId,
+                  branchId: p.branchId || '',
+                })
+              }
+            })
           }
         } catch {}
       }
+
+      return result
     }
     return []
   }, [clinicId])
