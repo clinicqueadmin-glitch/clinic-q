@@ -982,6 +982,70 @@ export default function TodayOps() {
     <div className="space-y-4 page-enter">
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
+      {/* Clinic closing countdown */}
+      {(() => {
+        const closeTime = settings.closeTime || '20:00'
+        const [closeH, closeM] = closeTime.split(':').map(Number)
+        const closeMinutes = closeH * 60 + closeM
+        const nowMinutes = now.getHours() * 60 + now.getMinutes()
+        const remainingMinutes = closeMinutes - nowMinutes
+        const isNearClose = remainingMinutes <= 60 && remainingMinutes > 0
+        const isClosed = remainingMinutes <= 0
+        if (!isNearClose && !isClosed) return null
+        const hours = Math.floor(Math.abs(remainingMinutes) / 60)
+        const mins = Math.abs(remainingMinutes) % 60
+        const secs = now.getSeconds()
+        return (
+          <div className={clsx(
+            'rounded-2xl p-4 border-2 transition-all',
+            isClosed ? 'bg-red-50 border-red-300' : 'bg-amber-50 border-amber-300'
+          )}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={clsx(
+                  'w-12 h-12 rounded-2xl flex items-center justify-center text-2xl',
+                  isClosed ? 'bg-red-100' : 'bg-amber-100'
+                )}>
+                  {isClosed ? '🔴' : '⏰'}
+                </div>
+                <div>
+                  <p className={clsx(
+                    'text-sm font-extrabold',
+                    isClosed ? 'text-red-700' : 'text-amber-700'
+                  )}>
+                    {isClosed ? 'ปิดทำการแล้ว' : 'ใกล้ปิดทำการ'}
+                  </p>
+                  <p className="text-xs text-gray-500">ปิดทำการ {closeTime} น.</p>
+                </div>
+              </div>
+              {!isClosed && (
+                <div className="text-right">
+                  <div className="flex items-center gap-1">
+                    <span className={clsx(
+                      'inline-flex items-center justify-center w-10 h-10 rounded-xl text-lg font-black',
+                      remainingMinutes <= 15 ? 'bg-red-500 text-white animate-pulse' : 'bg-amber-500 text-white'
+                    )}>
+                      {String(hours).padStart(2, '0')}
+                    </span>
+                    <span className="text-lg font-bold text-amber-600">:</span>
+                    <span className={clsx(
+                      'inline-flex items-center justify-center w-10 h-10 rounded-xl text-lg font-black',
+                      remainingMinutes <= 15 ? 'bg-red-500 text-white animate-pulse' : 'bg-amber-500 text-white'
+                    )}>
+                      {String(mins).padStart(2, '0')}</span>
+                    <span className="text-lg font-bold text-amber-600">:</span>
+                    <span className="inline-flex items-center justify-center w-10 h-10 rounded-xl text-lg font-black bg-amber-200 text-amber-700">
+                      {String(secs).padStart(2, '0')}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-1">ชม. : นาที : วินาที</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
+
       {/* 30-minute end-of-shift warning */}
       {closingWarnings.length > 0 && (
         <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4">
