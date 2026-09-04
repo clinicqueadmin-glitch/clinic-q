@@ -23,13 +23,23 @@ export default function WalkinPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const urlClinicType = searchParams.get('clinic') as ClinicType | null
+  const urlClinicId = searchParams.get('clinicId') as string | null
   const { queue, setQueue, addQueueItem } = useQueue()
   
-  // Detect clinic ID and type from localStorage (clinicq-clinics has the user's actual clinic)
+  // Detect clinic ID and type from URL params or localStorage
   const { clinicId, clinicType, clinicCfg } = useMemo(() => {
     if (typeof window !== 'undefined') {
       const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
-      // If URL has ?clinic= use that, otherwise use the first clinic from localStorage
+      // Priority 1: URL ?clinicId=xxx (exact match)
+      if (urlClinicId) {
+        const found = clinics.find((c: any) => c.id === urlClinicId)
+        return {
+          clinicId: urlClinicId,
+          clinicType: (found?.type || 'dental') as ClinicType,
+          clinicCfg: clinicConfig[(found?.type || 'dental') as ClinicType] || clinicConfig['dental'],
+        }
+      }
+      // Priority 2: URL ?clinic=dental (type match)
       if (urlClinicType) {
         const found = clinics.find((c: any) => c.type === urlClinicType)
         return {
@@ -38,7 +48,7 @@ export default function WalkinPage() {
           clinicCfg: clinicConfig[urlClinicType] || clinicConfig['dental'],
         }
       }
-      // No URL param — use the user's clinic from localStorage
+      // Priority 3: first clinic from localStorage
       if (clinics.length > 0) {
         const userClinic = clinics[0]
         return {
@@ -53,7 +63,7 @@ export default function WalkinPage() {
       clinicType: 'dental' as ClinicType,
       clinicCfg: clinicConfig['dental'],
     }
-  }, [urlClinicType])
+  }, [urlClinicType, urlClinicId])
   
   // Load actual clinic name from settings
   const clinicDisplayName = useMemo(() => {
@@ -283,6 +293,36 @@ export default function WalkinPage() {
             })
           }
         } catch {}
+      }
+
+      // 5. Final fallback: if no practitioners found, add owner as default practitioner
+      if (result.length === 0 && clinicId) {
+        const allUsersKey = `clinicq-users-with-roles-${clinicId}`
+        const allUsersSaved = localStorage.getItem(allUsersKey)
+        if (allUsersSaved) {
+          try {
+            const parsed = JSON.parse(allUsersSaved)
+            if (Array.isArray(parsed)) {
+              // Add owner as a practitioner option
+              parsed.filter((u: any) => u.roles?.includes('owner') || u.role === 'owner')
+                .forEach((u: any) => {
+                  if (!seenIds.has(u.id)) {
+                    seenIds.add(u.id)
+                    result.push({ id: u.id, name: u.name, active: true, clinicId: clinicId, branchId: '' })
+                  }
+                })
+            }
+          } catch {}
+        }
+        // Also try auth session
+        if (result.length === 0) {
+          try {
+            const authSession = JSON.parse(localStorage.getItem('clinicq-auth') || '{}')
+            if (authSession?.user?.name) {
+              result.push({ id: authSession.user.id || 'owner', name: authSession.user.name, active: true, clinicId: clinicId, branchId: '' })
+            }
+          } catch {}
+        }
       }
 
       setBranchPractitioners(result)

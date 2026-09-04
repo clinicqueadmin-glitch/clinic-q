@@ -1730,7 +1730,7 @@ export default function TodayOps() {
       {/* Action Buttons — Candy Pills */}
       {!isProvider && (
       <div className="flex flex-wrap items-center gap-2">
-        <a href={`/walkin?staff=1&clinic=${currentClinic || 'dental'}`} className="candy-btn candy-btn-primary shadow-lg">
+        <a href={`/walkin?staff=1&clinic=${currentClinic || 'dental'}&clinicId=${currentClinicId || ''}`} className="candy-btn candy-btn-primary shadow-lg">
           <Plus className="w-4 h-4" /> ลงคิวคนไข้ {config?.name ? `(${config.name})` : ''}
         </a>
         {nextQueue && (
