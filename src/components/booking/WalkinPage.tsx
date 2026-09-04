@@ -73,32 +73,63 @@ export default function WalkinPage() {
   const dailyRoomKey = clinicId ? `clinic-daily-rooms-${clinicId}` : 'clinic-daily-rooms'
   const dailyDateKey = clinicId ? `clinic-daily-rooms-date-${clinicId}` : 'clinic-daily-rooms-date'
   
-  // Load branch data from clinic-specific storage, fallback to defaults
-  const branchData = useMemo((): ClinicBranchData => {
-    if (typeof window !== 'undefined' && clinicId) {
-      // Try clinic-specific storage first
+  // Load branch data from Supabase → localStorage → defaults
+  const [branchData, setBranchData] = useState<ClinicBranchData>(() => getDefaultBranchData(clinicType || 'dental'))
+
+  useEffect(() => {
+    if (!clinicId || typeof window === 'undefined') {
+      setBranchData(getDefaultBranchData(clinicType || 'dental'))
+      return
+    }
+
+    const loadBranchData = async () => {
+      // 1. Try Supabase clinic_settings first
+      try {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+        if (supabaseUrl && supabaseKey) {
+          const res = await fetch(`${supabaseUrl}/rest/v1/clinic_settings?clinic_id=eq.${clinicId}&setting_key=eq.branch_data&select=setting_value`, {
+            headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+          })
+          if (res.ok) {
+            const rows = await res.json()
+            if (rows?.[0]?.setting_value?.branches?.length > 0) {
+              setBranchData(rows[0].setting_value as ClinicBranchData)
+              return
+            }
+          }
+        }
+      } catch {}
+
+      // 2. Fallback: localStorage clinic-specific
       const saved = localStorage.getItem(`clinic-branch-data-${clinicId}`)
       if (saved) {
         try {
           const parsed = JSON.parse(saved)
-          if (parsed && parsed.branches && parsed.branches.length > 0) {
-            return parsed as ClinicBranchData
+          if (parsed?.branches?.length > 0) {
+            setBranchData(parsed as ClinicBranchData)
+            return
           }
         } catch {}
       }
-      // Fallback: try shared key and filter by clinicId
+
+      // 3. Fallback: shared key
       const sharedSaved = localStorage.getItem('clinic-branch-data')
       if (sharedSaved) {
         try {
           const parsed = JSON.parse(sharedSaved)
-          if (parsed && parsed.branches && parsed.branches.length > 0) {
-            return parsed as ClinicBranchData
+          if (parsed?.branches?.length > 0) {
+            setBranchData(parsed as ClinicBranchData)
+            return
           }
         } catch {}
       }
+
+      // 4. Final fallback: defaults
+      setBranchData(getDefaultBranchData(clinicType || 'dental'))
     }
-    // Fallback to default data
-    return getDefaultBranchData(clinicType)
+
+    loadBranchData()
   }, [clinicId, clinicType])
 
   // Auto redirect after registration when called from dashboard (staff mode)
@@ -156,40 +187,88 @@ export default function WalkinPage() {
     return branch?.procedures || []
   }, [selectedBranch, availableBranches])
 
-  // Get practitioners from localStorage (filtered by current clinic)
-  const branchPractitioners = useMemo(() => {
-    if (typeof window !== 'undefined' && clinicId) {
-      // Collect practitioners from multiple sources
+  // Get practitioners — state-based to support async Supabase fetch
+  const [branchPractitioners, setBranchPractitioners] = useState<{ id: string; name: string; active: boolean; clinicId: string; branchId: string }[]>([])
+
+  useEffect(() => {
+    if (!clinicId || typeof window === 'undefined') { setBranchPractitioners([]); return }
+
+    const loadPractitioners = async () => {
       const result: { id: string; name: string; active: boolean; clinicId: string; branchId: string }[] = []
       const seenIds = new Set<string>()
 
-      // 1. Try clinicq-users-with-roles (UserManagement storage) — users with practitioner role
+      // 1. Try Supabase practitioners table first
+      try {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+        if (supabaseUrl && supabaseKey) {
+          const res = await fetch(`${supabaseUrl}/rest/v1/practitioners?clinic_id=eq.${clinicId}&is_active=eq.true&select=id,name,clinic_id`, {
+            headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+          })
+          if (res.ok) {
+            const rows = await res.json()
+            if (Array.isArray(rows)) {
+              rows.forEach((p: any) => {
+                if (!seenIds.has(p.id)) {
+                  seenIds.add(p.id)
+                  result.push({ id: p.id, name: p.name, active: true, clinicId: clinicId, branchId: '' })
+                }
+              })
+            }
+          }
+        }
+      } catch {}
+
+      // 2. Try Supabase clinic_memberships with practitioner role
+      try {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+        if (supabaseUrl && supabaseKey) {
+          const res = await fetch(`${supabaseUrl}/rest/v1/clinic_memberships?clinic_id=eq.${clinicId}&role=eq.practitioner&is_active=eq.true&select=user_id,clinic_id`, {
+            headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+          })
+          if (res.ok) {
+            const rows = await res.json()
+            if (Array.isArray(rows) && rows.length > 0) {
+              const userIds = rows.map((r: any) => r.user_id)
+              const usersRes = await fetch(`${supabaseUrl}/rest/v1/users?id=in.(${userIds.join(',')})&select=id,name`, {
+                headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+              })
+              if (usersRes.ok) {
+                const users = await usersRes.json()
+                users.forEach((u: any) => {
+                  if (!seenIds.has(u.id)) {
+                    seenIds.add(u.id)
+                    result.push({ id: u.id, name: u.name, active: true, clinicId: clinicId, branchId: '' })
+                  }
+                })
+              }
+            }
+          }
+        }
+      } catch {}
+
+      // 3. Fallback: localStorage clinicq-users-with-roles
       const usersKey = `clinicq-users-with-roles-${clinicId}`
       const usersSaved = localStorage.getItem(usersKey)
       if (usersSaved) {
         try {
           const parsed = JSON.parse(usersSaved)
           if (Array.isArray(parsed)) {
-            parsed.filter((u: any) => 
+            parsed.filter((u: any) =>
               (u.isActive !== false) &&
               (u.roles?.includes('practitioner') || u.role === 'practitioner')
             ).forEach((u: any) => {
               if (!seenIds.has(u.id)) {
                 seenIds.add(u.id)
-                result.push({
-                  id: u.id,
-                  name: u.name,
-                  active: u.isActive !== false,
-                  clinicId: clinicId,
-                  branchId: u.branchIds?.[0] || '',
-                })
+                result.push({ id: u.id, name: u.name, active: true, clinicId: clinicId, branchId: u.branchIds?.[0] || '' })
               }
             })
           }
         } catch {}
       }
 
-      // 2. Try clinic-practitioners (PractitionerContext storage)
+      // 4. Fallback: clinic-practitioners storage
       const storageKey = `clinic-practitioners-${clinicId}`
       const saved = localStorage.getItem(storageKey)
       if (saved) {
@@ -199,44 +278,17 @@ export default function WalkinPage() {
             parsed.filter((p: any) => p.active && p.clinicId === clinicId).forEach((p: any) => {
               if (!seenIds.has(p.id)) {
                 seenIds.add(p.id)
-                result.push({
-                  id: p.id,
-                  name: p.name,
-                  active: p.active,
-                  clinicId: clinicId,
-                  branchId: p.branchId || '',
-                })
+                result.push({ id: p.id, name: p.name, active: true, clinicId: clinicId, branchId: p.branchId || '' })
               }
             })
           }
         } catch {}
       }
 
-      // 3. Fallback: shared key filtered by clinicId
-      const sharedSaved = localStorage.getItem('clinic-practitioners')
-      if (sharedSaved) {
-        try {
-          const parsed = JSON.parse(sharedSaved)
-          if (Array.isArray(parsed)) {
-            parsed.filter((p: any) => p.clinicId === clinicId && p.active).forEach((p: any) => {
-              if (!seenIds.has(p.id)) {
-                seenIds.add(p.id)
-                result.push({
-                  id: p.id,
-                  name: p.name,
-                  active: true,
-                  clinicId: clinicId,
-                  branchId: p.branchId || '',
-                })
-              }
-            })
-          }
-        } catch {}
-      }
-
-      return result
+      setBranchPractitioners(result)
     }
-    return []
+
+    loadPractitioners()
   }, [clinicId])
 
   // Add procedure to list
