@@ -71,17 +71,92 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
   // Confirm modal
   const [showConfirm, setShowConfirm] = useState(false)
 
-  // Filter practitioners: must belong to current clinic AND not assigned to other daily rooms
+  // Robust practitioner loading: Supabase → UserManagement → PractitionerContext, all filtered by clinicId
+  const [allClinicPractitioners, setAllClinicPractitioners] = useState<{ id: string; name: string; active: boolean }[]>([])
+
+  useEffect(() => {
+    if (!currentClinicId || typeof window === 'undefined') { setAllClinicPractitioners([]); return }
+    const load = async () => {
+      const result: { id: string; name: string; active: boolean }[] = []
+      const seenIds = new Set<string>()
+
+      // 1. Supabase practitioners table (strict clinic_id filter)
+      try {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+        if (supabaseUrl && supabaseKey) {
+          const res = await fetch(`${supabaseUrl}/rest/v1/practitioners?clinic_id=eq.${currentClinicId}&is_active=eq.true&select=id,name`, {
+            headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+          })
+          if (res.ok) {
+            const rows = await res.json()
+            rows.forEach((r: any) => {
+              if (!seenIds.has(r.id)) { seenIds.add(r.id); result.push({ id: r.id, name: r.name, active: true }) }
+            })
+          }
+        }
+      } catch {}
+
+      // 2. Supabase clinic_memberships with practitioner role
+      try {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+        if (supabaseUrl && supabaseKey) {
+          const res = await fetch(`${supabaseUrl}/rest/v1/clinic_memberships?clinic_id=eq.${currentClinicId}&role=eq.practitioner&is_active=eq.true&select=user_id`, {
+            headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+          })
+          if (res.ok) {
+            const rows = await res.json()
+            const userIds = rows.map((r: any) => r.user_id).filter(Boolean)
+            if (userIds.length > 0) {
+              const usersRes = await fetch(`${supabaseUrl}/rest/v1/users?id=in.(${userIds.join(',')})&select=id,name`, {
+                headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+              })
+              if (usersRes.ok) {
+                const users = await usersRes.json()
+                users.forEach((u: any) => {
+                  if (!seenIds.has(u.id)) { seenIds.add(u.id); result.push({ id: u.id, name: u.name, active: true }) }
+                })
+              }
+            }
+          }
+        }
+      } catch {}
+
+      // 3. localStorage: clinicq-users-with-roles (strict clinicId filter)
+      const usersKey = `clinicq-users-with-roles-${currentClinicId}`
+      const usersSaved = localStorage.getItem(usersKey)
+      if (usersSaved) {
+        try {
+          const parsed = JSON.parse(usersSaved)
+          if (Array.isArray(parsed)) {
+            parsed.filter((u: any) => u.isActive !== false && (u.roles?.includes('practitioner') || u.role === 'practitioner'))
+              .forEach((u: any) => {
+                if (!seenIds.has(u.id)) { seenIds.add(u.id); result.push({ id: u.id, name: u.name, active: true }) }
+              })
+          }
+        } catch {}
+      }
+
+      // 4. PractitionerContext data (already filtered by clinicId)
+      practitioners.forEach(p => {
+        if (p.active && p.clinicId === currentClinicId && !seenIds.has(p.id)) {
+          seenIds.add(p.id); result.push({ id: p.id, name: p.name, active: true })
+        }
+      })
+
+      setAllClinicPractitioners(result)
+    }
+    load()
+  }, [currentClinicId, practitioners])
+
+  // Filter: exclude already-assigned practitioners
   const activePractitioners = useMemo(() => {
     const assignedIds = new Set(
       dailyRooms.filter(r => r.active && r.practitionerId).map(r => r.practitionerId)
     )
-    return practitioners.filter(p => 
-      p.active && 
-      !assignedIds.has(p.id) && 
-      p.clinicId && p.clinicId === currentClinicId // Safety: must belong to THIS clinic
-    )
-  }, [practitioners, dailyRooms, currentClinicId])
+    return allClinicPractitioners.filter(p => p.active && !assignedIds.has(p.id))
+  }, [allClinicPractitioners, dailyRooms])
   const branches = branchData.branches.filter(b => b.active)
 
   // Get selected room data from RoomSettings
