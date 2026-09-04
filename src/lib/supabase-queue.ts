@@ -199,12 +199,13 @@ export async function updateQueueStatus(
 // ═══ Add completed procedures to a queue ═══
 export async function addCompletedProcedures(
   queueId: string,
-  procedures: { procedure_id?: string; name: string; quantity: number; difficulty: string }[]
+  procedures: { procedure_id?: string; name: string; quantity: number; difficulty: string }[],
+  clinicId?: string
 ) {
   const sb = getSupabase()
   if (!sb) return
 
-  const rows = procedures.map(p => ({ ...p, queue_id: queueId }))
+  const rows = procedures.map(p => ({ ...p, queue_id: queueId, clinic_id: clinicId || null }))
   const { error } = await sb.from('completed_procedures').insert(rows)
   if (error) throw error
 }

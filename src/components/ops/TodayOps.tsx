@@ -799,7 +799,7 @@ export default function TodayOps() {
         name: p.name,
         quantity: p.quantity,
         difficulty: p.difficulty,
-      }))).catch(() => {})
+      })), currentClinicId || undefined).catch(() => {})
     }
     playSound('completed')
     notifyQueueCompleted(completingItem.number, completingItem.patientName, completingItem.phone)
