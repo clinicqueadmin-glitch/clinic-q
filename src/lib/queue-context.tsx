@@ -288,6 +288,35 @@ export function QueueProvider({ children }: { children: ReactNode }) {
       procs.forEach((p: any) => { if (!procMap[p.queue_id]) procMap[p.queue_id] = []; procMap[p.queue_id].push(p) })
 
       const items = rows.map((row: any) => dbRowToQueueItem(row, procMap[row.id] || []))
+
+      // Auto-reset stale 'serving' items (stuck for more than 8 hours)
+      const now = Date.now()
+      const staleThreshold = 8 * 60 * 60 * 1000 // 8 hours
+      const staleItems = items.filter((item: QueueItem) =>
+        item.status === 'serving' &&
+        item.servingAt &&
+        (now - item.servingAt) > staleThreshold
+      )
+      if (staleItems.length > 0) {
+        // Reset stale items to 'completed'
+        for (const stale of staleItems) {
+          stale.status = 'completed'
+          stale.completedAt = new Date().toISOString()
+          // Update in Supabase
+          try {
+            await fetch(`${supabaseUrl}/rest/v1/queues?id=eq.${stale.id}`, {
+              method: 'PATCH',
+              headers: {
+                apikey: supabaseKey,
+                Authorization: `Bearer ${supabaseKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ status: 'completed' }),
+            })
+          } catch {}
+        }
+      }
+
       setQueue(items)
       localStorage.setItem(storageKey, JSON.stringify(items))
       setIsSupabaseConnected(true)

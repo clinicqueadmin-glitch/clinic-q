@@ -183,10 +183,24 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
     if (selectedRoom) {
       setSelectedPractitionerId(selectedRoom.practitionerId || '')
       setSelectedBranchId(selectedRoom.branchId || '')
-      setStartTime(selectedRoom.workingStartTime || '09:00')
-      setEndTime(selectedRoom.workingEndTime || '17:00')
+      // Use clinic open/close times as defaults, override only if room has valid times within clinic hours
+      const roomStart = selectedRoom.workingStartTime || clinicOpenTime
+      const roomEnd = selectedRoom.workingEndTime || clinicCloseTime
+      // Validate: room times should be within clinic hours
+      const startMinutes = parseInt(roomStart.split(':')[0]) * 60 + parseInt(roomStart.split(':')[1])
+      const endMinutes = parseInt(roomEnd.split(':')[0]) * 60 + parseInt(roomEnd.split(':')[1])
+      const openMinutes = parseInt(clinicOpenTime.split(':')[0]) * 60 + parseInt(clinicOpenTime.split(':')[1])
+      const closeMinutes = parseInt(clinicCloseTime.split(':')[0]) * 60 + parseInt(clinicCloseTime.split(':')[1])
+      // If room times are outside clinic hours or invalid, use clinic times
+      if (startMinutes < openMinutes || endMinutes > closeMinutes || endMinutes <= startMinutes) {
+        setStartTime(clinicOpenTime)
+        setEndTime(clinicCloseTime)
+      } else {
+        setStartTime(roomStart)
+        setEndTime(roomEnd)
+      }
     }
-  }, [selectedRoom])
+  }, [selectedRoom, clinicOpenTime, clinicCloseTime])
 
   // Available rooms: active in RoomSettings AND not already fully configured (has practitioner) in daily rooms
   const availableRooms = useMemo(() => {

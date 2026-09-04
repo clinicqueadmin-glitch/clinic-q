@@ -39,10 +39,12 @@ export default function EditRoomModal({ open, room, onClose, onSave, onDelete }:
   const dailyRoomKey = currentClinicId ? `clinic-daily-rooms-${currentClinicId}` : 'clinic-daily-rooms'
 
   // Form state
+  const clinicOpenTime = settings.openTime || '08:00'
+  const clinicCloseTime = settings.closeTime || '20:00'
   const [selectedPractitionerId, setSelectedPractitionerId] = useState('')
   const [selectedBranchId, setSelectedBranchId] = useState('')
-  const [startTime, setStartTime] = useState('09:00')
-  const [endTime, setEndTime] = useState('17:00')
+  const [startTime, setStartTime] = useState(clinicOpenTime)
+  const [endTime, setEndTime] = useState(clinicCloseTime)
   const [showConfirmDelete, setShowConfirmDelete] = useState(false)
 
   // Load room data into form
@@ -50,10 +52,22 @@ export default function EditRoomModal({ open, room, onClose, onSave, onDelete }:
     if (room && open) {
       setSelectedPractitionerId(room.practitionerId || '')
       setSelectedBranchId(room.branchId || '')
-      setStartTime(room.workingStartTime || '09:00')
-      setEndTime(room.workingEndTime || '17:00')
+      // Use clinic open/close times as defaults, validate room times
+      const roomStart = room.workingStartTime || clinicOpenTime
+      const roomEnd = room.workingEndTime || clinicCloseTime
+      const startMinutes = parseInt(roomStart.split(':')[0]) * 60 + parseInt(roomStart.split(':')[1])
+      const endMinutes = parseInt(roomEnd.split(':')[0]) * 60 + parseInt(roomEnd.split(':')[1])
+      const openMinutes = parseInt(clinicOpenTime.split(':')[0]) * 60 + parseInt(clinicOpenTime.split(':')[1])
+      const closeMinutes = parseInt(clinicCloseTime.split(':')[0]) * 60 + parseInt(clinicCloseTime.split(':')[1])
+      if (startMinutes < openMinutes || endMinutes > closeMinutes || endMinutes <= startMinutes) {
+        setStartTime(clinicOpenTime)
+        setEndTime(clinicCloseTime)
+      } else {
+        setStartTime(roomStart)
+        setEndTime(roomEnd)
+      }
     }
-  }, [room, open])
+  }, [room, open, clinicOpenTime, clinicCloseTime])
 
   // Robust practitioner loading: same as AddRoomModal
   const [allClinicPractitioners, setAllClinicPractitioners] = useState<{ id: string; name: string; active: boolean }[]>([])
