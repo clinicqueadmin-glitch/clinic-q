@@ -260,7 +260,24 @@ export function QueueProvider({ children }: { children: ReactNode }) {
       })
       if (!res.ok) throw new Error('Fetch failed')
       const rows = await res.json()
-      if (!rows || rows.length === 0) throw new Error('No data')
+
+      // Mark as connected even if no data (table exists, API works)
+      setIsSupabaseConnected(true)
+
+      if (!rows || rows.length === 0) {
+        // No queues yet — use localStorage fallback for display
+        try {
+          const saved = localStorage.getItem(storageKey)
+          if (saved) {
+            setQueue(JSON.parse(saved))
+          } else {
+            setQueue([])
+          }
+        } catch {
+          setQueue([])
+        }
+        return
+      }
 
       const ids = rows.map((r: any) => r.id)
       const procRes = await fetch(`${supabaseUrl}/rest/v1/completed_procedures?queue_id=in.(${ids.join(',')})`, {
