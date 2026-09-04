@@ -103,7 +103,7 @@ function dbRowToQueueItem(row: any, procs: any[] = []): QueueItem {
     arrived: row.arrived ?? false,
     arrivedAt: row.arrived_at || undefined,
     servingAt: row.serving_at ? new Date(row.serving_at).getTime() : undefined,
-    completedAt: row.completed_at || undefined,
+    completedAt: row.completed_at ? (row.completed_at.includes('T') ? new Date(row.completed_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok' }) : row.completed_at) : undefined,
     totalDuration: row.total_duration || undefined,
     // Appointment fields
     appointmentTime: row.appointment_time || undefined,
@@ -117,7 +117,7 @@ function dbRowToQueueItem(row: any, procs: any[] = []): QueueItem {
     originalBookedTime: row.original_booked_time || undefined,
     // Cancellation fields
     cancelReason: row.cancel_reason || undefined,
-    cancelledAt: row.cancelled_at || undefined,
+    cancelledAt: row.cancelled_at ? (row.cancelled_at.includes('T') ? new Date(row.cancelled_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok' }) : row.cancelled_at) : undefined,
     // Online booking fields
     bookedTimeSlot: row.booked_time_slot || undefined,
     distanceFromClinic: row.distance_from_clinic || undefined,
@@ -134,7 +134,9 @@ function dbRowToQueueItem(row: any, procs: any[] = []): QueueItem {
 /* ─── Convert QueueItem → DB row ─── */
 function queueItemToDbRow(item: QueueItem, clinicId: string) {
   const now = new Date().toISOString()
-  const today = now.split('T')[0]
+  // Use ICT (UTC+7) date since time strings are displayed in ICT
+  const ictDate = new Date(Date.now() + 7 * 60 * 60 * 1000)
+  const today = ictDate.toISOString().split('T')[0]
   return {
     id: item.id,
     clinic_id: clinicId,
@@ -154,7 +156,7 @@ function queueItemToDbRow(item: QueueItem, clinicId: string) {
     arrived: item.arrived,
     arrived_at: (item.arrivedAt && !isNaN(new Date(item.arrivedAt).getTime())) ? new Date(item.arrivedAt).toISOString() : null,
     serving_at: item.servingAt ? new Date(item.servingAt).toISOString() : null,
-    completed_at: item.completedAt || null,
+    completed_at: item.completedAt ? (item.completedAt.includes('T') ? item.completedAt : `${today}T${item.completedAt}:00+07:00`) : null,
     total_duration: item.totalDuration || null,
     queue_date: today,
     updated_at: now,
@@ -170,7 +172,7 @@ function queueItemToDbRow(item: QueueItem, clinicId: string) {
     original_booked_time: item.originalBookedTime || null,
     // Cancellation fields
     cancel_reason: item.cancelReason || null,
-    cancelled_at: item.cancelledAt || null,
+    cancelled_at: item.cancelledAt ? (item.cancelledAt.includes('T') ? item.cancelledAt : `${today}T${item.cancelledAt}:00+07:00`) : null,
     // Online booking fields
     booked_time_slot: item.bookedTimeSlot || null,
     distance_from_clinic: item.distanceFromClinic || null,

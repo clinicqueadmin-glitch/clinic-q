@@ -56,7 +56,7 @@ export function dbToQueueItem(row: QueueItemDB, procedures: CompletedProcedureDB
     arrived: row.arrived,
     arrivedAt: row.arrived_at || undefined,
     servingAt: row.serving_at ? new Date(row.serving_at).getTime() : undefined,
-    completedAt: row.completed_at || undefined,
+    completedAt: row.completed_at ? (row.completed_at.includes('T') ? new Date(row.completed_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok' }) : row.completed_at) : undefined,
     totalDuration: row.total_duration || undefined,
     completedProcedures: procedures.map(p => ({
       procedureId: p.procedure_id || '',
