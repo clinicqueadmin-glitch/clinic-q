@@ -79,9 +79,50 @@ const PractitionerContext = createContext<PractitionerContextType | null>(null)
 export function PractitionerProvider({ children, clinicType, clinicId }: { children: ReactNode; clinicType: ClinicType; clinicId?: string | null }) {
   const [practitioners, setPractitioners] = useState<Practitioner[]>(() => loadPractitioners(clinicType, clinicId))
 
-  // Reload practitioners when clinicId changes (e.g. platform owner enters a clinic)
+  // Load from Supabase on mount / clinic change, then merge with localStorage
   useEffect(() => {
+    // First load from localStorage
     setPractitioners(loadPractitioners(clinicType, clinicId))
+
+    // Then fetch from Supabase and merge
+    if (!clinicId) return
+    const fetchFromSupabase = async () => {
+      try {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+        if (!supabaseUrl || !supabaseKey) return
+
+        // 1. Fetch from practitioners table
+        const res = await fetch(`${supabaseUrl}/rest/v1/practitioners?clinic_id=eq.${clinicId}&is_active=eq.true&select=id,name,clinic_id`, {
+          headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+        })
+        if (!res.ok) return
+        const rows = await res.json()
+        if (!Array.isArray(rows) || rows.length === 0) return
+
+        // 2. Merge with existing localStorage data
+        setPractitioners(prev => {
+          const existingIds = new Set(prev.filter(p => p.clinicId === clinicId).map(p => p.id))
+          const newPractitioners: Practitioner[] = rows
+            .filter((r: any) => !existingIds.has(r.id))
+            .map((r: any) => ({
+              id: r.id,
+              name: r.name,
+              clinicId: clinicId,
+              branchId: '',
+              phone: r.phone || '',
+              active: true,
+            }))
+          if (newPractitioners.length === 0) return prev
+          const merged = [...prev, ...newPractitioners]
+          // Save merged data to localStorage
+          const storageKey = `clinic-practitioners-${clinicId}`
+          localStorage.setItem(storageKey, JSON.stringify(merged.filter(p => p.clinicId === clinicId)))
+          return merged
+        })
+      } catch {}
+    }
+    fetchFromSupabase()
   }, [clinicId, clinicType])
 
   // Filter practitioners by current clinic
@@ -92,6 +133,13 @@ export function PractitionerProvider({ children, clinicType, clinicId }: { child
   const saveToStorage = useCallback((data: Practitioner[]) => {
     const storageKey = clinicId ? `clinic-practitioners-${clinicId}` : 'clinic-practitioners'
     localStorage.setItem(storageKey, JSON.stringify(data))
+    // Also save to Supabase in background
+    if (clinicId) {
+      const clinicPractitioners = data.filter(p => p.clinicId === clinicId)
+      import('./clinic-data').then(({ setClinicSetting }) => {
+        setClinicSetting(clinicId, 'branch_data', { practitioners: clinicPractitioners })
+      }).catch(() => {})
+    }
   }, [clinicId])
 
   const updatePractitioner = useCallback((id: string, updates: Partial<Practitioner>) => {
