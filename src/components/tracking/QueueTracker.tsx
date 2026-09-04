@@ -20,7 +20,10 @@ type ViewMode = 'search' | 'result' | 'error'
 export default function QueueTracker() {
   const searchParams = useSearchParams()
   const { queue } = useQueue()
-  const { config, currentClinic } = useClinic()
+  const { config, currentClinic: contextClinic } = useClinic()
+  // Priority: URL param > context > fallback
+  const urlClinic = searchParams.get('clinic') as ClinicType | null
+  const currentClinic = urlClinic || contextClinic
 
   const [query, setQuery] = useState('')
   const [viewMode, setViewMode] = useState<ViewMode>('search')
@@ -42,16 +45,18 @@ export default function QueueTracker() {
 
   // Fetch from Supabase if configured
   const fetchFromSupabase = useCallback(async (number: string) => {
-    if (!useSupabase || !currentClinic) return null
+    if (!useSupabase) return null
     const sb = createClient()
     if (!sb) return null
-    const clinicId = getClinicId(currentClinic as ClinicType)
-    const { data, error } = await sb
+    let query = sb
       .from('queues')
       .select('*')
-      .eq('clinic_id', clinicId)
       .ilike('number', number)
-      .single()
+    if (currentClinic) {
+      const clinicId = getClinicId(currentClinic as ClinicType)
+      query = query.eq('clinic_id', clinicId)
+    }
+    const { data, error } = await query.single()
     if (error || !data) return null
     // Convert DB row to QueueItem
     return {
@@ -80,17 +85,20 @@ export default function QueueTracker() {
 
   // Fetch all queues from Supabase
   const fetchAllFromSupabase = useCallback(async () => {
-    if (!useSupabase || !currentClinic) return []
+    if (!useSupabase) return []
     const sb = createClient()
     if (!sb) return []
-    const clinicId = getClinicId(currentClinic as ClinicType)
     const today = new Date().toISOString().split('T')[0]
-    const { data, error } = await sb
+    let query = sb
       .from('queues')
       .select('*')
-      .eq('clinic_id', clinicId)
       .eq('queue_date', today)
       .order('created_at', { ascending: true })
+    if (currentClinic) {
+      const clinicId = getClinicId(currentClinic as ClinicType)
+      query = query.eq('clinic_id', clinicId)
+    }
+    const { data, error } = await query
     if (error || !data) return []
     return data.map((row: any) => ({
       id: row.id,
@@ -129,7 +137,7 @@ export default function QueueTracker() {
 
   // Subscribe to real-time updates if Supabase is configured
   useEffect(() => {
-    if (!useSupabase || !currentClinic) return
+    if (!useSupabase || !currentClinic) return // Skip if no clinic context
     const clinicId = getClinicId(currentClinic as ClinicType)
     const today = new Date().toISOString().split('T')[0]
     
@@ -221,21 +229,23 @@ export default function QueueTracker() {
     const today = new Date().toISOString().split('T')[0]
     
     // Try Supabase first
-    if (useSupabase && currentClinic) {
+    if (useSupabase) {
       try {
-        const clinicId = getClinicId(currentClinic as ClinicType)
         const sb = createClient()
         if (sb) {
-          // Search by phone number, today only
-          const { data, error } = await sb
+          // Build query: filter by clinic if known, otherwise search all clinics
+          let query = sb
             .from('queues')
             .select('*')
-            .eq('clinic_id', clinicId)
             .eq('phone', q)
             .eq('queue_date', today)
             .order('created_at', { ascending: false })
             .limit(1)
-            .maybeSingle()
+          if (currentClinic) {
+            const clinicId = getClinicId(currentClinic as ClinicType)
+            query = query.eq('clinic_id', clinicId)
+          }
+          const { data, error } = await query.maybeSingle()
           if (data && !error) {
             setLiveItem({
               id: data.id, number: data.number, patientName: data.patient_name,

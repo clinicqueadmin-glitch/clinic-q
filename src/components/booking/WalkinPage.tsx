@@ -421,7 +421,7 @@ export default function WalkinPage() {
 
   // ═══ Submitted ═══
   if (submittedNumber) {
-    const trackUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/track?id=${submittedNumber}`
+    const trackUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/track?id=${submittedNumber}&clinic=${clinicType || 'dental'}`
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: `${accentColor}08` }}>
         <div className="bento-card p-8 max-w-sm w-full text-center animate-scale-in">
