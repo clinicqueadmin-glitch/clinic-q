@@ -123,19 +123,7 @@ export default function WalkinPage() {
         } catch {}
       }
 
-      // 3. Fallback: shared key
-      const sharedSaved = localStorage.getItem('clinic-branch-data')
-      if (sharedSaved) {
-        try {
-          const parsed = JSON.parse(sharedSaved)
-          if (parsed?.branches?.length > 0) {
-            setBranchData(parsed as ClinicBranchData)
-            return
-          }
-        } catch {}
-      }
-
-      // 4. Final fallback: defaults
+      // 3. Final fallback: defaults
       setBranchData(getDefaultBranchData(clinicType || 'dental'))
     }
 
@@ -205,9 +193,19 @@ export default function WalkinPage() {
 
     const loadPractitioners = async () => {
       const result: { id: string; name: string; active: boolean; clinicId: string; branchId: string }[] = []
-      const seenIds = new Set<string>()
+      const seenNames = new Set<string>() // Deduplicate by name to prevent cross-clinic leakage
 
-      // 1. Try Supabase practitioners table first
+      const addPractitioner = (p: { id: string; name: string; active: boolean; clinicId: string; branchId: string }) => {
+        // STRICT: Only add if clinicId matches exactly
+        if (p.clinicId !== clinicId) return
+        // Deduplicate by name (normalized)
+        const normalizedName = p.name.trim().toLowerCase()
+        if (seenNames.has(normalizedName)) return
+        seenNames.add(normalizedName)
+        result.push(p)
+      }
+
+      // 1. Try Supabase practitioners table first (filtered by clinic_id)
       try {
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
         const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
@@ -219,17 +217,14 @@ export default function WalkinPage() {
             const rows = await res.json()
             if (Array.isArray(rows)) {
               rows.forEach((p: any) => {
-                if (!seenIds.has(p.id)) {
-                  seenIds.add(p.id)
-                  result.push({ id: p.id, name: p.name, active: true, clinicId: clinicId, branchId: '' })
-                }
+                addPractitioner({ id: p.id, name: p.name, active: true, clinicId: clinicId, branchId: '' })
               })
             }
           }
         }
       } catch {}
 
-      // 2. Try Supabase clinic_memberships with practitioner role
+      // 2. Try Supabase clinic_memberships with practitioner role (filtered by clinic_id)
       try {
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
         const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
@@ -247,10 +242,7 @@ export default function WalkinPage() {
               if (usersRes.ok) {
                 const users = await usersRes.json()
                 users.forEach((u: any) => {
-                  if (!seenIds.has(u.id)) {
-                    seenIds.add(u.id)
-                    result.push({ id: u.id, name: u.name, active: true, clinicId: clinicId, branchId: '' })
-                  }
+                  addPractitioner({ id: u.id, name: u.name, active: true, clinicId: clinicId, branchId: '' })
                 })
               }
             }
@@ -258,7 +250,7 @@ export default function WalkinPage() {
         }
       } catch {}
 
-      // 3. Fallback: localStorage clinicq-users-with-roles
+      // 3. localStorage clinicq-users-with-roles (ONLY clinic-specific key)
       const usersKey = `clinicq-users-with-roles-${clinicId}`
       const usersSaved = localStorage.getItem(usersKey)
       if (usersSaved) {
@@ -269,16 +261,13 @@ export default function WalkinPage() {
               (u.isActive !== false) &&
               (u.roles?.includes('practitioner') || u.role === 'practitioner')
             ).forEach((u: any) => {
-              if (!seenIds.has(u.id)) {
-                seenIds.add(u.id)
-                result.push({ id: u.id, name: u.name, active: true, clinicId: clinicId, branchId: u.branchIds?.[0] || '' })
-              }
+              addPractitioner({ id: u.id, name: u.name, active: true, clinicId: clinicId, branchId: u.branchIds?.[0] || '' })
             })
           }
         } catch {}
       }
 
-      // 4. Fallback: clinic-practitioners storage
+      // 4. clinic-practitioners storage (ONLY clinic-specific key)
       const storageKey = `clinic-practitioners-${clinicId}`
       const saved = localStorage.getItem(storageKey)
       if (saved) {
@@ -286,16 +275,13 @@ export default function WalkinPage() {
           const parsed = JSON.parse(saved)
           if (Array.isArray(parsed)) {
             parsed.filter((p: any) => p.active && p.clinicId === clinicId).forEach((p: any) => {
-              if (!seenIds.has(p.id)) {
-                seenIds.add(p.id)
-                result.push({ id: p.id, name: p.name, active: true, clinicId: clinicId, branchId: p.branchId || '' })
-              }
+              addPractitioner({ id: p.id, name: p.name, active: true, clinicId: clinicId, branchId: p.branchId || '' })
             })
           }
         } catch {}
       }
 
-      // 5. Final fallback: if no practitioners found, add owner as default practitioner
+      // 5. Final fallback: add owner + users with ANY role as practitioner options
       if (result.length === 0 && clinicId) {
         const allUsersKey = `clinicq-users-with-roles-${clinicId}`
         const allUsersSaved = localStorage.getItem(allUsersKey)
@@ -303,13 +289,9 @@ export default function WalkinPage() {
           try {
             const parsed = JSON.parse(allUsersSaved)
             if (Array.isArray(parsed)) {
-              // Add owner as a practitioner option
-              parsed.filter((u: any) => u.roles?.includes('owner') || u.role === 'owner')
+              parsed.filter((u: any) => u.isActive !== false)
                 .forEach((u: any) => {
-                  if (!seenIds.has(u.id)) {
-                    seenIds.add(u.id)
-                    result.push({ id: u.id, name: u.name, active: true, clinicId: clinicId, branchId: '' })
-                  }
+                  addPractitioner({ id: u.id, name: u.name, active: true, clinicId: clinicId, branchId: u.branchIds?.[0] || '' })
                 })
             }
           } catch {}

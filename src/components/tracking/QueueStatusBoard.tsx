@@ -94,13 +94,6 @@ export default function QueueStatusBoard() {
           if (parsed && parsed.branches && parsed.branches.length > 0) return parsed as ReturnType<typeof getDefaultBranchData>
         } catch {}
       }
-      const sharedSaved = localStorage.getItem('clinic-branch-data')
-      if (sharedSaved) {
-        try {
-          const parsed = JSON.parse(sharedSaved)
-          if (parsed && parsed.branches && parsed.branches.length > 0) return parsed as ReturnType<typeof getDefaultBranchData>
-        } catch {}
-      }
     }
     return getDefaultBranchData(clinicType)
   }, [clinicId, clinicType])

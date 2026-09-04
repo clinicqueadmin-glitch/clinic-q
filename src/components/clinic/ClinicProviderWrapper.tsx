@@ -51,9 +51,16 @@ function ClinicRouter({ children }: { children: ReactNode }) {
             .then(({ data }: { data: { type: string; name: string } | null }) => {
               if (data?.type && clinicConfig[data.type as keyof typeof clinicConfig]) {
                 setClinic(data.type as any)
-                // Also save to localStorage for future use
-                const newClinics = [...clinics, { id: session.currentClinicId, type: data.type, name: data.name }]
-                localStorage.setItem('clinicq-clinics', JSON.stringify(newClinics))
+                // Also save to localStorage for future use (prevent duplicates)
+                const exists = clinics.some((c: any) => c.id === session.currentClinicId)
+                if (!exists) {
+                  const newClinics = [...clinics, { id: session.currentClinicId, type: data.type, name: data.name }]
+                  localStorage.setItem('clinicq-clinics', JSON.stringify(newClinics))
+                } else {
+                  // Update existing entry with latest data
+                  const updated = clinics.map((c: any) => c.id === session.currentClinicId ? { ...c, type: data.type, name: data.name } : c)
+                  localStorage.setItem('clinicq-clinics', JSON.stringify(updated))
+                }
               }
             })
         }

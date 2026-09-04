@@ -101,17 +101,7 @@ export default function TodayOps() {
           }
         } catch {}
       }
-      // Fallback: try shared key
-      const sharedSaved = localStorage.getItem('clinic-branch-data')
-      if (sharedSaved) {
-        try {
-          const parsed = JSON.parse(sharedSaved)
-          if (parsed && parsed.branches && parsed.branches.length > 0) {
-            setBranchData(parsed)
-            return
-          }
-        } catch {}
-      }
+
     }
     setBranchData(getDefaultBranchData(currentClinic || 'dental'))
   }, [currentClinicId, currentClinic])
@@ -250,9 +240,9 @@ export default function TodayOps() {
     // 2. Look up from practitioner context
     const practitioner = practitioners.find(p => p.id === room.practitionerId)
     if (practitioner) return practitioner.name
-    // 3. Look up from users with practitioner role
-    if (typeof window !== 'undefined') {
-      const users = JSON.parse(localStorage.getItem('clinicq-users-with-roles') || '[]')
+    // 3. Look up from clinic-specific users
+    if (typeof window !== 'undefined' && currentClinicId) {
+      const users = JSON.parse(localStorage.getItem(`clinicq-users-with-roles-${currentClinicId}`) || '[]')
       const user = users.find((u: any) => u.id === room.practitionerId)
       if (user) return user.name
     }

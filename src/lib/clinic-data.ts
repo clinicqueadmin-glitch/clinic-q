@@ -53,7 +53,7 @@ export async function getClinicSetting<T = any>(
   // 2. Fallback: localStorage
   try {
     const lsKey = localStorageKeys[key]
-    const raw = localStorage.getItem(`${lsKey}-${clinicId}`) || localStorage.getItem(lsKey)
+    const raw = localStorage.getItem(`${lsKey}-${clinicId}`)
     if (raw) return JSON.parse(raw) as T
   } catch {}
 

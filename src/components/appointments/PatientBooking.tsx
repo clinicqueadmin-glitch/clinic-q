@@ -44,16 +44,7 @@ export default function PatientBooking() {
             }
           } catch {}
         }
-        // Fallback: try shared key
-        const sharedSaved = localStorage.getItem('clinic-branch-data')
-        if (sharedSaved) {
-          try {
-            const parsed = JSON.parse(sharedSaved)
-            if (parsed && parsed.branches && parsed.branches.length > 0) {
-              return parsed as ClinicBranchData
-            }
-          } catch {}
-        }
+
       }
     }
     return getDefaultBranchData(currentClinic || 'dental')
