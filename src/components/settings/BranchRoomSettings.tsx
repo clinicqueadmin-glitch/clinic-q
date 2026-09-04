@@ -39,10 +39,16 @@ export default function BranchRoomSettings() {
     setData(getDefaultBranchData(currentClinic || 'dental'))
   }, [storageKey, currentClinic])
   
-  // Save to clinic-specific storage
+  // Save to clinic-specific storage + Supabase
   useEffect(() => {
     localStorage.setItem(storageKey, JSON.stringify(data))
-  }, [data, storageKey])
+    // Also save to Supabase in background
+    if (currentClinicId) {
+      import('@/lib/clinic-data').then(({ setClinicSetting }) => {
+        setClinicSetting(currentClinicId, 'branch_data', data)
+      })
+    }
+  }, [data, storageKey, currentClinicId])
   const [expandedBranch, setExpandedBranch] = useState<string | null>(data.branches[0]?.id || null)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
 

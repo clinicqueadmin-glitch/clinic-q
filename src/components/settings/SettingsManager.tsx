@@ -234,13 +234,19 @@ export default function SettingsManager() {
   }, [])
 
   /* ───── LINE OA Save ───── */
-  const handleSaveLineSettings = () => {
+  const handleSaveLineSettings = async () => {
     const settings = {
       channelSecret: lineChannelSecret,
       channelToken: lineChannelToken,
       enabled: lineEnabled,
     }
+    // Save to localStorage immediately
     localStorage.setItem(lineSettingsKey, JSON.stringify(settings))
+    // Also save to Supabase
+    if (currentClinicId) {
+      const { setClinicSetting } = await import('@/lib/clinic-data')
+      await setClinicSetting(currentClinicId, 'line_settings', settings)
+    }
     showToastMsg('บันทึกการตั้งค่า LINE OA สำเร็จ!', 'success')
   }
 
@@ -1281,6 +1287,12 @@ export default function SettingsManager() {
                   else if (activeTab === 'qr') showToastMsg('บันทึกการตั้งค่า QR สำเร็จ!', 'success')
                   else if (activeTab === 'tv') {
                     localStorage.setItem(tvAdsKey, JSON.stringify(tvAds))
+                    // Also save to Supabase
+                    if (currentClinicId) {
+                      import('@/lib/clinic-data').then(({ setClinicSetting }) => {
+                        setClinicSetting(currentClinicId, 'tv_ads', tvAds)
+                      })
+                    }
                     showToastMsg('บันทึกการตั้งค่าจอ TV สำเร็จ!', 'success')
                   }
                   else if (activeTab === 'line') handleSaveLineSettings()

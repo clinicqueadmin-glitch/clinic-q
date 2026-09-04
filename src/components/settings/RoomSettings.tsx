@@ -56,10 +56,16 @@ export default function RoomSettings() {
     setRooms(defaultRooms)
   }, [storageKey])
   
-  // Save to clinic-specific localStorage
+  // Save to clinic-specific localStorage + Supabase
   useEffect(() => {
     localStorage.setItem(storageKey, JSON.stringify(rooms))
-  }, [rooms, storageKey])
+    // Also save to Supabase in background
+    if (currentClinicId) {
+      import('@/lib/clinic-data').then(({ setClinicSetting }) => {
+        setClinicSetting(currentClinicId, 'rooms', rooms)
+      })
+    }
+  }, [rooms, storageKey, currentClinicId])
 
   const showToast = (msg: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ message: msg, type })

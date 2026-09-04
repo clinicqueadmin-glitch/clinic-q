@@ -167,10 +167,17 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
       active: true,
     }
 
-    // Save to daily rooms localStorage
+    // Save to daily rooms localStorage + Supabase
     const updatedDailyRooms = [...dailyRooms, dailyRoom]
     setDailyRooms(updatedDailyRooms)
     localStorage.setItem(dailyRoomKey, JSON.stringify(updatedDailyRooms))
+    // Also save to Supabase
+    if (currentClinicId) {
+      const today = new Date().toISOString().split('T')[0]
+      import('@/lib/clinic-data').then(({ setDailyRooms: saveDailyToSB }) => {
+        saveDailyToSB(currentClinicId, updatedDailyRooms, today)
+      })
+    }
 
     // Callback to refresh parent
     onSave()

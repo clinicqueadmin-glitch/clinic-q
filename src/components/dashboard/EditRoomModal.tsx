@@ -103,13 +103,20 @@ export default function EditRoomModal({ open, room, onClose, onSave, onDelete }:
       workingEndTime: endTime,
     }
 
-    // Update in localStorage
+    // Update in localStorage + Supabase
     const saved = localStorage.getItem(dailyRoomKey)
     if (saved) {
       try {
         const rooms: Room[] = JSON.parse(saved)
         const updatedRooms = rooms.map(r => r.id === room.id ? updated : r)
         localStorage.setItem(dailyRoomKey, JSON.stringify(updatedRooms))
+        // Also save to Supabase
+        if (currentClinicId) {
+          const today = new Date().toISOString().split('T')[0]
+          import('@/lib/clinic-data').then(({ setDailyRooms: saveDailyToSB }) => {
+            saveDailyToSB(currentClinicId, updatedRooms, today)
+          })
+        }
       } catch {}
     }
 
@@ -120,13 +127,20 @@ export default function EditRoomModal({ open, room, onClose, onSave, onDelete }:
   const handleDelete = () => {
     if (!room) return
 
-    // Remove from localStorage
+    // Remove from localStorage + Supabase
     const saved = localStorage.getItem(dailyRoomKey)
     if (saved) {
       try {
         const rooms: Room[] = JSON.parse(saved)
         const updatedRooms = rooms.filter(r => r.id !== room.id)
         localStorage.setItem(dailyRoomKey, JSON.stringify(updatedRooms))
+        // Also save to Supabase
+        if (currentClinicId) {
+          const today = new Date().toISOString().split('T')[0]
+          import('@/lib/clinic-data').then(({ setDailyRooms: saveDailyToSB }) => {
+            saveDailyToSB(currentClinicId, updatedRooms, today)
+          })
+        }
       } catch {}
     }
 

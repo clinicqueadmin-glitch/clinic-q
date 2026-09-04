@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
 import { type ClinicType, clinicConfig } from './queue-data'
+import { getClinicSetting, setClinicSetting } from './clinic-data'
 
 export interface ClinicSettings {
   clinicName?: string // custom clinic name
@@ -73,10 +74,15 @@ export function ClinicProvider({ children, clinicId }: { children: ReactNode; cl
   const updateSettings = useCallback((newSettings: Partial<ClinicSettings>) => {
     setSettings(prev => {
       const updated = { ...prev, ...newSettings }
+      // Save to localStorage immediately for fast reads
       localStorage.setItem(settingsKey, JSON.stringify(updated))
+      // Also save to Supabase in background
+      if (clinicId) {
+        setClinicSetting(clinicId, 'general', updated).catch(() => {})
+      }
       return updated
     })
-  }, [settingsKey])
+  }, [settingsKey, clinicId])
 
   const config = currentClinic ? clinicConfig[currentClinic] : null
 
