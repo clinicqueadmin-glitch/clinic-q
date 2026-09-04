@@ -55,6 +55,52 @@ export default function PlatformDashboard() {
   const [platformClinics, setPlatformClinics] = useState<ClinicWithStats[]>([])
   const [allUsers, setAllUsers] = useState<Array<{ id: string; name: string; email: string; role: string; clinicType: string; color: string }>>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [deleteConfirmClinic, setDeleteConfirmClinic] = useState<ClinicWithStats | null>(null)
+  const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0) // 0=confirm name, 1=confirm action, 2=deleting
+  const [deleteError, setDeleteError] = useState('')
+  const [deleteInputName, setDeleteInputName] = useState('')
+
+  // Delete clinic — remove all data from Supabase
+  const handleDeleteClinic = useCallback(async (clinic: ClinicWithStats) => {
+    setDeleteError('')
+    setDeleteStep(2)
+    try {
+      const sb = createClient()
+      if (!sb) { setDeleteError('Supabase ไม่ได้เชื่อมต่อ'); setDeleteStep(1); return }
+
+      // 1. Delete queues
+      await sb.from('queues').delete().eq('clinic_id', clinic.id)
+      // 2. Delete completed_procedures
+      await sb.from('completed_procedures').delete().eq('clinic_id', clinic.id)
+      // 3. Delete daily_rooms
+      await sb.from('daily_rooms').delete().eq('clinic_id', clinic.id)
+      // 4. Delete clinic_settings
+      await sb.from('clinic_settings').delete().eq('clinic_id', clinic.id)
+      // 5. Delete clinic_memberships
+      await sb.from('clinic_memberships').delete().eq('clinic_id', clinic.id)
+      // 6. Delete the clinic record
+      await sb.from('clinics').delete().eq('id', clinic.id)
+
+      // 7. Clean up localStorage
+      const keysToRemove: string[] = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
+        if (key && key.includes(clinic.id)) {
+          keysToRemove.push(key)
+        }
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k))
+
+      // 8. Remove from state
+      setPlatformClinics(prev => prev.filter(c => c.id !== clinic.id))
+      setDeleteConfirmClinic(null)
+      setDeleteStep(0)
+      setDeleteInputName('')
+    } catch (err: any) {
+      setDeleteError(err.message || 'เกิดข้อผิดพลาดในการลบ')
+      setDeleteStep(1)
+    }
+  }, [])
 
   // Enter clinic as platform owner — pretend to be clinic owner
   const enterClinic = useCallback((clinicId: string, clinicType: string) => {
@@ -223,7 +269,7 @@ export default function PlatformDashboard() {
       clinics = clinics.filter(c => c.package === paymentFilter)
     }
     return clinics
-  }, [paymentFilter])
+  }, [paymentFilter, platformClinics])
 
   // Expiring clinics
   const expiringClinics = useMemo(() => {
@@ -235,7 +281,7 @@ export default function PlatformDashboard() {
       const db = getDaysRemaining(b.expiresAt) ?? 0
       return da - db
     })
-  }, [])
+  }, [platformClinics])
 
   // Duplicate/expired clinics (same name, expired trial)
   const duplicateExpiredClinics = useMemo(() => {
@@ -520,13 +566,22 @@ export default function PlatformDashboard() {
                         )}
                       </td>
                       <td className="py-3 px-3 text-center">
-                        <button
-                          onClick={() => enterClinic(clinic.id, clinic.type)}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 transition-all shadow-sm"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          เข้าคลินิก
-                        </button>
+                        <div className="flex items-center gap-1.5 justify-center">
+                          <button
+                            onClick={() => enterClinic(clinic.id, clinic.type)}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 transition-all shadow-sm"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            เข้าคลินิก
+                          </button>
+                          <button
+                            onClick={() => { setDeleteConfirmClinic(clinic); setDeleteStep(0); setDeleteInputName(''); setDeleteError('') }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 transition-all"
+                            title="ลบคลินิก"
+                          >
+                            🗑️ ลบ
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -649,6 +704,134 @@ export default function PlatformDashboard() {
           )}
         </div>
       </div>
+
+      {/* ═══ Delete Clinic Confirmation Dialog ═══ */}
+      {deleteConfirmClinic && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-red-500 to-pink-500 px-6 py-5">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center">
+                  <span className="text-2xl">🗑️</span>
+                </div>
+                <div>
+                  <h3 className="text-lg font-extrabold text-white">ลบคลินิก</h3>
+                  <p className="text-sm text-white/80">การดำเนินการนี้ไม่สามารถย้อนกลับได้</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6">
+              {/* Step 0: Type clinic name to confirm */}
+              {deleteStep === 0 && (
+                <>
+                  <div className="rounded-2xl bg-red-50 border border-red-200 p-4 mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold shadow-md" style={{ backgroundColor: deleteConfirmClinic.color }}>
+                        {deleteConfirmClinic.prefix}
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-gray-900">{deleteConfirmClinic.name}</p>
+                        <p className="text-xs text-gray-500">{deleteConfirmClinic.ownerName} · {deleteConfirmClinic.ownerEmail}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 mb-4">
+                    <p className="text-xs text-amber-700 font-bold">⚠️ ข้อมูลที่จะถูกลบทั้งหมด:</p>
+                    <ul className="text-xs text-amber-600 mt-1.5 space-y-0.5 ml-4">
+                      <li>• ข้อมูลคลินิก (Clinic Profile)</li>
+                      <li>• ข้อมูลผู้ใช้ทั้งหมดในคลินิก</li>
+                      <li>• คิวทั้งหมด (รอ/กำลังทำ/เสร็จ/ยกเลิก)</li>
+                      <li>• ห้องตรวจและการตั้งค่าทั้งหมด</li>
+                      <li>• ข้อความโฆษณา TV</li>
+                      <li>• สาขาและหัตถการ</li>
+                      <li>• ข้อมูลหัตถการที่เสร็จแล้ว</li>
+                    </ul>
+                  </div>
+
+                  <p className="text-sm text-gray-600 mb-2">
+                    พิมพ์ชื่อคลินิก <span className="font-bold text-red-600">{deleteConfirmClinic.name}</span> เพื่อยืนยัน:
+                  </p>
+                  <input
+                    type="text"
+                    value={deleteInputName}
+                    onChange={(e) => setDeleteInputName(e.target.value)}
+                    placeholder={deleteConfirmClinic.name}
+                    className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 text-sm focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 mb-4"
+                    autoFocus
+                  />
+                  {deleteError && (
+                    <p className="text-xs text-red-600 mb-3">❌ {deleteError}</p>
+                  )}
+                </>
+              )}
+
+              {/* Step 1: Final confirmation */}
+              {deleteStep === 1 && (
+                <div className="text-center">
+                  <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+                    <span className="text-3xl">⚠️</span>
+                  </div>
+                  <p className="text-sm font-bold text-gray-900 mb-2">
+                    คุณแน่ใจหรือไม่ที่จะลบ "{deleteConfirmClinic.name}"?
+                  </p>
+                  <p className="text-xs text-gray-500 mb-4">
+                    การดำเนินการนี้จะลบข้อมูลทั้งหมดและไม่สามารถกู้คืนได้
+                  </p>
+                </div>
+              )}
+
+              {/* Step 2: Deleting... */}
+              {deleteStep === 2 && (
+                <div className="text-center py-4">
+                  <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4 animate-pulse">
+                    <span className="text-3xl">🗑️</span>
+                  </div>
+                  <p className="text-sm font-bold text-gray-900">กำลังลบข้อมูล...</p>
+                  <p className="text-xs text-gray-500 mt-1">กรุณารอสักครู่</p>
+                </div>
+              )}
+
+              {/* Buttons */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setDeleteConfirmClinic(null); setDeleteStep(0); setDeleteInputName(''); setDeleteError('') }}
+                  disabled={deleteStep === 2}
+                  className="flex-1 px-4 py-3 rounded-xl text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all disabled:opacity-50"
+                >
+                  ยกเลิก
+                </button>
+                {deleteStep === 0 && (
+                  <button
+                    onClick={() => {
+                      if (deleteInputName.trim() === deleteConfirmClinic.name) {
+                        setDeleteStep(1)
+                        setDeleteError('')
+                      } else {
+                        setDeleteError('ชื่อคลินิกไม่ตรงกัน กรุณาพิมพ์ใหม่')
+                      }
+                    }}
+                    disabled={!deleteInputName.trim()}
+                    className="flex-1 px-4 py-3 rounded-xl text-sm font-bold text-white bg-amber-500 hover:bg-amber-600 transition-all disabled:opacity-50"
+                  >
+                    ถัดไป
+                  </button>
+                )}
+                {deleteStep === 1 && (
+                  <button
+                    onClick={() => handleDeleteClinic(deleteConfirmClinic)}
+                    className="flex-1 px-4 py-3 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 transition-all shadow-lg shadow-red-200"
+                  >
+                    🗑️ ลบถาวร
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
