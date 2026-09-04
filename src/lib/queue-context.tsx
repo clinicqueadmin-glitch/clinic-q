@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
 import { type ClinicType } from './queue-data'
 import { getDefaultBranchData } from './branch-data'
+import { useAuth } from './auth-context'
 
 export type BookingMode = 'walkin' | 'remote' | 'appointment'
 
@@ -104,6 +105,23 @@ function dbRowToQueueItem(row: any, procs: any[] = []): QueueItem {
     servingAt: row.serving_at ? new Date(row.serving_at).getTime() : undefined,
     completedAt: row.completed_at || undefined,
     totalDuration: row.total_duration || undefined,
+    // Appointment fields
+    appointmentTime: row.appointment_time || undefined,
+    appointmentDate: row.appointment_date || undefined,
+    appointmentOnTime: row.appointment_on_time ?? undefined,
+    hn: row.hn || undefined,
+    queuePosition: row.queue_position || undefined,
+    // Arrival tracking
+    isOnTime: row.is_on_time ?? undefined,
+    lateMinutes: row.late_minutes || undefined,
+    originalBookedTime: row.original_booked_time || undefined,
+    // Cancellation fields
+    cancelReason: row.cancel_reason || undefined,
+    cancelledAt: row.cancelled_at || undefined,
+    // Online booking fields
+    bookedTimeSlot: row.booked_time_slot || undefined,
+    distanceFromClinic: row.distance_from_clinic || undefined,
+    checkinAt: row.checkin_at || undefined,
     completedProcedures: procs.map((p: any) => ({
       procedureId: p.procedure_id || '',
       name: p.name,
@@ -115,6 +133,8 @@ function dbRowToQueueItem(row: any, procs: any[] = []): QueueItem {
 
 /* ─── Convert QueueItem → DB row ─── */
 function queueItemToDbRow(item: QueueItem, clinicId: string) {
+  const now = new Date().toISOString()
+  const today = now.split('T')[0]
   return {
     id: item.id,
     clinic_id: clinicId,
@@ -122,22 +142,39 @@ function queueItemToDbRow(item: QueueItem, clinicId: string) {
     patient_name: item.patientName,
     phone: item.phone,
     procedure: item.procedure,
-    procedure_id: item.procedureId,
-    branch_id: item.branchId,
+    procedure_id: item.procedureId || null,
+    branch_id: item.branchId || null,
     booking_mode: item.bookingMode,
-    assigned_room: item.assignedRoom,
-    assigned_doctor: item.assignedDoctor,
+    assigned_room: item.assignedRoom || null,
+    assigned_doctor: item.assignedDoctor || null,
     status: item.status,
     time: item.time || null,
-    booked_at: item.bookedAt ? (item.bookedAt.includes('T') ? item.bookedAt : new Date().toISOString()) : new Date().toISOString(),
+    booked_at: item.bookedAt ? (item.bookedAt.includes('T') ? item.bookedAt : now) : now,
     arrival_time: item.arrivalTime || null,
     arrived: item.arrived,
     arrived_at: (item.arrivedAt && !isNaN(new Date(item.arrivedAt).getTime())) ? new Date(item.arrivedAt).toISOString() : null,
     serving_at: item.servingAt ? new Date(item.servingAt).toISOString() : null,
     completed_at: item.completedAt || null,
     total_duration: item.totalDuration || null,
-    queue_date: new Date().toISOString().split('T')[0],
-    updated_at: new Date().toISOString(),
+    queue_date: today,
+    updated_at: now,
+    // Appointment fields
+    appointment_time: item.appointmentTime || null,
+    appointment_date: item.appointmentDate || null,
+    appointment_on_time: item.appointmentOnTime ?? null,
+    hn: item.hn || null,
+    queue_position: item.queuePosition || null,
+    // Arrival tracking
+    is_on_time: item.isOnTime ?? null,
+    late_minutes: item.lateMinutes || null,
+    original_booked_time: item.originalBookedTime || null,
+    // Cancellation fields
+    cancel_reason: item.cancelReason || null,
+    cancelled_at: item.cancelledAt || null,
+    // Online booking fields
+    booked_time_slot: item.bookedTimeSlot || null,
+    distance_from_clinic: item.distanceFromClinic || null,
+    checkin_at: item.checkinAt || null,
   }
 }
 
@@ -156,17 +193,32 @@ function getQueueStorageKey(clinic: ClinicType): string {
   return `clinicq-queue-${clinic}-${today}`
 }
 
-/** Look up actual clinic ID from clinicq-clinics by clinic type */
-function resolveClinicId(clinicType: ClinicType): string {
+/** Look up actual clinic ID from auth session or clinicq-clinics by clinic type */
+function resolveClinicId(clinicType: ClinicType, authClinicId?: string | null): string {
+  // Priority 1: Use the auth session's currentClinicId
+  if (authClinicId) return authClinicId
+
+  // Priority 2: Look up from localStorage clinicq-clinics
   try {
     const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
     const matched = clinics.find((c: any) => c.type === clinicType)
     if (matched?.id) return matched.id
   } catch {}
-  return resolveClinicId(clinicType) // fallback to legacy
+
+  // Priority 3: Use hardcoded mapping as fallback
+  const clinicIdMap: Record<ClinicType, string> = {
+    dental: 'clinic-dental',
+    medical: 'clinic-medical',
+    aesthetic: 'clinic-aesthetic',
+    thai: 'clinic-thai',
+    chinese: 'clinic-chinese',
+    physical: 'clinic-physical',
+  }
+  return clinicIdMap[clinicType] || 'clinic-dental'
 }
 
 export function QueueProvider({ children }: { children: ReactNode }) {
+  const { currentClinicId } = useAuth()
   const [clinicType, setClinicType] = useState<ClinicType | null>(null)
   const [queue, setQueue] = useState<QueueItem[]>([])
   const [isSupabaseConnected, setIsSupabaseConnected] = useState(false)
@@ -197,7 +249,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
 
     // Try Supabase first
     try {
-      const clinicId = resolveClinicId(clinic)
+      const clinicId = resolveClinicId(clinic, currentClinicId)
       const today = new Date().toISOString().split('T')[0]
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
       const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
@@ -238,7 +290,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(storageKey, JSON.stringify([]))
       setIsSupabaseConnected(false)
     }
-  }, [])
+  }, [currentClinicId])
 
   // ─── Sync queue to localStorage whenever it changes ───
   useEffect(() => {
@@ -270,7 +322,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
   // ─── Realtime subscription ───
   useEffect(() => {
     if (!isSupabaseConnected || !clinicType) return
-    const clinicId = resolveClinicId(clinicType)
+    const clinicId = resolveClinicId(clinicType, currentClinicId)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
     if (!supabaseUrl || !supabaseKey) return
@@ -283,7 +335,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
   // ─── Save to Supabase ───
   const saveToSupabase = useCallback(async (item: QueueItem) => {
     if (!isSupabaseConnected || !clinicType) return
-    const clinicId = resolveClinicId(clinicType)
+    const clinicId = resolveClinicId(clinicType, currentClinicId)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
     if (!supabaseUrl || !supabaseKey) return
@@ -299,7 +351,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
       },
       body: JSON.stringify(dbRow),
     })
-  }, [isSupabaseConnected, clinicType])
+  }, [isSupabaseConnected, clinicType, currentClinicId])
 
   const saveQueueItem = useCallback(async (item: QueueItem) => {
     setQueue(prev => prev.map(q => q.id === item.id ? item : q))
@@ -309,7 +361,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
   const addQueueItem = useCallback(async (item: Omit<QueueItem, 'id'>): Promise<QueueItem> => {
     const newItem: QueueItem = { ...item, id: crypto.randomUUID() }
     if (isSupabaseConnected && clinicType) {
-      const clinicId = resolveClinicId(clinicType)
+      const clinicId = resolveClinicId(clinicType, currentClinicId)
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
       const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
       if (supabaseUrl && supabaseKey) {
@@ -333,7 +385,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
 
     setQueue(prev => [...prev, newItem])
     return newItem
-  }, [isSupabaseConnected, clinicType])
+  }, [isSupabaseConnected, clinicType, currentClinicId])
 
   return (
     <QueueContext.Provider value={{ queue, setQueue, saveQueueItem, addQueueItem, isSupabaseConnected }}>
