@@ -410,12 +410,32 @@ export default function TodayOps() {
     })
   }, [activeRooms, queue, branchData])
 
+  // ═══ Sort waiting items: on-time appointments first, then walk-ins ═══
+  const sortedWaitingItems = useMemo(() => {
+    const waiting = arrivedQueue.filter(q => q.status === 'waiting')
+    return [...waiting].sort((a, b) => {
+      // 1. On-time appointments come first
+      const aIsApptOnTime = a.bookingMode === 'appointment' && a.isOnTime !== false
+      const bIsApptOnTime = b.bookingMode === 'appointment' && b.isOnTime !== false
+      if (aIsApptOnTime && !bIsApptOnTime) return -1
+      if (!aIsApptOnTime && bIsApptOnTime) return 1
+      // 2. Late appointments come after walk-ins
+      const aIsApptLate = a.bookingMode === 'appointment' && a.isOnTime === false
+      const bIsApptLate = b.bookingMode === 'appointment' && b.isOnTime === false
+      if (!aIsApptLate && bIsApptLate) return -1
+      if (aIsApptLate && !bIsApptLate) return 1
+      // 3. Same type: sort by arrival time (earliest first)
+      const aTime = a.arrivedAt ? new Date(a.arrivedAt).getTime() : 0
+      const bTime = b.arrivedAt ? new Date(b.arrivedAt).getTime() : 0
+      return aTime - bTime
+    })
+  }, [arrivedQueue])
+
   // ═══ Waiting queue grouped by branch (with room colors) ═══
   const waitingByBranch = useMemo(() => {
-    const waitingItems = arrivedQueue.filter(q => q.status === 'waiting')
-    const groups: Record<string, { branchName: string; color: string; items: typeof waitingItems; rooms: { id: number; name: string; color: string }[] }> = {}
+    const groups: Record<string, { branchName: string; color: string; items: typeof sortedWaitingItems; rooms: { id: number; name: string; color: string }[] }> = {}
 
-    waitingItems.forEach(item => {
+    sortedWaitingItems.forEach(item => {
       // Find branch: first by branchId, then by procedureId
       let branchId = item.branchId || ''
       let branch = branchData.branches.find(b => b.id === branchId)
@@ -442,9 +462,20 @@ export default function TodayOps() {
     })
 
     return Object.values(groups)
-  }, [arrivedQueue, branchData])
+  }, [sortedWaitingItems, branchData])
 
-  const nextQueue = useMemo(() => queue.find(q => q.status === 'waiting' && q.arrived), [queue])
+  const nextQueue = useMemo(() => {
+    // On-time appointments first, then walk-ins, then late appointments
+    const waiting = queue.filter(q => q.status === 'waiting' && q.arrived)
+    // Priority 1: on-time appointments
+    const onTimeAppt = waiting.find(q => q.bookingMode === 'appointment' && q.isOnTime !== false)
+    if (onTimeAppt) return onTimeAppt
+    // Priority 2: walk-ins
+    const walkin = waiting.find(q => q.bookingMode !== 'appointment')
+    if (walkin) return walkin
+    // Priority 3: late appointments
+    return waiting[0] || null
+  }, [queue])
 
   // Track which rooms are currently occupied by serving patients
   const occupiedRoomIds = useMemo(() => {
@@ -889,13 +920,13 @@ export default function TodayOps() {
                 {/* Appointment on-time/late */}
                 {item.bookingMode === 'appointment' && item.arrived && (
                   <span className={clsx('text-xs px-2 py-0.5 rounded-full font-medium border', item.appointmentOnTime ? 'bg-green-50 text-green-600 border-green-200' : 'bg-orange-50 text-orange-600 border-orange-200')}>
-                    {item.appointmentOnTime ? '✓ มาตามนัด' : `⚠ ช้า ${item.lateMinutes} น.`}
+                    {item.appointmentOnTime !== false ? '✓ มาตามนัด' : `⚠ ช้า ${item.lateMinutes || 0} น.`}
                   </span>
                 )}
                 {/* Online check-in status */}
                 {item.bookingMode === 'remote' && item.checkinAt && (
                   <span className={clsx('text-xs px-2 py-0.5 rounded-full font-medium border', item.isOnTime ? 'bg-green-50 text-green-600 border-green-200' : 'bg-orange-50 text-orange-600 border-orange-200')}>
-                    {item.isOnTime ? '✓ เช็คอินตรงเวลา' : `⚠ ช้า ${item.lateMinutes} น.`}
+                    {item.isOnTime !== false ? '✓ เช็คอินตรงเวลา' : `⚠ ช้า ${item.lateMinutes || 0} น.`}
                   </span>
                 )}
               </div>
