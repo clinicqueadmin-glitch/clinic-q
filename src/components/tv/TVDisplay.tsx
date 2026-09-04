@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { clsx } from 'clsx'
 import { Volume2, VolumeX, Maximize, Minimize, RefreshCw } from 'lucide-react'
 import { useQueue, type QueueItem } from '@/lib/queue-context'
@@ -51,44 +52,51 @@ function RoomStatus({ serving, branchData }: { serving: QueueItem; branchData: a
 }
 
 export default function TVDisplay() {
+  const searchParams = useSearchParams()
   const { queue, setQueue, saveQueueItem } = useQueue()
   const { config, currentClinic, settings } = useClinic()
-  // Load branch data from clinic-specific storage
-  const branchData = useMemo(() => {
-    if (typeof window !== 'undefined') {
+  // Get clinicId from URL param (passed by Dashboard) or resolve from clinicq-clinics
+  const resolvedClinicId = useMemo(() => {
+    // Priority 1: URL param ?clinicId=xxx
+    const urlClinicId = searchParams.get('clinicId')
+    if (urlClinicId) return urlClinicId
+    // Priority 2: find from clinicq-clinics by type
+    try {
       const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
       const matched = clinics.find((c: any) => c.type === (currentClinic || 'dental'))
-      const cid = matched?.id
-      if (cid) {
-        const saved = localStorage.getItem(`clinic-branch-data-${cid}`)
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved)
-            if (parsed && parsed.branches && parsed.branches.length > 0) return parsed as ReturnType<typeof getDefaultBranchData>
-          } catch {}
-        }
-        const sharedSaved = localStorage.getItem('clinic-branch-data')
-        if (sharedSaved) {
-          try {
-            const parsed = JSON.parse(sharedSaved)
-            if (parsed && parsed.branches && parsed.branches.length > 0) return parsed as ReturnType<typeof getDefaultBranchData>
-          } catch {}
-        }
+      if (matched?.id) return matched.id
+    } catch {}
+    return null
+  }, [searchParams, currentClinic])
+
+  // Load branch data from clinic-specific storage
+  const branchData = useMemo(() => {
+    if (typeof window !== 'undefined' && resolvedClinicId) {
+      const saved = localStorage.getItem(`clinic-branch-data-${resolvedClinicId}`)
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved)
+          if (parsed && parsed.branches && parsed.branches.length > 0) return parsed as ReturnType<typeof getDefaultBranchData>
+        } catch {}
+      }
+      const sharedSaved = localStorage.getItem('clinic-branch-data')
+      if (sharedSaved) {
+        try {
+          const parsed = JSON.parse(sharedSaved)
+          if (parsed && parsed.branches && parsed.branches.length > 0) return parsed as ReturnType<typeof getDefaultBranchData>
+        } catch {}
       }
     }
     return getDefaultBranchData(currentClinic || 'dental')
-  }, [currentClinic])
+  }, [currentClinic, resolvedClinicId])
   
   // Read daily rooms from clinic-specific localStorage (only show rooms added for today)
   const activeRooms = useMemo(() => {
     if (typeof window === 'undefined') return branchData.rooms.filter(r => r.active)
-    // Try clinic-specific key first
-    const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
-    const matched = clinics.find((c: any) => c.type === (currentClinic || 'dental'))
-    const cid = matched?.id
     const today = new Date().toISOString().split('T')[0]
-    const keys = cid ? [`clinic-daily-rooms-${cid}`, 'clinic-daily-rooms'] : ['clinic-daily-rooms']
-    const dateKeys = cid ? [`clinic-daily-rooms-date-${cid}`, 'clinic-daily-rooms-date'] : ['clinic-daily-rooms-date']
+    // Use resolvedClinicId directly (no more find-by-type)
+    const keys = resolvedClinicId ? [`clinic-daily-rooms-${resolvedClinicId}`, 'clinic-daily-rooms'] : ['clinic-daily-rooms']
+    const dateKeys = resolvedClinicId ? [`clinic-daily-rooms-date-${resolvedClinicId}`, 'clinic-daily-rooms-date'] : ['clinic-daily-rooms-date']
     for (let i = 0; i < keys.length; i++) {
       const saved = localStorage.getItem(keys[i])
       const savedDate = localStorage.getItem(dateKeys[i])
@@ -102,7 +110,7 @@ export default function TVDisplay() {
     }
     // Fallback: show all active rooms from branch data
     return branchData.rooms.filter(r => r.active)
-  }, [branchData, currentClinic])
+  }, [branchData, resolvedClinicId])
 
   const [lastCalled, setLastCalled] = useState<QueueItem | null>(null)
   const [showAlert, setShowAlert] = useState(false)
@@ -119,17 +127,14 @@ export default function TVDisplay() {
   ])
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (typeof window === 'undefined' || !resolvedClinicId) return
     const loadAds = async () => {
       // Try Supabase first
       try {
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
         const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-        const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
-        const matched = clinics.find((c: any) => c.type === (currentClinic || 'dental'))
-        const cid = matched?.id
-        if (supabaseUrl && supabaseKey && cid) {
-          const res = await fetch(`${supabaseUrl}/rest/v1/clinic_settings?clinic_id=eq.${cid}&setting_key=eq.tv_ads&select=setting_value`, {
+        if (supabaseUrl && supabaseKey) {
+          const res = await fetch(`${supabaseUrl}/rest/v1/clinic_settings?clinic_id=eq.${resolvedClinicId}&setting_key=eq.tv_ads&select=setting_value`, {
             headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
           })
           if (res.ok) {
@@ -143,23 +148,18 @@ export default function TVDisplay() {
       } catch {}
       // Fallback: localStorage
       try {
-        const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
-        const matched = clinics.find((c: any) => c.type === (currentClinic || 'dental'))
-        const cid = matched?.id
-        if (cid) {
-          const saved = localStorage.getItem(`clinicq-tv-ads-${cid}`)
-          if (saved) {
-            const parsed = JSON.parse(saved)
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              setAds(parsed)
-              return
-            }
+        const saved = localStorage.getItem(`clinicq-tv-ads-${resolvedClinicId}`)
+        if (saved) {
+          const parsed = JSON.parse(saved)
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setAds(parsed)
+            return
           }
         }
       } catch {}
     }
     loadAds()
-  }, [currentClinic])
+  }, [resolvedClinicId])
 
   // Rotate ads
   useEffect(() => {

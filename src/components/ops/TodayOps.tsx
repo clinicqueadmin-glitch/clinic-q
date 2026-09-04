@@ -1739,7 +1739,7 @@ export default function TodayOps() {
           </button>
         )}
         {!isProvider && (
-          <a href="/tv" target="_blank" className="candy-btn shadow-lg" style={{ backgroundColor: '#8B5CF6', color: 'white' }}>
+          <a href={`/tv?clinicId=${currentClinicId || ''}`} target="_blank" className="candy-btn shadow-lg" style={{ backgroundColor: '#8B5CF6', color: 'white' }}>
             <MonitorPlay className="w-4 h-4" /> จอ TV
           </a>
         )}
