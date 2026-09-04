@@ -237,6 +237,13 @@ const clinicIdMap: Record<ClinicType, string> = {
 }
 
 export function getClinicId(type: ClinicType): string {
+  // 1. Try to find actual clinic ID from clinicq-clinics localStorage
+  try {
+    const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
+    const matched = clinics.find((c: any) => c.type === type)
+    if (matched?.id) return matched.id
+  } catch {}
+  // 2. Fallback to hardcoded mapping
   return clinicIdMap[type] || 'clinic-dental'
 }
 

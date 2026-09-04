@@ -59,6 +59,16 @@ export default function QueueStatusBoard() {
     // Re-read from localStorage on refreshTick changes
     try {
       const today = new Date().toISOString().split('T')[0]
+      // Try clinic-specific key first
+      const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
+      const matched = clinics.find((c: any) => c.type === clinicType)
+      const cid = matched?.id
+      if (cid) {
+        const storageKey = `clinicq-queue-${cid}-${today}`
+        const saved = localStorage.getItem(storageKey)
+        if (saved) return JSON.parse(saved) as QueueItem[]
+      }
+      // Fallback to type-based key
       const storageKey = `clinicq-queue-${clinicType}-${today}`
       const saved = localStorage.getItem(storageKey)
       if (saved) return JSON.parse(saved) as QueueItem[]
