@@ -51,7 +51,7 @@ function RoomStatus({ serving, branchData }: { serving: QueueItem; branchData: a
 }
 
 export default function TVDisplay() {
-  const { queue, setQueue } = useQueue()
+  const { queue, setQueue, saveQueueItem } = useQueue()
   const { config, currentClinic, settings } = useClinic()
   // Load branch data from clinic-specific storage
   const branchData = useMemo(() => {
@@ -113,11 +113,53 @@ export default function TVDisplay() {
   // Ad rotation state
   const [currentAdIndex, setCurrentAdIndex] = useState(0)
 
-  const [ads] = useState<TVAd[]>([
-    { id: '1', type: 'text', url: '', text: '🦷 โปรโมชั่นพิเศษ! ขูดหินปูน + ตรวจสุขภาพฟัน เพียง 599 บาท (ถึง 30 ก.ย. 69)  •  ฟันสวยสุขภาพดี เริ่มที่นี่ 🌟', duration: 15, active: true },
-    { id: '2', type: 'image', url: 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=1200&h=400&fit=crop', text: '', duration: 10, active: true },
-    { id: '3', type: 'text', url: '', text: '✨ ฟอกสีฟัน เทคโนโลยีใหม่ล่าสุด ปลอดภัย เห็นผลตั้งแต่ครั้งแรก จองเลย! 📱 02-123-4567  •  เปิดทำการทุกวัน 08:00-20:00', duration: 12, active: true },
+  // Load ads from Supabase clinic_settings or localStorage
+  const [ads, setAds] = useState<TVAd[]>([
+    { id: '1', type: 'text', url: '', text: '🦷 โปรโมชั่นพิเศษ! ขูดหินปูน + ตรวจสุขภาพฟัน เพียง 599 บาท', duration: 15, active: true },
   ])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const loadAds = async () => {
+      // Try Supabase first
+      try {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+        const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
+        const matched = clinics.find((c: any) => c.type === (currentClinic || 'dental'))
+        const cid = matched?.id
+        if (supabaseUrl && supabaseKey && cid) {
+          const res = await fetch(`${supabaseUrl}/rest/v1/clinic_settings?clinic_id=eq.${cid}&setting_key=eq.tv_ads&select=setting_value`, {
+            headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+          })
+          if (res.ok) {
+            const rows = await res.json()
+            if (rows?.[0]?.setting_value && Array.isArray(rows[0].setting_value) && rows[0].setting_value.length > 0) {
+              setAds(rows[0].setting_value)
+              return
+            }
+          }
+        }
+      } catch {}
+      // Fallback: localStorage
+      try {
+        const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
+        const matched = clinics.find((c: any) => c.type === (currentClinic || 'dental'))
+        const cid = matched?.id
+        if (cid) {
+          const saved = localStorage.getItem(`clinicq-tv-ads-${cid}`)
+          if (saved) {
+            const parsed = JSON.parse(saved)
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setAds(parsed)
+              return
+            }
+          }
+        }
+      } catch {}
+    }
+    loadAds()
+  }, [currentClinic])
 
   // Rotate ads
   useEffect(() => {
@@ -217,14 +259,15 @@ export default function TVDisplay() {
 
   const callNextQueue = useCallback(() => {
     if (!nextQueue) return
-    setQueue(prev => prev.map(q =>
-      q.id === nextQueue.id ? { ...q, status: 'serving' as const, servingAt: Date.now() } : q
-    ))
+    const updated = { ...nextQueue, status: 'serving' as const, servingAt: Date.now() }
+    setQueue(prev => prev.map(q => q.id === nextQueue.id ? updated : q))
+    // Also save to Supabase so other devices see the change
+    saveQueueItem(updated).catch(() => {})
     setLastCalled(nextQueue)
     setShowAlert(true)
     playBeep()
     setTimeout(() => setShowAlert(false), 8000)
-  }, [nextQueue, setQueue, playBeep])
+  }, [nextQueue, setQueue, saveQueueItem, playBeep])
 
   // ═══ Room notification: play sound + show procedure when patient arrives ═══
   const [roomNotification, setRoomNotification] = useState<{ roomId: number; procedure: string; color: string } | null>(null)
