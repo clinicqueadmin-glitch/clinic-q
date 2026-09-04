@@ -156,7 +156,25 @@ export function PractitionerProvider({ children, clinicType, clinicId }: { child
       saveToStorage(updated)
       return updated
     })
-  }, [saveToStorage])
+    // Also save to Supabase practitioners table
+    if (clinicId && practitioner.id && practitioner.name) {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+      if (supabaseUrl && supabaseKey) {
+        fetch(`${supabaseUrl}/rest/v1/practitioners`, {
+          method: 'POST',
+          headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' },
+          body: JSON.stringify({
+            id: practitioner.id,
+            clinic_id: clinicId,
+            name: practitioner.name,
+            phone: practitioner.phone || '',
+            is_active: practitioner.active,
+          }),
+        }).catch(() => {})
+      }
+    }
+  }, [saveToStorage, clinicId])
 
   const deletePractitioner = useCallback((id: string) => {
     setPractitioners(prev => {
