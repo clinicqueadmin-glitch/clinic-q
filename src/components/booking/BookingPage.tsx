@@ -4,12 +4,13 @@ import { useState, useMemo, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   Phone, User, Stethoscope, Clock,
-  CheckCircle,
+  CheckCircle, Calendar, AlertTriangle,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { QRCodeSVG } from 'qrcode.react'
 import { clinicConfig, type ClinicType } from '@/lib/queue-data'
 import { getDefaultBranchData, getAllActiveProcedures, estimateNextServiceTime } from '@/lib/branch-data'
+import { getDaySchedule, type ClinicSettings } from '@/lib/clinic-context'
 import { useQueue } from '@/lib/queue-context'
 import PhoneInput from '@/components/ui/PhoneInput'
 
@@ -60,6 +61,20 @@ export default function BookingPage() {
     return clinicCfg.name
   }, [clinicId, clinicCfg])
 
+  // Load clinic settings (weekly schedule)
+  const clinicSettings = useMemo((): ClinicSettings => {
+    if (typeof window !== 'undefined' && clinicId) {
+      const saved = localStorage.getItem(`clinic-q-settings-${clinicId}`)
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved)
+          return { operatingDays: ['mon', 'tue', 'wed', 'thu', 'fri'], ...parsed }
+        } catch {}
+      }
+    }
+    return { operatingDays: ['mon', 'tue', 'wed', 'thu', 'fri'] }
+  }, [clinicId])
+
   // Load branch data from clinic-specific storage, fallback to defaults
   const branchData = useMemo(() => {
     if (typeof window !== 'undefined' && clinicId) {
@@ -72,7 +87,6 @@ export default function BookingPage() {
           }
         } catch {}
       }
-
     }
     return getDefaultBranchData(clinicType)
   }, [clinicId, clinicType])
@@ -84,8 +98,59 @@ export default function BookingPage() {
   const [phone, setPhone] = useState('')
   const [selectedBranch, setSelectedBranch] = useState('')
   const [selectedProcedure, setSelectedProcedure] = useState('')
+  const [selectedDate, setSelectedDate] = useState(() => {
+    // Default to today in YYYY-MM-DD format (ICT timezone)
+    const now = new Date()
+    const ictMs = now.getTime() + 7 * 60 * 60 * 1000
+    return new Date(ictMs).toISOString().split('T')[0]
+  })
   const [submittedNumber, setSubmittedNumber] = useState('')
   const [estimatedTime, setEstimatedTime] = useState('')
+  const [availableRoomCount, setAvailableRoomCount] = useState<number | null>(null)
+
+  // ── Date → day-of-week mapping ──
+  const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
+  const selectedDaySchedule = useMemo(() => {
+    const date = new Date(selectedDate + 'T12:00:00') // noon to avoid timezone issues
+    const dayCode = dayNames[date.getDay()]
+    return getDaySchedule(clinicSettings, dayCode)
+  }, [selectedDate, clinicSettings])
+
+  const isClinicOpenOnDate = selectedDaySchedule.enabled
+
+  // ── Load room availability for selected date ──
+  useEffect(() => {
+    if (!clinicId || !isClinicOpenOnDate) {
+      setAvailableRoomCount(null)
+      return
+    }
+    const loadRooms = async () => {
+      try {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+        if (!supabaseUrl || !supabaseKey) return
+
+        // Load rooms from rooms table
+        const res = await fetch(
+          `${supabaseUrl}/rest/v1/rooms?clinic_id=eq.${clinicId}&is_active=eq.true`,
+          { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
+        )
+        if (!res.ok) return
+        const rooms = await res.json()
+
+        // Filter by available_days for selected date
+        const date = new Date(selectedDate + 'T12:00:00')
+        const dayCode = dayNames[date.getDay()]
+        const availableRooms = rooms.filter((r: any) => {
+          const days = r.available_days
+          return Array.isArray(days) && days.includes(dayCode)
+        })
+
+        setAvailableRoomCount(availableRooms.length)
+      } catch {}
+    }
+    loadRooms()
+  }, [clinicId, selectedDate, isClinicOpenOnDate])
 
   // Get procedures for selected branch
   const branchProcedures = useMemo(() => {
@@ -94,26 +159,36 @@ export default function BookingPage() {
     return branch?.procedures || []
   }, [selectedBranch, branchData])
 
-  // Calculate estimated service time (queue-aware)
+  // ── Filter queue by selected date for estimation ──
+  const queueForDate = useMemo(() => {
+    return queue.filter(q => q.queueDate === selectedDate)
+  }, [queue, selectedDate])
+
+  // Calculate estimated service time (queue-aware, date-specific)
   const calcEstimatedTime = useMemo(() => {
-    if (!selectedProcedure || !selectedBranch) return ''
+    if (!selectedProcedure || !selectedBranch || !isClinicOpenOnDate) return ''
     const procName = branchProcedures.find(p => p.id === selectedProcedure)?.name || ''
-    const now = new Date()
-    const preferredHHMM = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
-    return estimateNextServiceTime(branchData, queue, preferredHHMM, procName)
-  }, [selectedProcedure, selectedBranch, branchProcedures, queue, branchData])
+    // Use clinic opening time as preferred time for the selected date
+    const preferredHHMM = selectedDaySchedule.openTime || '09:00'
+    return estimateNextServiceTime(branchData, queueForDate, preferredHHMM, procName)
+  }, [selectedProcedure, selectedBranch, branchProcedures, queueForDate, branchData, isClinicOpenOnDate, selectedDaySchedule])
 
   // Update displayed estimate when selection changes
   useEffect(() => {
     setEstimatedTime(calcEstimatedTime)
   }, [calcEstimatedTime])
 
+  // ── Get today's date in ICT for minimum date constraint ──
+  const todayICT = useMemo(() => {
+    const now = new Date()
+    const ictMs = now.getTime() + 7 * 60 * 60 * 1000
+    return new Date(ictMs).toISOString().split('T')[0]
+  }, [])
+
   // Submit booking via Queue Engine (addQueueItem → RPC)
   const handleSubmit = async () => {
-    if (!name.trim() || phone.length !== 10 || !selectedProcedure) return
+    if (!name.trim() || phone.length !== 10 || !selectedProcedure || !isClinicOpenOnDate) return
 
-    const now = new Date()
-    const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
     const procName = branchProcedures.find(p => p.id === selectedProcedure)?.name || ''
 
     const result = await addQueueItem({
@@ -127,10 +202,12 @@ export default function BookingPage() {
       assignedDoctor: '',
       status: 'waiting' as const,
       time: estimatedTime,
-      bookedAt: timeStr,
+      bookedAt: new Date().toISOString(),
       arrivalTime: '',
       arrived: false,
       arrivedAt: undefined,
+      queueDate: selectedDate,
+      bookedTimeSlot: estimatedTime,
     })
 
     setSubmittedNumber(result.number)
@@ -198,6 +275,10 @@ export default function BookingPage() {
               <span className="font-medium text-gray-900">{phone}</span>
             </div>
             <div className="flex justify-between text-sm">
+              <span className="text-gray-500">วันที่</span>
+              <span className="font-medium text-gray-900">{selectedDate}</span>
+            </div>
+            <div className="flex justify-between text-sm">
               <span className="text-gray-500">หัตถการ</span>
               <span className="font-medium text-gray-900">{branchProcedures.find(p => p.id === selectedProcedure)?.name}</span>
             </div>
@@ -255,6 +336,19 @@ export default function BookingPage() {
           </div>
         </div>
 
+        {/* Clinic Closed Warning */}
+        {!isClinicOpenOnDate && (
+          <div className="bento-card p-4 flex items-center gap-3 border-red-200 bg-red-50">
+            <div className="w-8 h-8 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0">
+              <AlertTriangle className="w-4 h-4 text-red-500" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-red-700">คลินิกปิดทำการวันนี้</p>
+              <p className="text-xs text-red-500">กรุณาเลือกวันที่เปิดทำการ</p>
+            </div>
+          </div>
+        )}
+
         {/* Form */}
         <div className="bento-card p-5 space-y-4">
           <h2 className="text-base font-bold text-gray-900">
@@ -283,6 +377,39 @@ export default function BookingPage() {
             required
             showIcon
           />
+
+          {/* Date */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+              <Calendar className="w-3.5 h-3.5 inline mr-1" /> วันที่ต้องการ *
+            </label>
+            <input
+              type="date"
+              value={selectedDate}
+              min={todayICT}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="w-full px-4 py-3 rounded-2xl border border-gray-200 focus:border-gray-400 focus:outline-none text-sm bg-white transition-colors"
+            />
+            <p className="text-[10px] text-gray-400 mt-1">
+              {isClinicOpenOnDate
+                ? `เปิดทำการ ${selectedDaySchedule.openTime}–${selectedDaySchedule.closeTime}`
+                : 'วันนี้คลินิกปิดทำการ'}
+            </p>
+          </div>
+
+          {/* Room Availability */}
+          {isClinicOpenOnDate && clinicId && (
+            <div className="flex items-center gap-2 text-[10px] text-gray-500">
+              <span className="inline-block w-2 h-2 rounded-full bg-emerald-400" />
+              {availableRoomCount !== null ? (
+                availableRoomCount > 0
+                  ? `ห้องตรวจที่พร้อมให้บริการ: ${availableRoomCount} ห้อง`
+                  : 'ไม่มีห้องตรวจวันนี้ — กรุณาเลือกวันอื่น'
+              ) : (
+                'กำลังตรวจสอบห้องตรวจ...'
+              )}
+            </div>
+          )}
 
           {/* Branch */}
           <div>
@@ -321,30 +448,32 @@ export default function BookingPage() {
           )}
 
           {/* Queue-aware estimated booking time */}
-          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
-            <p className="text-xs font-semibold text-blue-700 mb-1">
-              <Clock className="w-3.5 h-3.5 inline mr-1" /> เวลานัดโดยประมาณ
-            </p>
-            <p className="text-2xl font-black text-blue-800">{estimatedTime || '—'} น.</p>
-            <p className="text-[11px] text-blue-500 mt-1">
-              ⏱️ คำนวณจากคิวปัจจุบัน + ระยะเวลาหัตถการ
-            </p>
-            <p className="text-[11px] text-blue-500 mt-1 leading-relaxed">
-              ※ เวลานัดเป็นเวลาโดยประมาณ ระบบจะคำนวณจากคิวที่มีอยู่และระยะเวลาให้บริการของหัตถการ และอาจเปลี่ยนแปลงตามสถานการณ์จริงของคลินิก
-            </p>
-          </div>
+          {isClinicOpenOnDate && (
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
+              <p className="text-xs font-semibold text-blue-700 mb-1">
+                <Clock className="w-3.5 h-3.5 inline mr-1" /> เวลานัดโดยประมาณ
+              </p>
+              <p className="text-2xl font-black text-blue-800">{estimatedTime || '—'} น.</p>
+              <p className="text-[11px] text-blue-500 mt-1">
+                ⏱️ คำนวณจากคิวปัจจุบัน + ระยะเวลาหัตถการ
+              </p>
+              <p className="text-[11px] text-blue-500 mt-1 leading-relaxed">
+                ※ เวลานัดเป็นเวลาโดยประมาณ ระบบจะคำนวณจากคิวที่มีอยู่และระยะเวลาให้บริการของหัตถการ และอาจเปลี่ยนแปลงตามสถานการณ์จริงของคลินิก
+              </p>
+            </div>
+          )}
 
           {/* Submit */}
           <button
             onClick={handleSubmit}
-            disabled={!name.trim() || phone.length !== 10 || !selectedProcedure}
+            disabled={!name.trim() || phone.length !== 10 || !selectedProcedure || !isClinicOpenOnDate}
             className={clsx(
               'w-full py-3.5 rounded-2xl font-bold text-sm transition-all',
-              name.trim() && phone.length === 10 && selectedProcedure
+              name.trim() && phone.length === 10 && selectedProcedure && isClinicOpenOnDate
                 ? 'text-white shadow-lg hover:shadow-xl active:scale-[0.98]'
                 : 'bg-gray-100 text-gray-400 cursor-not-allowed'
             )}
-            style={name.trim() && phone.length === 10 && selectedProcedure ? { backgroundColor: accentColor } : {}}
+            style={name.trim() && phone.length === 10 && selectedProcedure && isClinicOpenOnDate ? { backgroundColor: accentColor } : {}}
           >
             📱 จองคิวออนไลน์
           </button>

@@ -286,24 +286,10 @@ export function QueueProvider({ children }: { children: ReactNode }) {
       setIsSupabaseConnected(true)
 
       if (!rows || rows.length === 0) {
-        // No queues in Supabase for today — use localStorage fallback
-        // IMPORTANT: Filter by clinic_id to prevent cross-clinic data leakage
-        try {
-          const saved = localStorage.getItem(storageKey)
-          if (saved) {
-            const parsed = JSON.parse(saved)
-            // Filter items to only include current clinic's data
-            const filtered = parsed.filter((item: any) => {
-              // Items from this clinic should have a matching prefix or no clinic marker
-              return true  // storageKey already includes clinic type, so data is scoped
-            })
-            setQueue(filtered)
-          } else {
-            setQueue([])
-          }
-        } catch {
-          setQueue([])
-        }
+        // Supabase is source of truth — DB has 0 queues for today
+        // Clear stale localStorage so old data doesn't affect calculations
+        setQueue([])
+        localStorage.setItem(storageKey, JSON.stringify([]))
         return
       }
 
@@ -350,7 +336,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
       setIsSupabaseConnected(true)
       return
     } catch {
-      // Fallback: try localStorage first, then demo data
+      // Supabase fetch failed — use localStorage as fallback
       try {
         const saved = localStorage.getItem(storageKey)
         if (saved) {
@@ -359,7 +345,6 @@ export function QueueProvider({ children }: { children: ReactNode }) {
           return
         }
       } catch {}
-      // Final fallback: empty queue
       setQueue([])
       localStorage.setItem(storageKey, JSON.stringify([]))
       setIsSupabaseConnected(false)
@@ -459,7 +444,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
               p_booking_mode: item.bookingMode || 'walkin',
               p_assigned_room: item.assignedRoom || null,
               p_assigned_doctor: item.assignedDoctor || null,
-              p_queue_date: null,  // Let function use today ICT
+              p_queue_date: item.queueDate || null,  // Use provided date or let function use today ICT
               p_time: item.time || null,
               p_arrived: item.arrived ?? true,
               p_hn: item.hn || null,
