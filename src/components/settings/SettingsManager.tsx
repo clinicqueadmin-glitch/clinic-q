@@ -77,10 +77,33 @@ export default function SettingsManager() {
   const [clinicName, setClinicName] = useState(config?.name || 'คลินิกเวชกรรม')
   const [clinicPhone, setClinicPhone] = useState('02-123-4567')
   const [clinicAddress, setClinicAddress] = useState('123 ถนนสุขุมวิท แขวงคลองเตย เขตคลองเตย กรุงเทพมหานคร 10110')
-  const [openTime, setOpenTime] = useState('08:00')
-  const [closeTime, setCloseTime] = useState('20:00')
   const [clinicLogo, setClinicLogo] = useState('')
-  const [operatingDays, setOperatingDays] = useState<string[]>(['mon', 'tue', 'wed', 'thu', 'fri'])
+  // Weekly schedule state
+  const [weeklySchedule, setWeeklySchedule] = useState<Record<string, { enabled: boolean; openTime: string; closeTime: string }>>({
+    mon: { enabled: true, openTime: '08:00', closeTime: '20:00' },
+    tue: { enabled: true, openTime: '08:00', closeTime: '20:00' },
+    wed: { enabled: true, openTime: '08:00', closeTime: '20:00' },
+    thu: { enabled: true, openTime: '08:00', closeTime: '20:00' },
+    fri: { enabled: true, openTime: '08:00', closeTime: '20:00' },
+    sat: { enabled: false, openTime: '09:00', closeTime: '17:00' },
+    sun: { enabled: false, openTime: '09:00', closeTime: '17:00' },
+  })
+
+  // Sync weeklySchedule from context settings (Supabase is source of truth)
+  useEffect(() => {
+    if (settings.weeklySchedule) {
+      setWeeklySchedule(prev => {
+        // Only update if the DB values differ from current state
+        const dbKeys = Object.keys(settings.weeklySchedule!)
+        const changed = dbKeys.some(k => {
+          const p = prev[k]
+          const d = settings.weeklySchedule![k]
+          return !p || p.enabled !== d.enabled || p.openTime !== d.openTime || p.closeTime !== d.closeTime
+        })
+        return changed ? { ...prev, ...settings.weeklySchedule! } : prev
+      })
+    }
+  }, [settings.weeklySchedule])
 
   // Clinic-specific settings key
   const settingsKey = currentClinicId ? `clinic-q-settings-${currentClinicId}` : 'clinic-q-settings'
@@ -95,10 +118,23 @@ export default function SettingsManager() {
         try {
           const parsed = JSON.parse(saved)
           if (parsed.clinicName) setClinicName(parsed.clinicName)
-          if (parsed.openTime) setOpenTime(parsed.openTime)
-          if (parsed.closeTime) setCloseTime(parsed.closeTime)
           if (parsed.logo) setClinicLogo(parsed.logo)
-          if (parsed.operatingDays) setOperatingDays(parsed.operatingDays)
+          if (parsed.weeklySchedule) {
+            setWeeklySchedule(prev => ({ ...prev, ...parsed.weeklySchedule }))
+          } else if (parsed.openTime && parsed.closeTime && parsed.operatingDays) {
+            // Migrate legacy single-time to weekly schedule
+            setWeeklySchedule(prev => {
+              const migrated = { ...prev }
+              for (const day of Object.keys(migrated)) {
+                migrated[day] = {
+                  enabled: parsed.operatingDays.includes(day),
+                  openTime: parsed.openTime,
+                  closeTime: parsed.closeTime,
+                }
+              }
+              return migrated
+            })
+          }
         } catch {}
       }
       
@@ -338,7 +374,16 @@ export default function SettingsManager() {
 
   /* ───── Clinic Save ───── */
   const handleSaveClinic = () => {
-    updateSettings({ clinicName, logo: clinicLogo, operatingDays, openTime, closeTime })
+    // Derive legacy fields from weeklySchedule for backward compat
+    const activeDays = Object.entries(weeklySchedule).filter(([, v]) => v.enabled).map(([k]) => k)
+    const firstActive = Object.values(weeklySchedule).find(v => v.enabled)
+    updateSettings({
+      clinicName, logo: clinicLogo,
+      operatingDays: activeDays,
+      openTime: firstActive?.openTime || '08:00',
+      closeTime: firstActive?.closeTime || '20:00',
+      weeklySchedule,
+    })
     showToastMsg('บันทึกข้อมูลคลินิกสำเร็จ!', 'success')
   }
 
@@ -360,11 +405,6 @@ export default function SettingsManager() {
     reader.readAsDataURL(file)
   }
 
-  const toggleOperatingDay = (day: string) => {
-    setOperatingDays(prev =>
-      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
-    )
-  }
 
   /* ───── Staff CRUD ───── */
   const openAddStaff = () => {
@@ -689,44 +729,70 @@ export default function SettingsManager() {
                       onChange={setClinicPhone}
                       showIcon
                     />
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1"><Clock className="w-4 h-4 inline mr-1" />เวลาเปิดทำการ</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <input type="time" value={openTime} onChange={(e) => setOpenTime(e.target.value)} className="input-field" />
-                        <input type="time" value={closeTime} onChange={(e) => setCloseTime(e.target.value)} className="input-field" />
-                      </div>
-                    </div>
                   </div>
-                  {/* Operating Days */}
+                  {/* Weekly Schedule */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">วันเปิดทำการ</label>
-                    <div className="flex flex-wrap gap-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2"><Clock className="w-4 h-4 inline mr-1" />เวลาเปิดทำการรายวัน</label>
+                    <p className="text-[10px] text-gray-400 mb-3">ตั้งเวลาเปิด-ปิดทำการแยกตามวัน แต่ละวันกำหนดอิสระ</p>
+                    <div className="space-y-2">
                       {([
-                        { key: 'sun', label: 'อา', full: 'อาทิตย์' },
                         { key: 'mon', label: 'จ', full: 'จันทร์' },
                         { key: 'tue', label: 'อ', full: 'อังคาร' },
                         { key: 'wed', label: 'พ', full: 'พุธ' },
                         { key: 'thu', label: 'พฤ', full: 'พฤหัสบดี' },
                         { key: 'fri', label: 'ศ', full: 'ศุกร์' },
                         { key: 'sat', label: 'ส', full: 'เสาร์' },
+                        { key: 'sun', label: 'อา', full: 'อาทิตย์' },
                       ]).map((day) => {
-                        const isActive = operatingDays.includes(day.key)
+                        const ds = weeklySchedule[day.key] || { enabled: false, openTime: '08:00', closeTime: '20:00' }
                         return (
-                          <button key={day.key} onClick={() => toggleOperatingDay(day.key)} type="button"
-                            className={clsx(
-                              'w-12 h-12 rounded-xl flex flex-col items-center justify-center text-sm font-bold transition-all border-2',
-                              isActive
-                                ? 'text-white shadow-md'
-                                : 'bg-gray-50 text-gray-400 border-gray-200 hover:border-gray-300'
+                          <div key={day.key} className={clsx(
+                            'flex items-center gap-2 p-2 rounded-xl border transition-all',
+                            ds.enabled ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-100'
+                          )}>
+                            <button
+                              type="button"
+                              onClick={() => setWeeklySchedule(prev => ({
+                                ...prev,
+                                [day.key]: { ...ds, enabled: !ds.enabled }
+                              }))}
+                              className={clsx(
+                                'w-10 h-10 rounded-lg flex flex-col items-center justify-center text-xs font-bold transition-all border-2 shrink-0',
+                                ds.enabled
+                                  ? 'text-white shadow-sm'
+                                  : 'bg-gray-100 text-gray-400 border-gray-200'
+                              )}
+                              style={ds.enabled ? { backgroundColor: config.color, borderColor: config.color } : {}}>
+                              <span className="leading-none">{day.label}</span>
+                              <span className="text-[7px] mt-0.5 opacity-80">{day.full}</span>
+                            </button>
+                            {ds.enabled ? (
+                              <div className="flex items-center gap-1 flex-1">
+                                <input
+                                  type="time"
+                                  value={ds.openTime}
+                                  onChange={(e) => setWeeklySchedule(prev => ({
+                                    ...prev, [day.key]: { ...ds, openTime: e.target.value }
+                                  }))}
+                                  className="input-field text-xs flex-1"
+                                />
+                                <span className="text-gray-400 text-xs">-</span>
+                                <input
+                                  type="time"
+                                  value={ds.closeTime}
+                                  onChange={(e) => setWeeklySchedule(prev => ({
+                                    ...prev, [day.key]: { ...ds, closeTime: e.target.value }
+                                  }))}
+                                  className="input-field text-xs flex-1"
+                                />
+                              </div>
+                            ) : (
+                              <span className="text-xs text-gray-400 flex-1 text-center">ปิดทำการ</span>
                             )}
-                            style={isActive ? { backgroundColor: config.color, borderColor: config.color } : {}}>
-                            <span className="text-sm leading-none">{day.label}</span>
-                            <span className="text-[8px] mt-0.5 opacity-80">{day.full}</span>
-                          </button>
+                          </div>
                         )
                       })}
                     </div>
-                    <p className="text-[10px] text-gray-400 mt-1.5">กดเลือกวันที่ต้องการเปิดทำการ</p>
                   </div>
 
                   <div>

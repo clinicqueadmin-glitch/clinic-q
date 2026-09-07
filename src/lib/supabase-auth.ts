@@ -96,6 +96,15 @@ export async function supabaseRegister(data: {
       operatingDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
       openTime: '08:00',
       closeTime: '20:00',
+      weeklySchedule: {
+        mon: { enabled: true, openTime: '08:00', closeTime: '20:00' },
+        tue: { enabled: true, openTime: '08:00', closeTime: '20:00' },
+        wed: { enabled: true, openTime: '08:00', closeTime: '20:00' },
+        thu: { enabled: true, openTime: '08:00', closeTime: '20:00' },
+        fri: { enabled: true, openTime: '08:00', closeTime: '20:00' },
+        sat: { enabled: false, openTime: '09:00', closeTime: '17:00' },
+        sun: { enabled: false, openTime: '09:00', closeTime: '17:00' },
+      },
     }))
     
     // Initialize default rooms for this clinic

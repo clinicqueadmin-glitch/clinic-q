@@ -6,7 +6,7 @@ import {
   X, Trash2, UserCheck, Ban, MonitorPlay,
 } from 'lucide-react'
 import { clsx } from 'clsx'
-import { useClinic } from '@/lib/clinic-context'
+import { useClinic, getDaySchedule } from '@/lib/clinic-context'
 import { useAuth } from '@/lib/auth-context'
 import { useQueue, type BookingMode, type DifficultyLevel, type CompletedProcedure, type QueueItem } from '@/lib/queue-context'
 import { useNotification } from '@/lib/use-notification'
@@ -157,8 +157,28 @@ export default function TodayOps() {
       if (!savedSettings) return
       try {
         const settings = JSON.parse(savedSettings)
-        const closeTime = settings.closeTime || '20:00'
         const now = new Date()
+        // Use weekly schedule if available, else fallback to legacy closeTime
+        let closeTime = settings.closeTime || '20:00'
+        if (settings.weeklySchedule) {
+          const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
+          const daySchedule = settings.weeklySchedule[dayNames[now.getDay()]]
+          if (daySchedule) {
+            closeTime = daySchedule.closeTime || closeTime
+            // If today is not enabled, treat as closed immediately
+            if (!daySchedule.enabled) {
+              const savedDate = localStorage.getItem(dailyDateKey)
+              const today = now.toISOString().split('T')[0]
+              if (savedDate === today) {
+                localStorage.removeItem(dailyRoomKey)
+                localStorage.removeItem(`clinicq-queue-${currentClinic}-${today}`)
+                localStorage.setItem(dailyDateKey, '')
+                setDailyRooms([])
+              }
+              return
+            }
+          }
+        }
         const [closeHour, closeMin] = closeTime.split(':').map(Number)
         const currentMinutes = now.getHours() * 60 + now.getMinutes()
         const closeMinutes = closeHour * 60 + closeMin
@@ -626,9 +646,25 @@ export default function TodayOps() {
     setRoomConfirmData(null)
   }
 
-  // Call next (open confirm popup first)
+  // ── Hard guard: check if clinic is open using weekly schedule ──
+  const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
+  const todayCode = dayNames[now.getDay()]
+  const todaySchedule = getDaySchedule(settings, todayCode)
+  const isClinicOpenNow = useMemo(() => {
+    if (!todaySchedule.enabled) return false
+    const currentMinutes = now.getHours() * 60 + now.getMinutes()
+    const [openH, openM] = todaySchedule.openTime.split(':').map(Number)
+    const [closeH, closeM] = todaySchedule.closeTime.split(':').map(Number)
+    return currentMinutes >= openH * 60 + openM && currentMinutes < closeH * 60 + closeM
+  }, [todaySchedule, now])
+
+  // Call next (open confirm popup first) — BLOCKED when clinic is closed
   const callNext = () => {
     if (!nextQueue) return
+    if (!isClinicOpenNow) {
+      showToastMsg('คลินิกปิดทำการแล้ว — ไม่สามารถเรียกคิวได้', 'error')
+      return
+    }
     openConfirmCall(nextQueue)
   }
 
@@ -1035,7 +1071,24 @@ export default function TodayOps() {
 
       {/* Clinic closing countdown */}
       {(() => {
-        const closeTime = settings.closeTime || '20:00'
+        // Use weekly schedule to get today's closeTime
+        const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
+        const todayCode = dayNames[now.getDay()]
+        const daySchedule = getDaySchedule(settings, todayCode)
+        if (!daySchedule.enabled) {
+          return (
+            <div className="rounded-2xl p-4 border-2 bg-red-50 border-red-300">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl bg-red-100">🔴</div>
+                <div>
+                  <p className="text-sm font-extrabold text-red-700">ปิดทำการวันนี้</p>
+                  <p className="text-xs text-gray-500">{dayNames[now.getDay()]} ไม่มีการเปิดทำการ</p>
+                </div>
+              </div>
+            </div>
+          )
+        }
+        const closeTime = daySchedule.closeTime
         const [closeH, closeM] = closeTime.split(':').map(Number)
         const closeMinutes = closeH * 60 + closeM
         const nowMinutes = now.getHours() * 60 + now.getMinutes()
@@ -1757,8 +1810,19 @@ export default function TodayOps() {
           <Plus className="w-4 h-4" /> ลงคิวคนไข้ {config?.name ? `(${config.name})` : ''}
         </a>
         {nextQueue && (
-          <button onClick={callNext} className="candy-btn candy-btn-success shadow-lg">
+          <button
+            onClick={callNext}
+            disabled={!isClinicOpenNow}
+            className={clsx(
+              'candy-btn shadow-lg',
+              isClinicOpenNow
+                ? 'candy-btn-success'
+                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+            )}
+            title={!isClinicOpenNow ? 'คลินิกปิดทำการ — ไม่สามารถเรียกคิวได้' : undefined}
+          >
             <Play className="w-4 h-4" /> เรียกคิวถัดไป ({nextQueue.number})
+            {!isClinicOpenNow && <span className="text-[10px] ml-1">(ปิดทำการ)</span>}
           </button>
         )}
         {!isProvider && (

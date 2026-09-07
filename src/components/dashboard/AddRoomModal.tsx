@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { X, Clock, User, Stethoscope, AlertTriangle } from 'lucide-react'
-import { useClinic } from '@/lib/clinic-context'
+import { useClinic, getDaySchedule } from '@/lib/clinic-context'
 import { useAuth } from '@/lib/auth-context'
 import { getDefaultBranchData, type ClinicBranchData, type Room } from '@/lib/branch-data'
 import { usePractitioners } from '@/lib/practitioner-context'
@@ -62,8 +62,11 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
   const [selectedRoomId, setSelectedRoomId] = useState<number | ''>('')
   const [selectedPractitionerId, setSelectedPractitionerId] = useState('')
   const [selectedBranchId, setSelectedBranchId] = useState('')
-  const clinicOpenTime = settings.openTime || '08:00'
-  const clinicCloseTime = settings.closeTime || '20:00'
+  // Get today's schedule for default times and validation
+  const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
+  const todaySchedule = getDaySchedule(settings, dayNames[new Date().getDay()])
+  const clinicOpenTime = todaySchedule.openTime
+  const clinicCloseTime = todaySchedule.closeTime
   const [startTime, setStartTime] = useState(clinicOpenTime)
   const [endTime, setEndTime] = useState(clinicCloseTime)
   const [timeError, setTimeError] = useState('')

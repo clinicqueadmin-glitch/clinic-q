@@ -4,12 +4,47 @@ import { createContext, useContext, useState, useEffect, useCallback, type React
 import { type ClinicType, clinicConfig } from './queue-data'
 import { getClinicSetting, setClinicSetting } from './clinic-data'
 
+export interface DaySchedule {
+  enabled: boolean
+  openTime: string  // HH:mm
+  closeTime: string // HH:mm
+}
+
+export type WeeklySchedule = Record<string, DaySchedule> // keys: mon, tue, wed, thu, fri, sat, sun
+
 export interface ClinicSettings {
   clinicName?: string // custom clinic name
   logo?: string // base64 data URL
-  operatingDays: string[] // ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
-  openTime?: string // เวลาเปิดทำการ (HH:mm)
-  closeTime?: string // เวลาปิดทำการ (HH:mm)
+  operatingDays: string[] // legacy: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+  openTime?: string // legacy: single เวลาเปิดทำการ (HH:mm)
+  closeTime?: string // legacy: single เวลาปิดทำการ (HH:mm)
+  weeklySchedule?: WeeklySchedule // per-day schedule: { mon: { enabled, openTime, closeTime }, ... }
+}
+
+/** Get the DaySchedule for a specific day code (mon, tue, etc.) */
+export function getDaySchedule(settings: ClinicSettings, dayCode: string): DaySchedule {
+  if (settings.weeklySchedule && settings.weeklySchedule[dayCode]) {
+    return settings.weeklySchedule[dayCode]
+  }
+  // Fallback: derive from legacy openTime/closeTime/operatingDays
+  return {
+    enabled: settings.operatingDays?.includes(dayCode) ?? false,
+    openTime: settings.openTime || '08:00',
+    closeTime: settings.closeTime || '20:00',
+  }
+}
+
+/** Check if clinic is open right now based on weekly schedule */
+export function isClinicOpenNow(settings: ClinicSettings, now?: Date): boolean {
+  const d = now || new Date()
+  const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
+  const dayCode = dayNames[d.getDay()]
+  const schedule = getDaySchedule(settings, dayCode)
+  if (!schedule.enabled) return false
+  const currentMinutes = d.getHours() * 60 + d.getMinutes()
+  const [openH, openM] = schedule.openTime.split(':').map(Number)
+  const [closeH, closeM] = schedule.closeTime.split(':').map(Number)
+  return currentMinutes >= openH * 60 + openM && currentMinutes < closeH * 60 + closeM
 }
 
 interface ClinicContextType {
@@ -44,13 +79,13 @@ export function ClinicProvider({ children, clinicId }: { children: ReactNode; cl
   // Clinic-specific settings key
   const settingsKey = clinicId ? `clinic-q-settings-${clinicId}` : 'clinic-q-settings'
 
-  // Load from localStorage on mount
+  // Load from localStorage on mount, then sync from Supabase
   useEffect(() => {
     const saved = localStorage.getItem('clinic-q-type') as ClinicType | null
     if (saved && clinicConfig[saved]) {
       setCurrentClinic(saved)
     }
-    // Load settings from clinic-specific key first
+    // Load settings from clinic-specific key first (fast, immediate)
     const savedSettings = localStorage.getItem(settingsKey) || localStorage.getItem('clinic-q-settings')
     if (savedSettings) {
       try {
@@ -59,7 +94,23 @@ export function ClinicProvider({ children, clinicId }: { children: ReactNode; cl
       } catch {}
     }
     setIsLoaded(true)
-  }, [settingsKey])
+
+    // Then sync from Supabase in background — Supabase is source of truth
+    if (clinicId) {
+      getClinicSetting(clinicId, 'general').then((dbSettings) => {
+        if (dbSettings && typeof dbSettings === 'object') {
+          setSettings(prev => {
+            const merged = { ...defaultSettings, ...dbSettings } as ClinicSettings
+            // Update localStorage cache with DB values
+            try {
+              localStorage.setItem(settingsKey, JSON.stringify(merged))
+            } catch {}
+            return merged
+          })
+        }
+      }).catch(() => {})
+    }
+  }, [settingsKey, clinicId])
 
   const setClinic = useCallback((clinic: ClinicType) => {
     setCurrentClinic(clinic)

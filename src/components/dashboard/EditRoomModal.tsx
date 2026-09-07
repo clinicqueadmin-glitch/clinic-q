@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { X, Clock, User, Stethoscope, Trash2 } from 'lucide-react'
-import { useClinic } from '@/lib/clinic-context'
+import { useClinic, getDaySchedule } from '@/lib/clinic-context'
 import { useAuth } from '@/lib/auth-context'
 import { getDefaultBranchData, type ClinicBranchData, type Room } from '@/lib/branch-data'
 import { usePractitioners } from '@/lib/practitioner-context'
@@ -39,8 +39,10 @@ export default function EditRoomModal({ open, room, onClose, onSave, onDelete }:
   const dailyRoomKey = currentClinicId ? `clinic-daily-rooms-${currentClinicId}` : 'clinic-daily-rooms'
 
   // Form state
-  const clinicOpenTime = settings.openTime || '08:00'
-  const clinicCloseTime = settings.closeTime || '20:00'
+  const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
+  const todaySchedule = getDaySchedule(settings, dayNames[new Date().getDay()])
+  const clinicOpenTime = todaySchedule.openTime
+  const clinicCloseTime = todaySchedule.closeTime
   const [selectedPractitionerId, setSelectedPractitionerId] = useState('')
   const [selectedBranchId, setSelectedBranchId] = useState('')
   const [startTime, setStartTime] = useState(clinicOpenTime)
