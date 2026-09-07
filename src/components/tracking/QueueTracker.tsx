@@ -284,7 +284,8 @@ export default function QueueTracker() {
     }
     if (foundItem.status !== prevStatus) {
       if (foundItem.status === 'serving') {
-        notifyQueueCalled(foundItem.number, foundItem.assignedRoom, foundItem.patientName)
+        const firstName = foundItem.firstName || foundItem.patientName.split(/\s+/)[0] || foundItem.patientName
+        notifyQueueCalled(foundItem.number, foundItem.assignedRoom, foundItem.patientName, firstName)
       } else if (foundItem.status === 'completed') {
         notifyQueueCompleted(foundItem.number)
       }

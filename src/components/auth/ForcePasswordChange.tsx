@@ -32,11 +32,6 @@ export default function ForcePasswordChange({ isOpen, onComplete }: ForcePasswor
       return
     }
     
-    if (newPassword === '123456') {
-      setError('รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านเดิม')
-      return
-    }
-    
     if (newPassword !== confirmPassword) {
       setError('รหัสผ่านไม่ตรงกัน')
       return
@@ -61,7 +56,7 @@ export default function ForcePasswordChange({ isOpen, onComplete }: ForcePasswor
             </div>
             <div>
               <h2 className="text-xl font-bold">เปลี่ยนรหัสผ่าน</h2>
-              <p className="text-sm text-white/80">กรุณาเปลี่ยนรหัสผ่านก่อนเข้าใช้งาน</p>
+              <p className="text-sm text-white/80">นี่เป็นการเข้าสู่ระบบครั้งแรกหรือบัญชีของคุณถูกรีเซ็ตรหัสผ่าน กรุณาตั้งรหัสผ่านใหม่ก่อนใช้งาน ClinicQ</p>
             </div>
           </div>
         </div>
@@ -84,8 +79,8 @@ export default function ForcePasswordChange({ isOpen, onComplete }: ForcePasswor
                 <div className="flex items-start gap-3">
                   <Lock className="w-5 h-5 text-orange-600 mt-0.5" />
                   <div>
-                    <p className="text-sm font-medium text-orange-800">รหัสผ่านเดิม: 123456</p>
-                    <p className="text-sm text-orange-600 mt-1">กรุณาเปลี่ยนรหัสผ่านเป็นรหัสใหม่ที่มีความปลอดภัย</p>
+                    <p className="text-sm font-medium text-orange-800">นี่เป็นการเข้าสู่ระบบครั้งแรกหรือบัญชีของคุณถูกรีเซ็ตรหัสผ่าน กรุณาตั้งรหัสผ่านใหม่เพื่อความปลอดภัย</p>
+                    <p className="text-sm text-orange-600 mt-1">รหัสผ่านใหม่ต้องมีความยาวอย่างน้อย 6 ตัวอักษร และไม่แนะนำให้ใช้รหัสผ่านเดิม</p>
                   </div>
                 </div>
               </div>

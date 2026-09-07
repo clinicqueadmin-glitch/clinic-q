@@ -362,7 +362,7 @@ export default function TodayOps() {
     }
     setQueue(prev => prev.map(q => q.id === item.id ? updated : q))
     saveQueueItem(updated)
-    showToastMsg(`${item.number} ${item.patientName} — เช็คอิน${isOnTime ? 'ตรงเวลา' : `ช้า ${lateMinutes} นาที`}`, isOnTime ? 'success' : 'info')
+    showToastMsg(`คิวที่ ${item.number} คุณ${item.firstName || item.patientName} — เช็คอิน${isOnTime ? 'ตรงเวลา' : `ช้า ${lateMinutes} นาที`}`, isOnTime ? 'success' : 'info')
   }
 
   // ═══════ All queue items (walk-in only) ═══════
@@ -612,7 +612,8 @@ export default function TodayOps() {
     setQueue(prev => prev.map(q => q.id === item.id ? updated : q))
     saveQueueItem(updated)
     playSound('called')
-    notifyQueueCalled(item.number, roomId, item.patientName, item.phone, practitionerName)
+    const firstName = item.firstName || item.patientName.split(' ')[0] || item.patientName
+    notifyQueueCalled(item.number, roomId, item.patientName, firstName, item.phone, practitionerName)
     showToastMsg(`เรียก ${item.number} → ห้อง ${roomId} (${practitionerName})`, 'success')
     setShowRoomConfirm(false)
     setRoomConfirmData(null)
@@ -693,8 +694,9 @@ export default function TodayOps() {
     const closeMinutes = closeH * 60 + closeM
     const wouldExceedClose = apptEndMinutes > closeMinutes
 
-    const newItem: Omit<QueueItem, 'id'> = {
-      number: `E${(queue.length + 100).toString().padStart(3, '0')}`,
+    // Queue number is generated server-side by create_queue_item() RPC
+    const newItem: Omit<QueueItem, 'id' | 'number'> = {
+      // number is NOT set here - server generates it atomically
       patientName: apptForm.patientName.trim(),
       phone: apptForm.phone.trim(),
       procedure: proc?.name || '',

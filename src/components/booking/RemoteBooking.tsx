@@ -7,7 +7,8 @@ import {
   Clock, AlertTriangle, Navigation,
 } from 'lucide-react'
 import { clsx } from 'clsx'
-import { procedures, findBestRoom, generateQueueNumber, CLINIC_LOCATION, MAX_DISTANCE_METERS, checkDistance } from '@/lib/booking-data'
+import { procedures, findBestRoom, CLINIC_LOCATION, MAX_DISTANCE_METERS, checkDistance } from '@/lib/booking-data'
+import { useQueue } from '@/lib/queue-context'
 import PhoneInput from '@/components/ui/PhoneInput'
 
 type BookingStep = 'location' | 'info' | 'procedure' | 'done'
@@ -84,17 +85,39 @@ export default function RemoteBooking() {
 
   const selectedProc = procedures.find(p => p.id === selectedProcedure)
 
-  const handleBook = () => {
+  const { addQueueItem } = useQueue()
+
+  const handleBook = async () => {
     if (!selectedProc) return
     const assignment = findBestRoom(selectedProc.id, [])
-    const queueNum = generateQueueNumber('Q', selectedProc.category)
-    setResult({
-      queueNumber: queueNum,
-      room: assignment?.roomId || 1,
-      doctor: 'รอจัดสรร',
+
+    // Create queue item via atomic RPC (server generates number)
+    const newQueueItem = {
+      patientName: '远程预约患者',  // Demo placeholder
+      phone: '0000000000',  // Demo placeholder
       procedure: selectedProc.name,
-    })
-    setStep('done')
+      procedureId: selectedProc.id,
+      branchId: selectedProc.category,
+      bookingMode: 'remote' as const,
+      assignedRoom: assignment?.roomId || 1,
+      assignedDoctor: 'รอจัดสรร',
+      status: 'waiting' as const,
+      time: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
+      arrived: false,
+    }
+
+    try {
+      const result = await addQueueItem(newQueueItem as any)
+      setResult({
+        queueNumber: result.number,  // Use server-generated number
+        room: assignment?.roomId || 1,
+        doctor: 'รอจัดสรร',
+        procedure: selectedProc.name,
+      })
+      setStep('done')
+    } catch (e) {
+      console.error('Failed to create queue item:', e)
+    }
   }
 
   return (

@@ -51,7 +51,7 @@ export default function PatientBooking() {
   }, [currentClinic])
   const allProcedures = useMemo(() => getAllActiveProcedures(branchData), [branchData])
   const { assignments, staff } = useSchedule()
-  const { queue, setQueue } = useQueue()
+  const { queue, setQueue, addQueueItem } = useQueue()
 
   // Location state
   const [locationStatus, setLocationStatus] = useState<LocationStatus>('checking')
@@ -321,7 +321,7 @@ export default function PatientBooking() {
   const [showTimeWarning, setShowTimeWarning] = useState(false)
   const [timeWarningMsg, setTimeWarningMsg] = useState('')
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!name || phone.length !== 10 || !procedure) {
       setToast({ message: 'กรุณากรอกข้อมูลให้ครบทุกช่อง (เบอร์โทร 10 หลัก)', type: 'error' })
       setTimeout(() => setToast(null), 3000)
@@ -338,17 +338,14 @@ export default function PatientBooking() {
 
     const proc = branchProcedures.find(p => p.id === procedure)
     const timeStr = getBookingTime() // Auto: 30 min from now
-    const today = new Date().toISOString().split('T')[0]
-    const queueNumber = `${config?.prefix || 'E'}${String(Math.floor(Math.random() * 900) + 100).slice(0, 3)}`
 
     // Find selected doctor's room from daily rooms
     const selectedDoc = availableDoctors.find(d => d.id === selectedDoctorId)
     const assignedRoom = selectedDoc ? selectedDoc.roomId : 0
     const assignedDoctor = selectedDoc ? selectedDoc.name : (selectedStaff?.name || '')
 
+    // Queue number is generated server-side by create_queue_item() RPC
     const newQueue = {
-      id: String(Date.now()),
-      number: queueNumber,
       patientName: name,
       phone,
       procedure: proc?.name || '',
@@ -360,21 +357,17 @@ export default function PatientBooking() {
       status: 'waiting' as const,
       time: timeStr,
       bookedTimeSlot: timeStr,
-      bookedAt: today,
       arrivalTime: '',
       arrived: false,
-      // Auto-cancel: if not arrived by booking time + 15 min, cancel
-      autoCancelAt: (() => {
-        const [h, m] = timeStr.split(':').map(Number)
-        const cancelTime = new Date()
-        cancelTime.setHours(h, m + 15, 0, 0)
-        return cancelTime.getTime()
-      })(),
     }
 
-    setQueue(prev => [...prev, newQueue])
-    setResult({ number: queueNumber, doctor: selectedStaff?.name || '', time: timeStr, date: today })
-    setStep('done')
+    try {
+      const result = await addQueueItem(newQueue as any)
+      setResult({ number: result.number, doctor: selectedStaff?.name || '', time: timeStr, date: result.queueDate || new Date().toISOString().split('T')[0] })
+      setStep('done')
+    } catch (e) {
+      console.error('Failed to create queue item:', e)
+    }
   }
 
   const resetAll = () => {

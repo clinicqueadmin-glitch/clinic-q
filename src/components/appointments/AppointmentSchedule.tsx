@@ -28,7 +28,7 @@ export default function AppointmentSchedule() {
   const activeRooms = useMemo(() => branchData.rooms.filter(r => r.active), [branchData])
   const allProcedures = useMemo(() => getAllActiveProcedures(branchData), [branchData])
   const { assignments, staff, leaves } = useSchedule()
-  const { queue, setQueue } = useQueue()
+  const { queue, setQueue, addQueueItem } = useQueue()
 
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
   const [activeTab, setActiveTab] = useState<TabMode>('by-date')
@@ -215,7 +215,7 @@ export default function AppointmentSchedule() {
     setShowBookingModal(true)
   }
 
-  const confirmBooking = () => {
+  const confirmBooking = async () => {
     if (!bookingName || bookingPhone.length !== 10 || !bookingProcedure) {
       setToast({ message: 'กรุณากรอกข้อมูลให้ครบทุกช่อง (เบอร์โทร 10 หลัก)', type: 'error' })
       setTimeout(() => setToast(null), 3000)
@@ -227,9 +227,8 @@ export default function AppointmentSchedule() {
     const timeMatch = selectedSlotId.match(/slot-(\d{2}:\d{2})/)
     const timeStr = timeMatch ? timeMatch[1] : '09:00'
 
+    // Queue number is generated server-side by create_queue_item() RPC
     const newQueue = {
-      id: String(Date.now()),
-      number: `${config?.prefix || 'E'}${String(Math.floor(Math.random() * 900) + 100).slice(0, 3)}`,
       patientName: bookingName,
       phone: bookingPhone,
       procedure: proc?.name || '',
@@ -245,10 +244,15 @@ export default function AppointmentSchedule() {
       arrived: false,
     }
 
-    setQueue(prev => [...prev, newQueue])
-    setShowBookingModal(false)
-    setToast({ message: `นัดหมายสำเร็จ — ${bookingName} กับ ${staffMember?.name} เวลา ${timeStr}`, type: 'success' })
-    setTimeout(() => setToast(null), 3000)
+    try {
+      await addQueueItem(newQueue as any)
+      setShowBookingModal(false)
+      setToast({ message: `นัดหมายสำเร็จ — ${bookingName} กับ ${staffMember?.name} เวลา ${timeStr}`, type: 'success' })
+      setTimeout(() => setToast(null), 3000)
+    } catch (e) {
+      console.error('Failed to create queue item:', e)
+      setToast({ message: 'เกิดข้อผิดพลาดในการสร้างคิว', type: 'error' })
+    }
   }
 
   if (!config) return null

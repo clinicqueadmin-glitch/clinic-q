@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   Phone, User, Stethoscope, Clock,
@@ -9,14 +9,14 @@ import {
 import { clsx } from 'clsx'
 import { QRCodeSVG } from 'qrcode.react'
 import { clinicConfig, type ClinicType } from '@/lib/queue-data'
-import { getDefaultBranchData, getAllActiveProcedures } from '@/lib/branch-data'
+import { getDefaultBranchData, getAllActiveProcedures, estimateNextServiceTime } from '@/lib/branch-data'
 import { useQueue } from '@/lib/queue-context'
 import PhoneInput from '@/components/ui/PhoneInput'
 
 export default function BookingPage() {
   const searchParams = useSearchParams()
   const urlClinicType = searchParams.get('clinic') as ClinicType | null
-  const { queue, setQueue } = useQueue()
+  const { queue, addQueueItem } = useQueue()
 
   // Detect clinic ID and type from localStorage
   const { clinicId, clinicType, clinicCfg } = useMemo(() => {
@@ -84,14 +84,8 @@ export default function BookingPage() {
   const [phone, setPhone] = useState('')
   const [selectedBranch, setSelectedBranch] = useState('')
   const [selectedProcedure, setSelectedProcedure] = useState('')
-  // Auto-calculate booking time: current time + 30 minutes
-  const getBookingTime = () => {
-    const now = new Date()
-    now.setMinutes(now.getMinutes() + 30)
-    return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
-  }
-  const preferredTime = getBookingTime()
   const [submittedNumber, setSubmittedNumber] = useState('')
+  const [estimatedTime, setEstimatedTime] = useState('')
 
   // Get procedures for selected branch
   const branchProcedures = useMemo(() => {
@@ -100,25 +94,29 @@ export default function BookingPage() {
     return branch?.procedures || []
   }, [selectedBranch, branchData])
 
-  // Generate queue number
-  const generateQueueNumber = () => {
-    const prefix = clinicCfg.prefix
-    const count = queue.length + 1
-    return `${prefix}${String(count).padStart(3, '0')}`
-  }
+  // Calculate estimated service time (queue-aware)
+  const calcEstimatedTime = useMemo(() => {
+    if (!selectedProcedure || !selectedBranch) return ''
+    const procName = branchProcedures.find(p => p.id === selectedProcedure)?.name || ''
+    const now = new Date()
+    const preferredHHMM = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
+    return estimateNextServiceTime(branchData, queue, preferredHHMM, procName)
+  }, [selectedProcedure, selectedBranch, branchProcedures, queue, branchData])
 
-  // Submit booking
-  const handleSubmit = () => {
+  // Update displayed estimate when selection changes
+  useEffect(() => {
+    setEstimatedTime(calcEstimatedTime)
+  }, [calcEstimatedTime])
+
+  // Submit booking via Queue Engine (addQueueItem → RPC)
+  const handleSubmit = async () => {
     if (!name.trim() || phone.length !== 10 || !selectedProcedure) return
 
-    const number = generateQueueNumber()
     const now = new Date()
     const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
     const procName = branchProcedures.find(p => p.id === selectedProcedure)?.name || ''
 
-    const newQueueItem = {
-      id: `booking-${Date.now()}`,
-      number,
+    const result = await addQueueItem({
       patientName: name.trim(),
       phone: phone.trim(),
       procedure: procName,
@@ -128,15 +126,14 @@ export default function BookingPage() {
       assignedRoom: 0,
       assignedDoctor: '',
       status: 'waiting' as const,
-      time: getBookingTime(), // Auto: now + 30 minutes
+      time: estimatedTime,
       bookedAt: timeStr,
       arrivalTime: '',
       arrived: false,
       arrivedAt: undefined,
-    }
+    })
 
-    setQueue(prev => [...prev, newQueueItem])
-    setSubmittedNumber(number)
+    setSubmittedNumber(result.number)
     setSubmitted(true)
   }
 
@@ -156,28 +153,25 @@ export default function BookingPage() {
 
           {/* Booking Time Highlight */}
           <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-4">
-            <p className="text-sm text-blue-700 font-medium">คุณได้จองคิวนัดหมายไว้เวลา</p>
-            <p className="text-4xl font-black mt-1" style={{ color: accentColor }}>{getBookingTime()} น.</p>
-            <p className="text-xs text-blue-600 mt-2">⏱️ เวลานี้คือเวลาปัจจุบัน + 30 นาที</p>
+            <p className="text-sm text-blue-700 font-medium">เวลานัดโดยประมาณ</p>
+            <p className="text-4xl font-black mt-1" style={{ color: accentColor }}>{estimatedTime} น.</p>
+            <p className="text-[11px] text-blue-500 mt-2 leading-relaxed">
+              ※ เวลานัดเป็นเวลาโดยประมาณ ระบบคำนวณจากคิวที่มีอยู่และระยะเวลาให้บริการของหัตถการ
+            </p>
           </div>
 
           {/* Instructions */}
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4 text-left">
             <p className="text-sm font-bold text-amber-700 mb-2">📋 สิ่งที่ต้องทำเมื่อมาถึงคลินิก</p>
             <ol className="text-sm text-amber-600 space-y-1.5 list-decimal list-inside">
-              <li>มาถึงคลินิก <b>ก่อนเวลา {getBookingTime()}</b> อย่างน้อย 10 นาที</li>
+              <li>มาถึงคลินิกก่อนเวลานัดอย่างน้อย 10 นาที</li>
               <li>แจ้งที่หน้าเคานเตอร์ว่า <b>"จองคิวออนไลน์"</b></li>
               <li>แสดงหมายเลขคิว <b>{submittedNumber}</b> แก่เจ้าหน้าที่</li>
             </ol>
           </div>
 
           {/* Auto-cancel warning */}
-          <p className="text-[11px] text-orange-500 mb-4">⚠️ หากมาไม่ถึงคลินิกก่อนเวลา {(() => {
-            const [h, m] = getBookingTime().split(':').map(Number)
-            const cancelM = m + 15
-            const cancelH = h + Math.floor(cancelM / 60)
-            return `${cancelH.toString().padStart(2, '0')}:${(cancelM % 60).toString().padStart(2, '0')}`
-          })()} น. คิวจะถูกยกเลิกอัตโนมัติ</p>
+          <p className="text-[11px] text-orange-500 mb-4">⚠️ เวลานัดอาจเปลี่ยนแปลงตามสถานการณ์จริงของคลินิก</p>
 
           {/* Queue Number */}
           <div className="py-6 rounded-2xl mb-4" style={{ backgroundColor: `${accentColor}08` }}>
@@ -208,8 +202,8 @@ export default function BookingPage() {
               <span className="font-medium text-gray-900">{branchProcedures.find(p => p.id === selectedProcedure)?.name}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500">เวลานัดหมาย</span>
-              <span className="font-bold" style={{ color: accentColor }}>{getBookingTime()} น.</span>
+              <span className="text-gray-500">เวลานัดโดยประมาณ</span>
+              <span className="font-bold" style={{ color: accentColor }}>{estimatedTime} น.</span>
             </div>
           </div>
 
@@ -326,13 +320,18 @@ export default function BookingPage() {
             </div>
           )}
 
-          {/* Auto-calculated booking time */}
+          {/* Queue-aware estimated booking time */}
           <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
             <p className="text-xs font-semibold text-blue-700 mb-1">
-              <Clock className="w-3.5 h-3.5 inline mr-1" /> เวลานัดหมายของคุณ
+              <Clock className="w-3.5 h-3.5 inline mr-1" /> เวลานัดโดยประมาณ
             </p>
-            <p className="text-2xl font-black text-blue-800">{getBookingTime()} น.</p>
-            <p className="text-[11px] text-blue-500 mt-1">⏱️ ระบบจะนัดเวลาปัจจุบัน + 30 นาที</p>
+            <p className="text-2xl font-black text-blue-800">{estimatedTime || '—'} น.</p>
+            <p className="text-[11px] text-blue-500 mt-1">
+              ⏱️ คำนวณจากคิวปัจจุบัน + ระยะเวลาหัตถการ
+            </p>
+            <p className="text-[11px] text-blue-500 mt-1 leading-relaxed">
+              ※ เวลานัดเป็นเวลาโดยประมาณ ระบบจะคำนวณจากคิวที่มีอยู่และระยะเวลาให้บริการของหัตถการ และอาจเปลี่ยนแปลงตามสถานการณ์จริงของคลินิก
+            </p>
           </div>
 
           {/* Submit */}

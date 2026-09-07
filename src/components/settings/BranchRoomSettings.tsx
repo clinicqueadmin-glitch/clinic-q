@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Plus, Edit, Trash2, X, AlertTriangle, Stethoscope,
   ChevronDown, ChevronRight,
@@ -9,11 +9,12 @@ import { clsx } from 'clsx'
 import { useClinic } from '@/lib/clinic-context'
 import { useAuth } from '@/lib/auth-context'
 import {
-  type Branch, type Practitioner, type Procedure,
+  type Branch, type Procedure,
   type ClinicBranchData,
   getDefaultBranchData,
 } from '@/lib/branch-data'
 import Toast from '@/components/ui/Toast'
+import { isSupabaseReady, getSupabase } from '@/lib/supabase'
 
 export default function BranchRoomSettings() {
   const { config, currentClinic } = useClinic()
@@ -22,8 +23,9 @@ export default function BranchRoomSettings() {
   // Use clinic-specific storage key
   const storageKey = currentClinicId ? `clinic-branch-data-${currentClinicId}` : 'clinic-branch-data'
   const [data, setData] = useState<ClinicBranchData>(() => getDefaultBranchData(currentClinic || 'dental'))
+  const [supabaseLoaded, setSupabaseLoaded] = useState(false)
   
-  // Load from clinic-specific storage on mount
+  // Load from clinic-specific storage on mount, then refresh from Supabase if reachable.
   useEffect(() => {
     const saved = localStorage.getItem(storageKey)
     if (saved) {
@@ -31,24 +33,50 @@ export default function BranchRoomSettings() {
         const parsed = JSON.parse(saved)
         if (parsed && parsed.branches && parsed.branches.length > 0) {
           setData(parsed)
-          return
         }
       } catch {}
     }
     // If no saved data for this clinic, use defaults
-    setData(getDefaultBranchData(currentClinic || 'dental'))
-  }, [storageKey, currentClinic])
+    if (!saved || !JSON.parse(saved)?.branches?.length) {
+      setData(getDefaultBranchData(currentClinic || 'dental'))
+    }
+    if (currentClinicId && supabaseLoaded && isSupabaseReady()) {
+      const sb = getSupabase()
+      if (sb) {
+        sb.from('clinic_settings').select('setting_value').eq('clinic_id', currentClinicId).eq('setting_key', 'branch_data').single()
+            .then(({ data: { data: remote } }: { data: { data: { setting_value: string | null } | null } }) => {
+            if (remote?.setting_value) {
+              try {
+                const parsed = JSON.parse(remote.setting_value)
+                if (parsed?.branches?.length) {
+                  setData(parsed)
+                }
+              } catch {}
+            }
+          }).catch(() => {})
+      }
+    }
+    setSupabaseLoaded(true)
+  }, [storageKey, currentClinic, currentClinicId, isSupabaseReady])
   
   // Save to clinic-specific storage + Supabase
+  // NOTE: branch_data is a legacy snapshot stored in clinic_settings.branch_data.
+  // In a later phase these branches/practitioners/procedures will be normalized into
+  // public.branches / public.practitioners / public.procedures and this key retired.
   useEffect(() => {
     localStorage.setItem(storageKey, JSON.stringify(data))
-    // Also save to Supabase in background
-    if (currentClinicId) {
-      import('@/lib/clinic-data').then(({ setClinicSetting }) => {
-        setClinicSetting(currentClinicId, 'branch_data', data)
-      })
+    if (currentClinicId && supabaseLoaded && isSupabaseReady()) {
+      const sb = getSupabase()
+      if (sb) {
+        sb.from('clinic_settings').upsert(
+          { clinic_id: currentClinicId, setting_key: 'branch_data', setting_value: JSON.stringify(data) },
+          { onConflict: 'clinic_id,setting_key' }
+        ).then(() => {
+          // Background write only; ignore errors to avoid disrupting the UI.
+        }).catch(() => {})
+      }
     }
-  }, [data, storageKey, currentClinicId])
+  }, [data, storageKey, currentClinicId, supabaseLoaded, isSupabaseReady])
   const [expandedBranch, setExpandedBranch] = useState<string | null>(data.branches[0]?.id || null)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
 
@@ -63,8 +91,22 @@ export default function BranchRoomSettings() {
 
   const [confirmDelete, setConfirmDelete] = useState<{ type: 'branch' | 'procedure'; id: string; branchId?: string } | null>(null)
 
+  const debounceSave = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const commitData = useCallback(() => {
+    // Keep legacy local storage + Supabase branch_data snapshot in sync with the in-memory state.
+    localStorage.setItem(storageKey, JSON.stringify(data))
+    if (currentClinicId && supabaseLoaded && isSupabaseReady()) {
+      const sb = getSupabase()
+      if (sb) {
+        sb.from('clinic_settings').upsert(
+          { clinic_id: currentClinicId, setting_key: 'branch_data', setting_value: JSON.stringify(data) },
+          { onConflict: 'clinic_id,setting_key' }
+        ).catch(() => {})
+      }
+    }
+  }, [data, storageKey, currentClinicId, supabaseLoaded, isSupabaseReady])
+
   const showToast = (msg: string, type: 'success' | 'error' | 'info' = 'success') => {
-    setToast({ msg, type } as any)
     setToast({ message: msg, type })
     setTimeout(() => setToast(null), 3000)
   }
@@ -82,6 +124,8 @@ export default function BranchRoomSettings() {
       showToast('เพิ่มสาขาสำเร็จ!')
     }
     setShowBranchModal(false)
+    if (debounceSave.current) clearTimeout(debounceSave.current)
+    debounceSave.current = setTimeout(commitData, 250)
   }
 
   /* ───── Procedure CRUD ───── */
@@ -106,6 +150,8 @@ export default function BranchRoomSettings() {
       showToast('เพิ่มหัตถการสำเร็จ!')
     }
     setShowProcedureModal(false)
+    if (debounceSave.current) clearTimeout(debounceSave.current)
+    debounceSave.current = setTimeout(commitData, 250)
   }
 
   const toggleProcedure = (branchId: string, procId: string) => {
@@ -116,6 +162,8 @@ export default function BranchRoomSettings() {
         : b
       ),
     }))
+    if (debounceSave.current) clearTimeout(debounceSave.current)
+    debounceSave.current = setTimeout(commitData, 250)
   }
 
   const handleDelete = () => {
@@ -132,6 +180,8 @@ export default function BranchRoomSettings() {
       showToast('ลบหัตถการแล้ว', 'info')
     }
     setConfirmDelete(null)
+    if (debounceSave.current) clearTimeout(debounceSave.current)
+    debounceSave.current = setTimeout(commitData, 250)
   }
 
   if (!config) return null
@@ -212,7 +262,7 @@ export default function BranchRoomSettings() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-lg font-semibold text-gray-900">สาขาและหัตถการ</h3>
-            <p className="text-sm text-gray-500">จัดการสาขา หัตถการ และผู้ทำหัตถการ</p>
+            <p className="text-sm text-gray-500">จัดการสาขา หัตถการ และผู้ทำหัตถการ (ขณะนี้จัดการผ่าน clinic_settings.branch_data)</p>
           </div>
           <button onClick={() => { setEditingBranch(null); setBranchForm({ name: '' }); setShowBranchModal(true) }} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ backgroundColor: config.color }}>
             <Plus className="w-4 h-4" /> เพิ่มสาขา

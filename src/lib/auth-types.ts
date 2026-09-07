@@ -38,15 +38,19 @@ export interface ClinicMembership {
 }
 
 // ═══ Practitioner (ข้อมูลผู้ทำหัตถการในแต่ละคลินิก) ═══
-// Separate from User - this is the professional profile
+// Matches the LIVE public.practitioners schema (verified 2026-09-06):
+//   id TEXT PK | user_id TEXT NOT NULL REFERENCES users(id)
+//   clinic_id TEXT NOT NULL REFERENCES clinics(id)
+//   name TEXT NOT NULL | branch_ids TEXT[] DEFAULT '{}'
+//   is_active BOOLEAN DEFAULT true | created_at TIMESTAMPTZ DEFAULT now()
+// NOTE: there is NO phone and NO role column in the live table.
+// Phone lives on users.phone; role lives on clinic_memberships.role.
 export interface Practitioner {
-  id: string          // Existing PK (TEXT)
+  id: string          // PK (TEXT)
   clinicId: string    // → clinics.id (required)
-  userId?: string     // → users.id (optional, NULL if no login account)
-  firstName: string   // practitioner first name
-  lastName: string    // practitioner last name
-  phone?: string
-  role: string        // 'practitioner' | 'admin'
+  userId: string      // → users.id (required — every practitioner has a login account)
+  name: string        // full name
+  branchIds?: string[] // → practitioners.branch_ids
   isActive: boolean
   createdAt: string
 }

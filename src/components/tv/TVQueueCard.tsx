@@ -1,7 +1,7 @@
 'use client'
 
 import { clsx } from 'clsx'
-import type { QueueItem } from '@/lib/queue-data'
+import type { QueueItem } from '@/lib/queue-context'
 
 interface TVQueueCardProps {
   item: QueueItem
@@ -52,16 +52,16 @@ export default function TVQueueCard({ item, clinic, variant, size }: TVQueueCard
           </div>
 
           {/* Patient Name */}
-          <p className="text-xl font-semibold text-white mb-2 truncate">{item.patientName}</p>
+          <p className="text-xl font-semibold text-white mb-2 truncate">คุณ{item.firstName || item.patientName}</p>
 
           {/* Info Row */}
           <div className="flex items-center gap-3 text-sm text-gray-400">
-            {item.doctor && (
-              <span className="truncate">{item.doctor}</span>
+            {item.assignedDoctor && (
+              <span className="truncate">{item.assignedDoctor}</span>
             )}
-            {item.calledAt && (
+            {item.time && (
               <span className="ml-auto tabular-nums text-green-400 text-xs">
-                เรียก {item.calledAt}
+                {item.time}
               </span>
             )}
           </div>
@@ -87,7 +87,7 @@ export default function TVQueueCard({ item, clinic, variant, size }: TVQueueCard
 
           {/* Patient Info */}
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-white truncate">{item.patientName}</p>
+            <p className="text-sm font-medium text-white truncate">คุณ{item.firstName || item.patientName}</p>
             <p className="text-xs text-gray-500">{item.time}</p>
           </div>
 

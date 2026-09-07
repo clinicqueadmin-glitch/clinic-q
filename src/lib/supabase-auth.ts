@@ -10,7 +10,7 @@ export async function supabaseRegister(data: {
   phone?: string
   clinicName: string
   clinicType: string
-}): Promise<{ success: boolean; error?: string; userId?: string }> {
+}): Promise<{ success: boolean; error?: string; userId?: string; clinicId?: string }> {
   const sb = getSupabase()
   if (!sb) return { success: false, error: 'Supabase ไม่ได้เชื่อมต่อ' }
 
@@ -121,14 +121,17 @@ export async function supabaseRegister(data: {
     localStorage.setItem(`clinicq-users-with-roles-${clinicId}`, JSON.stringify([ownerUser]))
   }
 
-  return { success: true, userId }
+  return { success: true, userId, clinicId }
 }
+
+// ═══ Platform owner emails — allowed to log in without any clinic membership ═══
+const PLATFORM_OWNER_EMAILS = ['sakarinmam999@gmail.com', 'clinicque.admin@gmail.com']
 
 // ═══ Login ═══
 export async function supabaseLogin(
   email: string,
   password: string
-): Promise<{ success: boolean; error?: string; user?: any; clinicId?: string }> {
+): Promise<{ success: boolean; error?: string; user?: any; clinicId?: string | null; memberships?: any[] }> {
   const sb = getSupabase()
   if (!sb) return { success: false, error: 'Supabase ไม่ได้เชื่อมต่อ' }
 
@@ -142,6 +145,8 @@ export async function supabaseLogin(
   if (!authData.user) return { success: false, error: 'ไม่พบบัญชีผู้ใช้' }
 
   const userId = authData.user.id
+  const normalizedEmail = (authData.user.email || email).toLowerCase()
+  const isPlatformOwner = PLATFORM_OWNER_EMAILS.includes(normalizedEmail)
 
   // 2. Get user profile from our users table
   const { data: userProfile } = await sb.from('users')
@@ -155,7 +160,19 @@ export async function supabaseLogin(
     .eq('user_id', userId)
     .eq('is_active', true)
 
+  const userInfo = {
+    id: userId,
+    email: authData.user.email,
+    name: userProfile?.name || authData.user.user_metadata?.name || '',
+    phone: userProfile?.phone || '',
+    forcePasswordChange: userProfile?.force_password_change || false,
+  }
+
+  // Platform owner is allowed without any clinic membership
   if (!memberships || memberships.length === 0) {
+    if (isPlatformOwner) {
+      return { success: true, user: userInfo, clinicId: null, memberships: [] }
+    }
     return { success: false, error: 'ไม่มีสิทธิ์เข้าใช้งาน กรุณาติดต่อผู้ดูแลระบบ' }
   }
 
@@ -165,14 +182,9 @@ export async function supabaseLogin(
 
   return {
     success: true,
-    user: {
-      id: userId,
-      email: authData.user.email,
-      name: userProfile?.name || authData.user.user_metadata?.name || '',
-      phone: userProfile?.phone || '',
-      forcePasswordChange: userProfile?.force_password_change || false,
-    },
+    user: userInfo,
     clinicId,
+    memberships,
   }
 }
 
@@ -191,7 +203,7 @@ export async function supabaseGetSession() {
   return session
 }
 
-// ═══ Reset password ═══
+// ═══ Reset password — request a recovery email ═══
 export async function supabaseResetPassword(email: string): Promise<{ success: boolean; error?: string }> {
   const sb = getSupabase()
   if (!sb) return { success: false, error: 'Supabase ไม่ได้เชื่อมต่อ' }
@@ -202,6 +214,31 @@ export async function supabaseResetPassword(email: string): Promise<{ success: b
 
   if (error) return { success: false, error: error.message }
   return { success: true }
+}
+
+// ═══ Password recovery — detect that we arrived via a recovery link ═══
+// Supabase appends `#access_token=...&type=recovery` to the redirect URL
+// (implicit flow), or `?code=...` (PKCE flow). Both are handled here.
+export function isRecoveryRedirect(): boolean {
+  if (typeof window === 'undefined') return false
+  const hashParams = new URLSearchParams(window.location.hash.substring(1))
+  if (hashParams.get('type') === 'recovery') return true
+  const searchParams = new URLSearchParams(window.location.search)
+  return searchParams.get('type') === 'recovery' || searchParams.get('code') !== null
+}
+
+// ═══ Password recovery — wait for the recovery session to be ready ═══
+// The Supabase client picks up the tokens from the URL on initialization;
+// we poll briefly so the login page can show the "set new password" form.
+export async function getRecoverySession(retries = 12): Promise<any> {
+  const sb = getSupabase()
+  if (!sb) return null
+  for (let i = 0; i < retries; i++) {
+    const { data: { session } } = await sb.auth.getSession()
+    if (session) return session
+    await new Promise(r => setTimeout(r, 200))
+  }
+  return null
 }
 
 // ═══ Update password ═══

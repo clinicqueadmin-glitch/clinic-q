@@ -2,6 +2,7 @@ export interface QueueItem {
   id: string
   number: string
   patientName: string
+  firstName?: string
   clinicType: ClinicType
   status: 'waiting' | 'serving' | 'completed'
   time: string

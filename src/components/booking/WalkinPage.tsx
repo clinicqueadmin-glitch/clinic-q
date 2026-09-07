@@ -359,19 +359,12 @@ export default function WalkinPage() {
     setSelectedProcs(prev => prev.map((p, i) => i === idx ? { ...p, quantity: qty } : p))
   }
 
-  // Generate queue number
-  const generateQueueNumber = () => {
-    const prefix = clinicCfg.prefix
-    const count = queue.length + 1
-    return `${prefix}${String(count).padStart(3, '0')}`
-  }
-
   // Submit
+  // Queue number is generated server-side by create_queue_item() RPC
   const handleSubmit = async () => {
     if (!name.trim() || phone.length !== 10 || selectedProcs.length === 0) return
     if (bookingMode === 'appointment' && !appointmentTime) return
 
-    const number = generateQueueNumber()
     const now = new Date()
     const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
 
@@ -389,7 +382,7 @@ export default function WalkinPage() {
     }
 
     const newQueueItem: Record<string, any> = {
-      number,
+      // number is NOT set here - server generates it atomically
       patientName: name.trim(),
       phone: phone,
       procedure: primaryProc.name,
@@ -414,21 +407,21 @@ export default function WalkinPage() {
       } : {}),
     }
 
-    // Store submission result for success screen
-    setSubmitResult({
-      number,
-      mode: bookingMode,
-      apptTime: appointmentTime,
-      onTime: computedIsOnTime,
-      practitioner: practitionerName,
-    })
-
     try {
-      await addQueueItem(newQueueItem as any)
+      const result = await addQueueItem(newQueueItem as any)
+      // Store submission result for success screen
+      setSubmitResult({
+        number: result.number,  // Use server-generated number
+        mode: bookingMode,
+        apptTime: appointmentTime,
+        onTime: computedIsOnTime,
+        practitioner: practitionerName,
+      })
+      setSubmittedNumber(result.number)
     } catch (e) {
-      setQueue(prev => [...prev, { ...newQueueItem, id: `walkin-${Date.now()}` } as any])
+      console.error('Failed to create queue item:', e)
+      // Error handling - user should retry
     }
-    setSubmittedNumber(number)
   }
 
   const accentColor = clinicCfg.color

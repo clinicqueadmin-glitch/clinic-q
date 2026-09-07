@@ -54,35 +54,37 @@ export async function GET(request: NextRequest) {
   return NextResponse.json(result)
 }
 
-// POST /api/queues — create new queue item
+// POST /api/queues — create new queue item via atomic RPC
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const today = new Date().toISOString().split('T')[0]
 
   const cookieStore = await cookies()
   const supabase = createClient(cookieStore)
 
-  const { data, error } = await supabase
-    .from('queues')
-    .insert({
-      clinic_id: body.clinic_id,
-      number: body.number,
-      patient_name: body.patient_name,
-      phone: body.phone,
-      procedure: body.procedure,
-      procedure_id: body.procedure_id,
-      branch_id: body.branch_id,
-      booking_mode: body.booking_mode || 'walkin',
-      assigned_room: body.assigned_room,
-      assigned_doctor: body.assigned_doctor,
-      time: body.time,
-      arrived: body.arrived ?? true,
-      arrived_at: body.arrived_at || new Date().toISOString(),
-      queue_date: today,
-      status: 'waiting',
-    })
-    .select()
-    .single()
+  // Use atomic create_queue_item() function
+  // This ensures queue number generation + INSERT are in the same transaction
+  const { data, error } = await supabase.rpc('create_queue_item', {
+    p_clinic_id: body.clinic_id,
+    p_patient_name: body.patient_name,
+    p_phone: body.phone,
+    p_procedure: body.procedure,
+    p_procedure_id: body.procedure_id || null,
+    p_branch_id: body.branch_id || null,
+    p_booking_mode: body.booking_mode || 'walkin',
+    p_assigned_room: body.assigned_room || null,
+    p_assigned_doctor: body.assigned_doctor || null,
+    p_queue_date: null,  // Let function use today ICT
+    p_time: body.time || null,
+    p_arrived: body.arrived ?? true,
+    p_hn: body.hn || null,
+    p_appointment_time: body.appointment_time || null,
+    p_appointment_date: body.appointment_date || null,
+    p_appointment_on_time: body.appointment_on_time ?? null,
+    p_late_minutes: body.late_minutes || null,
+    p_original_booked_time: body.original_booked_time || null,
+    p_booked_time_slot: body.booked_time_slot || null,
+    p_distance_from_clinic: body.distance_from_clinic || null,
+  })
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })

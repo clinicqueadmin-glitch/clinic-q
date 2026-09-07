@@ -15,14 +15,15 @@ import { usePractitioners, type Practitioner } from '@/lib/practitioner-context'
 import { getDefaultBranchData } from '@/lib/branch-data'
 import PhoneInput from '@/components/ui/PhoneInput'
 import { useClinic } from '@/lib/clinic-context'
-import { UserPlus, Edit, Trash2, Shield, Users, Award, Plus, X, UserMinus } from 'lucide-react'
+
+import { UserPlus, Edit, Trash2, Shield, Users, Award, Plus, X, UserMinus, Lock, CheckCircle2, Copy, Clipboard } from 'lucide-react'
 
 interface UserWithRoles {
   id: string
   email: string
+  username?: string
   name: string
   phone?: string
-  password?: string
   createdAt: string
   roles: ClinicRole[]
   branchIds?: string[] // For practitioners
@@ -32,9 +33,9 @@ interface UserWithRoles {
 
 interface RoleAssignmentForm {
   name: string
+  username: string
   email: string
   phone: string
-  password: string
   roles: ClinicRole[]
   branchIds: string[]
 }
@@ -44,25 +45,37 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
   const { currentClinic } = useClinic()
   const { practitioners, addPractitioner, updatePractitioner, deletePractitioner } = usePractitioners()
   const branchData = getDefaultBranchData(currentClinic || 'dental')
-  
+
   // Use clinic-specific storage key
   const storageKey = currentClinicId ? `clinicq-users-with-roles-${currentClinicId}` : 'clinicq-users-with-roles'
-  
+
   const [users, setUsers] = useState<UserWithRoles[]>([])
+  const [saving, setSaving] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingUser, setEditingUser] = useState<UserWithRoles | null>(null)
   const [form, setForm] = useState<RoleAssignmentForm>({
     name: '',
+    username: '',
     email: '',
     phone: '',
-    password: '123456',
     roles: [],
     branchIds: []
   })
+
+  // Reset form to defaults
+  const resetForm = () => setForm({ name: '', username: '', email: '', phone: '', roles: [], branchIds: [] })
+
+  // Get clinic code for username suggestions
+  const clinicCode = (typeof currentClinic === 'object' && currentClinic && 'code' in currentClinic)
+    ? (currentClinic as any).code as string | undefined
+    : undefined
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
   const [showAddRoleModal, setShowAddRoleModal] = useState(false)
   const [newRole, setNewRole] = useState<ClinicRole>('front_desk')
   const [newBranchIds, setNewBranchIds] = useState<string[]>([])
+  const [tempCredentials, setTempCredentials] = useState<{ username: string; tempPassword: string; name: string; roles: ClinicRole[] } | null>(null)
+  const [resettingPassword, setResettingPassword] = useState<string | null>(null)
+  const [resetTempPassword, setResetTempPassword] = useState<string | null>(null)
 
   const branches = branchData.branches.filter(b => b.active)
 
@@ -117,14 +130,7 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
   // Open add user modal
   const openAddUser = () => {
     setEditingUser(null)
-    setForm({
-      name: '',
-      email: '',
-      phone: '',
-      password: '123456',
-      roles: [],
-      branchIds: []
-    })
+    resetForm()
     setShowAddModal(true)
   }
 
@@ -133,107 +139,145 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
     setEditingUser(user)
     setForm({
       name: user.name,
-      email: user.email,
+      username: user.username || '',
+      email: user.email || '',
       phone: user.phone || '',
-      password: '123456',
       roles: [...user.roles],
       branchIds: [...(user.branchIds || [])]
     })
     setShowAddModal(true)
   }
 
+  // Generate a suggested username from name + clinic code
+  const suggestUsername = (name: string): string => {
+    const cleaned = name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .slice(0, 20)
+    const prefix = clinicCode ? `${clinicCode}-` : 'CL-'
+    return prefix + (cleaned || 'staff')
+  }
+
   // Save user
-  const handleSaveUser = () => {
-    if (!form.name || !form.email) return
-    
-    // Check if email already exists (for new users)
-    if (!editingUser && users.some(u => u.email === form.email)) {
-      alert('อีเมลนี้มีในระบบแล้ว')
+  const handleSaveUser = async () => {
+    if (!form.name || !form.roles.length) return
+
+    // For staff (non-practitioner, non-owner): username is required
+    const isStaff = form.roles.some(r => r !== 'owner' && r !== 'practitioner')
+    const isPractitioner = form.roles.includes('practitioner')
+    if (isStaff || isPractitioner) {
+      if (!form.username.trim()) {
+        alert('กรุณากรอก Username สำหรับผู้ใช้ประเภทนี้')
+        return
+      }
+      // Validate username: alphanumeric, hyphens, underscores only
+      if (!/^[a-zA-Z0-9_-]+$/.test(form.username.trim())) {
+        alert('Username ต้องเป็นตัวอักษร ตัวเลข ขีดล่าง หรือขีดกลางเท่านั้น')
+        return
+      }
+    }
+
+    // For owner: email is required
+    if (form.roles.includes('owner') && !form.email.trim()) {
+      alert('กรุณากรอก Email สำหรับเจ้าของคลินิก')
+      return
+    }
+    // Email format check if provided
+    if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      alert('ฟอร์มัตอีเมลไม่ถูกต้อง')
       return
     }
 
     if (editingUser) {
-      // Update existing user
-      setUsers(prev => prev.map(u => 
-        u.id === editingUser.id 
-          ? { 
-              ...u, 
-              name: form.name, 
-              email: form.email, 
+      // Update existing user (cache only — real account update via server API)
+      setUsers(prev => prev.map(u =>
+        u.id === editingUser.id
+          ? {
+              ...u,
+              name: form.name,
+              username: form.username || u.username || '',
+              email: form.email || u.email || '',
               phone: form.phone,
               roles: form.roles,
               branchIds: form.branchIds
             }
           : u
       ))
-      
-      // Sync practitioner if user has practitioner role
-      if (form.roles.includes('practitioner')) {
-        const existingPractitioner = practitioners.find(p => p.userId === editingUser.id)
-        if (existingPractitioner) {
-          // Update existing practitioner
-          updatePractitioner(existingPractitioner.id, {
+
+      // Note: Editing an existing user's password requires the Reset Password feature.
+      // The owner/manager can reset a staff password via the Reset Password button.
+    } else {
+      // Create a REAL auth account via the server-side API:
+      //   POST /api/clinics/[clinicId]/users
+      // The server creates auth.users (with generated temp password),
+      // users, clinic_memberships, staff_usernames, and optionally practitioners.
+      // Never create the auth account client-side.
+      if (!currentClinicId) {
+        alert('ยังไม่ได้เลือกคลินิก')
+        return
+      }
+      setSaving(true)
+      try {
+        const res = await fetch(`/api/clinics/${encodeURIComponent(currentClinicId)}/users`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
             name: form.name,
-            phone: form.phone,
-            branchId: form.branchIds?.[0] || existingPractitioner.branchId,
-            userId: editingUser.id,
-            clinicId: currentClinicId || undefined,
-          })
-        } else {
-          // Create new practitioner record
-          addPractitioner({
-            id: `pract-${Date.now()}`,
-            name: form.name,
-            phone: form.phone || '',
-            branchId: form.branchIds?.[0] || '',
-            active: true,
-            userId: editingUser.id,
-            clinicId: currentClinicId || undefined,
+            username: form.username || undefined,
+            email: form.email || undefined,
+            phone: form.phone || undefined,
+            roles: form.roles,
+            branchIds: form.branchIds,
+          }),
+        })
+        const body = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          alert(body?.error || 'ไม่สามารถสร้างบัญชีผู้ใช้ได้')
+          return
+        }
+        const u = body.user
+        const tempPassword = body.temporaryPassword
+        // Show temporary credentials ONCE
+        if (tempPassword && u.username) {
+          setTempCredentials({
+            username: u.username,
+            tempPassword,
+            name: u.name,
+            roles: u.roles,
           })
         }
-      }
-    } else {
-      // Create new user
-      const newUser: UserWithRoles = {
-        id: `user-${Date.now()}`,
-        name: form.name,
-        email: form.email,
-        phone: form.phone,
-        password: form.password,
-        createdAt: new Date().toISOString(),
-        roles: form.roles,
-        branchIds: form.branchIds,
-        isActive: true,
-        forcePasswordChange: true  // Set flag to require password change on first login
-      }
-      setUsers(prev => [...prev, newUser])
-      // Store password for login
-      const userPasswords = JSON.parse(localStorage.getItem('clinicq-user-passwords') || '{}')
-      userPasswords[form.email] = form.password
-      localStorage.setItem('clinicq-user-passwords', JSON.stringify(userPasswords))
-      // Also add membership for this clinic
-      const memberships = JSON.parse(localStorage.getItem('clinicq-memberships') || '[]')
-      const newMembership = {
-        id: `membership-${Date.now()}`,
-        userId: newUser.id,
-        clinicId: currentClinicId || '',
-        role: form.roles[0] || 'front_desk',
-        isActive: true,
-        createdAt: new Date().toISOString(),
-      }
-      localStorage.setItem('clinicq-memberships', JSON.stringify([...memberships, newMembership]))
-      
-      // Create practitioner record if user has practitioner role
-      if (form.roles.includes('practitioner')) {
-        addPractitioner({
-          id: `pract-${Date.now()}`,
-          name: form.name,
-          phone: form.phone || '',
-          branchId: form.branchIds?.[0] || '',
-          active: true,
-          userId: newUser.id,
-          clinicId: currentClinicId || undefined,
-        })
+        // Add the real account to the local role list
+        const newUser: UserWithRoles = {
+          id: u.id,
+          name: u.name,
+          username: u.username || '',
+          email: u.email || '',
+          phone: u.phone || '',
+          createdAt: new Date().toISOString(),
+          roles: u.roles,
+          branchIds: u.branchIds || [],
+          isActive: true,
+          forcePasswordChange: true,
+        }
+        setUsers(prev => [...prev, newUser])
+        // Sync practitioner into local cache if applicable
+        if (u.isPractitioner) {
+          addPractitioner({
+            id: `pract-${u.id}`,
+            name: u.name,
+            phone: form.phone || '',
+            branchId: (u.branchIds && u.branchIds[0]) || '',
+            active: true,
+            userId: u.id,
+            clinicId: currentClinicId,
+          })
+        }
+      } catch (e: any) {
+        alert(e?.message || 'เกิดข้อผิดพลาดของเครือข่าย')
+      } finally {
+        setSaving(false)
       }
     }
     setShowAddModal(false)
@@ -255,15 +299,18 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
     setUsers(prev => prev.filter(u => u.id !== userId))
   }
 
-  // Sync existing users with practitioners
+  // Sync existing users with practitioners (cache-only; real accounts are
+  // created via the server API). Only sync users that have a REAL auth id
+  // (returned by the API) — never fabricate practitioner records for the
+  // placeholder `user-<ts>` ids of role-only entries.
   useEffect(() => {
     if (users.length === 0) return
     
     // For each user with practitioner role, check if they have a practitioner record
-    users.filter(u => u.roles.includes('practitioner')).forEach(user => {
+    users.filter(u => u.roles.includes('practitioner') && !u.id.startsWith('user-')).forEach(user => {
       const existingPractitioner = practitioners.find(p => p.userId === user.id)
       if (!existingPractitioner) {
-        // Create practitioner record for this user
+        // Cache-only practitioner record for a real account
         addPractitioner({
           id: `pract-${user.id}`,
           name: user.name,
@@ -322,7 +369,7 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
   // Remove role from user
   const removeRole = (userId: string, role: ClinicRole) => {
     if (!confirm(`ต้องการลบบทบาท ${roleConfig[role].label} ออกหรือไม่?`)) return
-    
+
     setUsers(prev => prev.map(u => {
       if (u.id === userId) {
         const newRoles = u.roles.filter(r => r !== role)
@@ -345,6 +392,32 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
       }
       return u
     }))
+  }
+
+  // Reset password for a staff/user
+  const handleResetPassword = async (userId: string, userRoles: ClinicRole[]) => {
+    if (!currentClinicId) return
+    setResettingPassword(userId)
+    try {
+      const res = await fetch(`/api/clinics/${encodeURIComponent(currentClinicId)}/users/${encodeURIComponent(userId)}/reset-password`, {
+        method: 'POST',
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(body?.error || 'ไม่สามารถรีเซ็ตรหัสผ่านได้')
+        return
+      }
+      setResetTempPassword(body.temporaryPassword || '')
+      alert(`รีเซ็ตรหัสผ่านสำเร็จ กรุณาแจ้งรหัสผ่านชั่วคราวนี้ให้ผู้ใช้:
+
+รหัสผ่านชั่วคราว: ${body.temporaryPassword}
+
+หมายเหตุ: รหัสผ่านนี้ใช้ได้เพียงครั้งเดียว หลังจากนั้นระบบจะไม่สามารถแสดงอีกได้`)
+    } catch (e: any) {
+      alert(e?.message || 'เกิดข้อผิดพลาดของเครือข่าย')
+    } finally {
+      setResettingPassword(null)
+    }
   }
 
   // Format role badge
@@ -371,10 +444,22 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
           <p className="text-sm text-gray-500">
             จัดการผู้ใช้งานและกำหนดบทบาท • 1 คนมีได้หลายบทบาท
           </p>
+          {/* Guidance for owner */}
+          {isOwner && (
+            <div className="mt-2 p-3 bg-indigo-50 border border-indigo-100 rounded-xl">
+              <p className="text-xs text-indigo-600 leading-relaxed">
+                💡 <strong>Owner</strong> ใช้อีเมลในการเข้าสู่ระบบ •{' '}
+                <strong>Manager / Counter / Staff / Practitioner</strong> ใช้ Username + รหัสผ่านที่ระบบสร้างให้
+                {' '}•{' '}
+                เมื่อสร้างผู้ใช้สำเร็จ ระบบจะแสดงรหัสผ่านชั่วคราวให้ <span className="font-medium">ครั้งเดียวเท่านั้น</span>
+              </p>
+            </div>
+          )
+          }
         </div>
         {isOwner && (
-          <button 
-            onClick={openAddUser} 
+          <button
+            onClick={openAddUser}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-600 transition-colors"
           >
             <UserPlus className="w-4 h-4" /> เพิ่มผู้ใช้
@@ -418,7 +503,16 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
                       </div>
                       <div>
                         <div className="text-sm font-medium text-gray-900">{user.name}</div>
-                        <div className="text-xs text-gray-500">{user.email}</div>
+                        {/* Show email for owner, username for staff */}
+                        {user.roles.includes('owner') && user.email ? (
+                          <div className="text-xs text-gray-500">{user.email}</div>
+                        ) : (
+                          user.username ? (
+                            <div className="text-xs text-gray-500 font-mono">@{user.username}</div>
+                          ) : (
+                            <div className="text-xs text-gray-400">ไม่ระบุ</div>
+                          )
+                        )}
                         {user.phone && (
                           <a href={`tel:${user.phone}`} className="text-xs text-blue-600 hover:underline">
                             📞 {user.phone}
@@ -497,20 +591,35 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
                     <div className="flex items-center justify-end gap-1">
                       {isOwner && (
                         <>
-                          <button 
-                            onClick={() => openEditUser(user)} 
+                          <button
+                            onClick={() => openEditUser(user)}
                             className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
                             title="แก้ไข"
                           >
                             <Edit className="w-3.5 h-3.5 text-gray-400" />
                           </button>
-                          <button 
-                            onClick={() => deleteUser(user.id)} 
+                          <button
+                            onClick={() => deleteUser(user.id)}
                             className="p-1.5 rounded-lg hover:bg-red-50 transition-colors"
                             title="ลบ"
                           >
                             <Trash2 className="w-3.5 h-3.5 text-red-400" />
                           </button>
+                          {/* Reset password for staff/manager/counter/practitioner */}
+                          {user.roles.some(r => r !== 'owner') && (
+                            <button
+                              onClick={() => handleResetPassword(user.id, user.roles)}
+                              disabled={resettingPassword === user.id}
+                              className="p-1.5 rounded-lg hover:bg-amber-50 transition-colors"
+                              title="รีเซ็ตรหัสผ่าน"
+                            >
+                              {resettingPassword === user.id ? (
+                                <div className="w-3.5 h-3.5 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />
+                              ) : (
+                                <Lock className="w-3.5 h-3.5 text-amber-500" />
+                              )}
+                            </button>
+                          )}
                         </>
                       )}
                     </div>
@@ -608,17 +717,19 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
                 onChange={(v) => setForm({ ...form, phone: v })}
               />
 
-              {/* Password */}
+              {/* Account info — password is generated by server */}
               {!editingUser && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">รหัสผ่านเริ่มต้น</label>
-                  <input 
-                    type="password"
-                    value={form.password} 
-                    onChange={(e) => setForm({ ...form, password: e.target.value })} 
-                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" 
-                  />
-                  <p className="text-xs text-gray-400 mt-1">รหัสผ่านเริ่มต้น: 123456</p>
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                  <p className="text-sm text-blue-700 leading-relaxed">
+                    🔑 ระบบจะสร้างรหัสผ่านชั่วคราวให้โดยอัตโนมัติ
+                    {' '}•{' '}
+                    ผู้ใช้จะต้องเปลี่ยนรหัสผ่านหลังล็อกอินครั้งแรก
+                  </p>
+                  {form.roles.some(r => r !== 'owner') && (
+                    <p className="text-xs text-blue-600 mt-2">
+                      Username ใช้สำหรับเข้าสู่ระบบแทนอีเมล
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -717,12 +828,156 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
               <button onClick={() => setShowAddModal(false)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50">
                 ยกเลิก
               </button>
-              <button 
-                onClick={handleSaveUser} 
-                disabled={!form.name || !form.email || form.roles.length === 0}
+              <button
+                onClick={handleSaveUser}
+                disabled={!form.name || form.roles.length === 0 || saving}
                 className="flex-1 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {editingUser ? 'บันทึกการแก้ไข' : 'เพิ่มผู้ใช้'}
+                {saving ? '⏳ กำลังสร้างบัญชี...' : editingUser ? 'บันทึกการแก้ไข' : 'เพิ่มผู้ใช้'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Temporary Credentials Modal (shown once after account creation) ═══ */}
+      {tempCredentials && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="bg-gradient-to-r from-amber-500 to-orange-500 p-5 text-center">
+              <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3">
+                <Lock className="w-7 h-7 text-white" />
+              </div>
+              <h3 className="text-lg font-extrabold text-white">บันทึกรหัสผ่านชั่วคราว</h3>
+              <p className="text-xs text-white/80 mt-1">แสดงเพียงครั้งเดียว — ระบบจะไม่สามารถดูซ้ำได้อีก</p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="bg-gray-50 rounded-xl p-4">
+                <div className="text-sm text-gray-500 mb-1">สำหรับ: <span className="font-medium text-gray-900">{tempCredentials.name}</span></div>
+                <div className="flex items-center gap-2 text-sm text-gray-600 mb-3">
+                  {tempCredentials.roles.map(r => (
+                    <span key={r} className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-indigo-100 text-indigo-700">
+                      {roleConfig[r]?.label || r}
+                    </span>
+                  ))}
+                </div>
+                <div className="space-y-2">
+                  <div>
+                    <div className="text-xs text-gray-400 mb-0.5">Username</div>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 bg-white border border-gray-200 px-3 py-2 rounded-lg text-sm font-mono text-gray-900 break-all">
+                        {tempCredentials.username}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => navigator.clipboard?.writeText(tempCredentials.username).then(() => {
+                          const btn = document.querySelector('[data-copy-username]') as HTMLButtonElement
+                          if (btn) {
+                            btn.textContent = '✓ คัดลอก'
+                            setTimeout(() => { btn.textContent = 'คัดลอก' }, 2000)
+                          }
+                        }).catch(() => {})}
+                        className="px-3 py-2 rounded-lg bg-indigo-500 text-white text-xs font-medium hover:bg-indigo-600 transition-colors data-copy-username"
+                      >
+                        📋 คัดลอก
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-400 mb-0.5">รหัสผ่านชั่วคราว</div>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 bg-white border border-gray-200 px-3 py-2 rounded-lg text-sm font-mono text-gray-900 tracking-wider">
+                        {tempCredentials.tempPassword}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => navigator.clipboard?.writeText(tempCredentials.tempPassword).then(() => {
+                          const btn = document.querySelector('[data-copy-password]') as HTMLButtonElement
+                          if (btn) {
+                            btn.textContent = '✓ คัดลอก'
+                            setTimeout(() => { btn.textContent = 'คัดลอก' }, 2000)
+                          }
+                        }).catch(() => {})}
+                        className="px-3 py-2 rounded-lg bg-indigo-500 text-white text-xs font-medium hover:bg-indigo-600 transition-colors data-copy-password"
+                      >
+                        📋 คัดลอก
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                <p className="text-xs text-blue-700 leading-relaxed">
+                  ⚠️ ผู้ใช้จะต้องเปลี่ยนรหัสผ่านนี้หลังเข้าสู่ระบบครั้งแรก
+                  {' '}•{' '}
+                  หากลืมรหัสผ่านนี้ ผู้จัดการสามารถรีเซ็ตได้จาก表格นี้
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3 p-6 border-t border-gray-100 bg-gray-50">
+              <button
+                onClick={() => setTempCredentials(null)}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-white transition-colors"
+              >
+                ปิด
+              </button>
+              <button
+                onClick={() => { navigator.clipboard?.writeText(tempCredentials!.tempPassword).catch(() => {}); setTempCredentials(null) }}
+                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white text-sm font-medium hover:from-amber-600 hover:to-orange-600 transition-colors"
+              >
+                คัดลอกรหัสผ่าน & ปิด
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Reset Password Result Modal ═══ */}
+      {resetTempPassword && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+            <div className="p-5 text-center">
+              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <CheckCircle2 className="w-6 h-6 text-green-600" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">รีเซ็ตรหัสผ่านสำเร็จ</h3>
+              <p className="text-sm text-gray-500 mt-1">แจ้งรหัสผ่านชั่วคราวให้ผู้ใช้ทาง LINE หรือช่องทางที่ปลอดภัย</p>
+            </div>
+            <div className="p-5">
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                <div className="text-xs text-amber-600 mb-2">รหัสผ่านชั่วคราว (แสดงเพียงครั้งเดียว)</div>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 bg-white border border-amber-200 px-3 py-2 rounded-lg text-sm font-mono text-amber-900 tracking-wider">
+                    {resetTempPassword}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard?.writeText(resetTempPassword).then(() => {
+                      const btn = document.querySelector('[data-copy-reset-password]') as HTMLButtonElement
+                      if (btn) {
+                        btn.textContent = '✓ คัดลอก'
+                        setTimeout(() => { btn.textContent = 'คัดลอก' }, 2000)
+                      }
+                    }).catch(() => {})}
+                    className="px-3 py-2 rounded-lg bg-amber-500 text-white text-xs font-medium hover:bg-amber-600 transition-colors data-copy-reset-password"
+                  >
+                    📋 คัดลอก
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3 p-5 border-t border-gray-100 bg-gray-50">
+              <button
+                onClick={() => { setResetTempPassword(null) }}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-white transition-colors"
+              >
+                ปิด
+              </button>
+              <button
+                onClick={() => { navigator.clipboard?.writeText(resetTempPassword!).catch(() => {}); setResetTempPassword(null) }}
+                className="flex-1 py-2.5 rounded-xl bg-green-500 text-white text-sm font-medium hover:bg-green-600 transition-colors"
+              >
+                คัดลอก & ปิด
               </button>
             </div>
           </div>

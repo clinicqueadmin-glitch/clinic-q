@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { User, Mail, Phone, Calendar, Shield, Save, ArrowLeft, Camera, CheckCircle, Lock, Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
+import { getSupabase } from '@/lib/supabase'
 import { roleConfig } from '@/lib/auth-types'
 import { useRouter } from 'next/navigation'
 
@@ -95,7 +96,7 @@ export default function ProfilePage() {
     }, 500)
   }
 
-  const handleChangePassword = () => {
+  const handleChangePassword = async () => {
     setPwError('')
     setPwSuccess(false)
     if (!currentPassword || !newPassword || !confirmPassword) {
@@ -110,16 +111,31 @@ export default function ProfilePage() {
       setPwError('รหัสผ่านใหม่ไม่ตรงกัน')
       return
     }
-    // Check current password against demo data
     if (!user) return
-    const storedPw = localStorage.getItem(`clinicq-pw-${user.id}`)
-    const defaultPw = user.email.split('@')[0] + '123'
-    if (currentPassword !== (storedPw || defaultPw)) {
+
+    const sb = getSupabase()
+    if (!sb) {
+      setPwError('ระบบยังไม่ได้เชื่อมต่อกับฐานข้อมูล กรุณาติดต่อผู้ดูแลระบบ')
+      return
+    }
+
+    // Verify the current password against Supabase Auth (no localStorage passwords)
+    const { error: verifyError } = await sb.auth.signInWithPassword({
+      email: user.email,
+      password: currentPassword,
+    })
+    if (verifyError) {
       setPwError('รหัสผ่านเดิมไม่ถูกต้อง')
       return
     }
-    // Save new password
-    localStorage.setItem(`clinicq-pw-${user.id}`, newPassword)
+
+    // Update password via Supabase Auth
+    const { error: updateError } = await sb.auth.updateUser({ password: newPassword })
+    if (updateError) {
+      setPwError('เปลี่ยนรหัสผ่านไม่สำเร็จ: ' + (updateError.message || 'กรุณาลองใหม่'))
+      return
+    }
+
     setCurrentPassword('')
     setNewPassword('')
     setConfirmPassword('')

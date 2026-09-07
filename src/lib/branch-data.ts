@@ -346,6 +346,90 @@ export function getQueueWaitInfo(
   }
 }
 
+// ═══ HH:MM helpers ═══
+function hhmmToMinutes(t: string): number {
+  if (!t || !/^\d{1,2}:\d{2}$/.test(t)) return 0
+  const [hh, mm] = t.split(':').map(Number)
+  return (hh % 24) * 60 + mm
+}
+
+function minutesToHHMM(m: number): string {
+  const total = ((Math.round(m) % 1440) + 1440) % 1440
+  const hh = Math.floor(total / 60)
+  const mm = total % 60
+  return `${hh.toString().padStart(2, '0')}:${mm.toString().padStart(2, '0')}`
+}
+
+/**
+ * Queue-aware estimated service time for online booking.
+ *
+ * Calculates when a new booking can expect to be served, based on:
+ * - Remaining time of currently serving patients (configured_duration - elapsed)
+ * - Full duration of arrived waiting patients ahead in queue
+ * - Duration of the new booking's procedure
+ *
+ * If no queue exists, returns preferredTime + 30 minutes (default).
+ *
+ * @param data - Clinic branch data (contains procedure durations)
+ * @param queue - Current queue items for the clinic/day
+ * @param preferredTimeHHMM - Patient's preferred time as "HH:MM"
+ * @param procedureName - Name of the procedure to look up duration
+ * @returns Estimated service time as "HH:MM"
+ */
+export function estimateNextServiceTime(
+  data: ClinicBranchData,
+  queue: { id: string; status: string; arrived: boolean; procedure: string; procedureId: string; servingAt?: number }[],
+  preferredTimeHHMM: string,
+  procedureName: string
+): string {
+  // Look up target procedure duration by name
+  let targetDuration = 30 // default
+  for (const branch of data.branches) {
+    const proc = branch.procedures.find(p => p.name === procedureName)
+    if (proc) { targetDuration = proc.estimatedDuration; break }
+  }
+
+  const baseMinutes = hhmmToMinutes(preferredTimeHHMM) || hhmmToMinutes('09:00')
+  const now = Date.now()
+
+  // 1. Serving items: calculate when each will finish
+  const servingItems = queue.filter(q => q.status === 'serving' && q.servingAt && q.servingAt > 0)
+  let servingEndMinutes = baseMinutes
+  for (const s of servingItems) {
+    const startedAt = new Date(s.servingAt!).getTime()
+    const elapsed = Math.max(0, Math.floor((now - startedAt) / 60000))
+    // Look up this item's configured duration
+    let itemDuration = 30
+    for (const branch of data.branches) {
+      const proc = branch.procedures.find(p => p.id === s.procedureId)
+      if (proc) { itemDuration = proc.estimatedDuration; break }
+    }
+    const remaining = Math.max(0, itemDuration - elapsed)
+    const finishMinutes = (startedAt / 60000) % 1440 + remaining
+    if (finishMinutes > servingEndMinutes) {
+      servingEndMinutes = finishMinutes
+    }
+  }
+
+  // 2. Arrived waiting items: add their full duration
+  const arrivedWaiting = queue.filter(
+    q => q.status === 'waiting' && q.arrived && q.id !== undefined && q.id !== ''
+  )
+  let waitingEndMinutes = servingEndMinutes
+  for (const w of arrivedWaiting) {
+    let wDuration = 30
+    for (const branch of data.branches) {
+      const proc = branch.procedures.find(p => p.id === w.procedureId)
+      if (proc) { wDuration = proc.estimatedDuration; break }
+    }
+    waitingEndMinutes += wDuration
+  }
+
+  // 3. Add the new booking's procedure duration
+  const resultMinutes = waitingEndMinutes + targetDuration
+  return minutesToHHMM(resultMinutes)
+}
+
 export function getOvertimeStatus(
   data: ClinicBranchData,
   procedureId: string,

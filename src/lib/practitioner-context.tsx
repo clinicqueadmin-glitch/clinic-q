@@ -92,8 +92,9 @@ export function PractitionerProvider({ children, clinicType, clinicId }: { child
         const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
         if (!supabaseUrl || !supabaseKey) return
 
-        // 1. Fetch from practitioners table
-        const res = await fetch(`${supabaseUrl}/rest/v1/practitioners?clinic_id=eq.${clinicId}&is_active=eq.true&select=id,name,clinic_id`, {
+        // 1. Fetch from practitioners table (LIVE columns only: id, name,
+        //    clinic_id, user_id, branch_ids, is_active — NO phone/role)
+        const res = await fetch(`${supabaseUrl}/rest/v1/practitioners?clinic_id=eq.${clinicId}&is_active=eq.true&select=id,name,clinic_id,user_id,branch_ids,is_active`, {
           headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
         })
         if (!res.ok) return
@@ -109,9 +110,10 @@ export function PractitionerProvider({ children, clinicType, clinicId }: { child
               id: r.id,
               name: r.name,
               clinicId: clinicId,
-              branchId: '',
-              phone: r.phone || '',
-              active: true,
+              branchId: (r.branch_ids && r.branch_ids[0]) || '',
+              phone: '', // no phone column in live practitioners table
+              active: r.is_active !== false,
+              userId: r.user_id || undefined,
             }))
           if (newPractitioners.length === 0) return prev
           const merged = [...prev, ...newPractitioners]
@@ -150,31 +152,21 @@ export function PractitionerProvider({ children, clinicType, clinicId }: { child
     })
   }, [saveToStorage])
 
+  // NOTE: addPractitioner() is a LOCAL CACHE operation only (state +
+  // localStorage + branch_data JSONB). It must NOT write to the live
+  // practitioners table directly — account creation goes through the
+  // single server-side API: invitePractitioner() (clinic-data.ts) →
+  // POST /api/clinics/[clinicId]/practitioners. The old direct REST
+  // POST (which sent a `phone` column that does not exist and omitted
+  // the NOT NULL `user_id`) was removed because it always failed against
+  // the live schema.
   const addPractitioner = useCallback((practitioner: Practitioner) => {
     setPractitioners(prev => {
       const updated = [...prev, practitioner]
       saveToStorage(updated)
       return updated
     })
-    // Also save to Supabase practitioners table
-    if (clinicId && practitioner.id && practitioner.name) {
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-      if (supabaseUrl && supabaseKey) {
-        fetch(`${supabaseUrl}/rest/v1/practitioners`, {
-          method: 'POST',
-          headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' },
-          body: JSON.stringify({
-            id: practitioner.id,
-            clinic_id: clinicId,
-            name: practitioner.name,
-            phone: practitioner.phone || '',
-            is_active: practitioner.active,
-          }),
-        }).catch(() => {})
-      }
-    }
-  }, [saveToStorage, clinicId])
+  }, [saveToStorage])
 
   const deletePractitioner = useCallback((id: string) => {
     setPractitioners(prev => {

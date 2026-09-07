@@ -192,6 +192,37 @@ export async function setDailyRooms(
   return success
 }
 
+// ═══ Invite a practitioner (server-side account creation) ═══
+// Single shared creation path for practitioners. The server route:
+//   POST /api/clinics/[clinicId]/practitioners
+// verifies the caller's owner/manager membership, creates the auth user
+// via invite, and inserts users + clinic_memberships + practitioners
+// atomically. Never create practitioner accounts directly from the client.
+export async function invitePractitioner(
+  clinicId: string,
+  data: { name: string; email: string; phone?: string; branchIds?: string[] }
+): Promise<{ ok: boolean; practitioner?: any; error?: string; status?: number }> {
+  try {
+    const res = await fetch(`/api/clinics/${encodeURIComponent(clinicId)}/practitioners`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: data.name,
+        email: data.email,
+        phone: data.phone || '',
+        branchIds: data.branchIds || [],
+      }),
+    })
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      return { ok: false, error: body?.error || 'ไม่สามารถสร้างบัญชีผู้ทำหัตถการได้', status: res.status }
+    }
+    return { ok: true, practitioner: body?.practitioner }
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'network error' }
+  }
+}
+
 // ═══ Subscribe to real-time clinic settings changes ═══
 export function subscribeClinicSettings(
   clinicId: string,

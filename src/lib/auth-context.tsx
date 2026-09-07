@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
+import type { AuthChangeEvent, Session as SupabaseSessionType } from '@supabase/supabase-js'
 import { 
   type User, 
   type Clinic, 
@@ -10,7 +11,7 @@ import {
   type AuthSession 
 } from './auth-types'
 import { supabaseLogin, supabaseLogout, supabaseResetPassword, supabaseUpdatePassword, supabaseRegister } from './supabase-auth'
-import { isSupabaseReady } from './supabase'
+import { getSupabase, isSupabaseReady } from './supabase'
 
 interface AuthContextType {
   session: AuthSession | null
@@ -22,8 +23,8 @@ interface AuthContextType {
   forcePasswordChange: boolean
   
   // Login/Logout
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string; needsClinicSelection?: boolean }>
-  logout: () => void
+  login: (identifier: string, password: string) => Promise<{ success: boolean; error?: string; needsClinicSelection?: boolean }>
+  logout: () => Promise<void>
   updatePassword: (newPassword: string) => void
   resetPasswordByEmail: (email: string) => Promise<{ success: boolean; error?: string }>
   
@@ -56,6 +57,9 @@ const STORAGE_KEYS = {
   MEMBERSHIPS: 'clinicq-memberships',
 }
 
+// Platform owner accounts — full system access, no clinic membership required
+const PLATFORM_OWNER_EMAILS = ['sakarinmam999@gmail.com', 'clinicque.admin@gmail.com']
+
 function loadFromStorage<T>(key: string, defaultValue: T): T {
   if (typeof window === 'undefined') return defaultValue
   try {
@@ -82,56 +86,175 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [needsClinicSelection, setNeedsClinicSelection] = useState(false)
   const [forcePasswordChange, setForcePasswordChange] = useState(false)
   
-  // Data stores
+  // Data stores (Supabase is the source of truth; localStorage is only a cache)
   const [users, setUsers] = useState<User[]>(() => loadFromStorage(STORAGE_KEYS.USERS, []))
   const [clinics, setClinics] = useState<Clinic[]>(() => loadFromStorage(STORAGE_KEYS.CLINICS, []))
   const [memberships, setMemberships] = useState<ClinicMembership[]>(() => loadFromStorage(STORAGE_KEYS.MEMBERSHIPS, []))
   
-  // Initialize platform owner account if not exists
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const PLATFORM_OWNER_EMAIL = 'sakarinmam999@gmail.com'
-    const currentUsers = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]')
-    const existingOwner = currentUsers.find((u: any) => u.email === PLATFORM_OWNER_EMAIL)
-    if (!existingOwner) {
-      const platformOwner: User = {
-        id: 'platform-owner-1',
-        email: PLATFORM_OWNER_EMAIL,
-        name: 'Sakarin (Platform Owner)',
-        phone: '',
-        createdAt: new Date().toISOString(),
-        forcePasswordChange: false,
-      }
-      const updatedUsers = [...currentUsers, platformOwner]
-      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers))
-      setUsers(updatedUsers)
-      // Store password
-      const passwords = JSON.parse(localStorage.getItem('clinicq-user-passwords') || '{}')
-      passwords[PLATFORM_OWNER_EMAIL] = 'abc1234'
-      localStorage.setItem('clinicq-user-passwords', JSON.stringify(passwords))
+  // ═══ Restore the app session from a valid Supabase session (source of truth) ═══
+  // The Supabase Auth session (cookies) is authoritative. This rebuilds the app-level
+  // session (user profile + memberships + current clinic) the same way login() does,
+  // so a page refresh or the password-recovery flow lands the user on the dashboard
+  // without requiring a second login.
+  const restoreFromSupabaseSession = useCallback(async (supabaseUserId: string, supabaseEmail: string) => {
+    const sb = getSupabase()
+    if (!sb) return
+
+    // 1. User profile from users table
+    const { data: profile } = await sb
+      .from('users')
+      .select('*')
+      .eq('id', supabaseUserId)
+      .single()
+
+    const user: User = {
+      id: supabaseUserId,
+      email: supabaseEmail,
+      name: profile?.name || '',
+      phone: profile?.phone || '',
+      createdAt: new Date().toISOString(),
+      forcePasswordChange: profile?.force_password_change || false,
     }
-  }, [])
-  
-  // Load session from localStorage
-  useEffect(() => {
-    const saved = loadFromStorage<AuthSession | null>(STORAGE_KEYS.AUTH, null)
-    if (saved) {
-      // Refresh user data from store
-      const freshUser = users.find(u => u.id === saved.user.id)
-      if (freshUser) {
-        setSession({ ...saved, user: freshUser })
-        // Check if user needs to force change password
-        if (freshUser.forcePasswordChange) {
-          setForcePasswordChange(true)
-        }
+
+    // 2. Memberships + clinics from Supabase
+    const { data: memberships } = await sb
+      .from('clinic_memberships')
+      .select('*, clinics(*)')
+      .eq('user_id', supabaseUserId)
+      .eq('is_active', true)
+
+    let freshMemberships: ClinicMembership[] = []
+    let freshClinics: Clinic[] = []
+    if (memberships) {
+      freshMemberships = memberships.map((m: any) => ({
+        id: m.id,
+        userId: m.user_id,
+        clinicId: m.clinic_id,
+        role: m.role,
+        isActive: m.is_active,
+        createdAt: m.created_at,
+      }))
+      freshClinics = memberships
+        .filter((m: any) => m.clinics)
+        .map((m: any) => ({
+          id: m.clinics.id,
+          name: m.clinics.name,
+          type: m.clinics.type,
+          color: m.clinics.color || '#E91E63',
+          ownerId: supabaseUserId,
+          isActive: true,
+        }))
+    }
+
+    // Platform owner may log in without any clinic membership
+    const isPlatformOwner = PLATFORM_OWNER_EMAILS.includes(supabaseEmail.toLowerCase())
+    if (freshMemberships.length === 0 && !isPlatformOwner) {
+      // Supabase session exists but the user has no access — treat as logged out
+      setSession(null)
+      setNeedsClinicSelection(false)
+      setForcePasswordChange(false)
+      localStorage.removeItem(STORAGE_KEYS.AUTH)
+      return
+    }
+
+    // 3. Decide current clinic (same rules as login())
+    let currentClinicId: string | null = null
+    let needsSelection = false
+    if (freshMemberships.length === 1) {
+      currentClinicId = freshMemberships[0].clinicId
+    } else if (freshMemberships.length > 1) {
+      const lastClinicId = localStorage.getItem('clinicq-last-clinic-id')
+      if (lastClinicId && freshMemberships.some(m => m.clinicId === lastClinicId)) {
+        currentClinicId = lastClinicId
       } else {
-        setSession(saved)
-        if (saved.user.forcePasswordChange) {
-          setForcePasswordChange(true)
-        }
+        needsSelection = true
       }
     }
-    setIsLoading(false)
+
+    setMemberships(freshMemberships)
+    setClinics(freshClinics)
+
+    const appSession: AuthSession = { user, currentClinicId }
+    setSession(appSession)
+    localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(appSession))
+    setNeedsClinicSelection(needsSelection)
+    if (user.forcePasswordChange) setForcePasswordChange(true)
+  }, [])
+
+  // ═══ Initialize auth: Supabase session is the source of truth ═══
+  // Subscribe to onAuthStateChange so the app session is restored immediately
+  // when Supabase establishes a session (page refresh, tab switch, or the
+  // password-recovery flow — all of which set the cookie-based session without
+  // writing the old localStorage entry).
+  useEffect(() => {
+    let cancelled = false
+    let sb: ReturnType<typeof getSupabase> | null = null
+
+    const init = async () => {
+      sb = getSupabase()
+      if (!sb) {
+        // Supabase not configured — fall back to the localStorage cache
+        const saved = loadFromStorage<AuthSession | null>(STORAGE_KEYS.AUTH, null)
+        if (saved) {
+          const freshUser = users.find(u => u.id === saved.user.id)
+          if (freshUser) {
+            setSession({ ...saved, user: freshUser })
+            if (freshUser.forcePasswordChange) setForcePasswordChange(true)
+          } else {
+            setSession(saved)
+            if (saved.user.forcePasswordChange) setForcePasswordChange(true)
+          }
+        }
+        setIsLoading(false)
+        return
+      }
+
+      // Restore an existing Supabase session (cookies) first — covers page
+      // refresh and the password-recovery flow, which establishes a valid
+      // session without ever writing the old localStorage entry.
+      const { data: { session: supabaseSession } } = await sb.auth.getSession()
+      if (cancelled) return
+      if (supabaseSession?.user) {
+        await restoreFromSupabaseSession(supabaseSession.user.id, supabaseSession.user.email || '')
+      } else {
+        const saved = loadFromStorage<AuthSession | null>(STORAGE_KEYS.AUTH, null)
+        if (saved) {
+          const freshUser = users.find(u => u.id === saved.user.id)
+          if (freshUser) {
+            setSession({ ...saved, user: freshUser })
+            if (freshUser.forcePasswordChange) setForcePasswordChange(true)
+          } else {
+            setSession(saved)
+            if (saved.user.forcePasswordChange) setForcePasswordChange(true)
+          }
+        }
+      }
+      setIsLoading(false)
+    }
+
+    init()
+
+    // Subscribe after the initial restore so we pick up any later session changes
+    // (another tab logging in/out, recovery session established, etc.).
+    let authSub: { data: { subscription: { unsubscribe: () => void } } } | null = null
+    if (sb) {
+      authSub = sb.auth.onAuthStateChange(async (_event: AuthChangeEvent, supabaseSession: SupabaseSessionType | null) => {
+        if (cancelled) return
+        if (supabaseSession?.user) {
+          await restoreFromSupabaseSession(supabaseSession.user.id, supabaseSession.user.email || '')
+        } else {
+          setSession(null)
+          setNeedsClinicSelection(false)
+          setForcePasswordChange(false)
+          localStorage.removeItem(STORAGE_KEYS.AUTH)
+        }
+      })
+    }
+
+    return () => {
+      cancelled = true
+      authSub?.data.subscription.unsubscribe()
+    }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
   
   // ═══ Auto-logout at midnight (0:00) ═══
@@ -172,180 +295,223 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     saveToStorage(STORAGE_KEYS.MEMBERSHIPS, memberships)
   }, [memberships])
   
-  // ═══ Login ═══
-  const login = useCallback(async (email: string, password: string): Promise<{ success: boolean; error?: string; needsClinicSelection?: boolean }> => {
-    // Try Supabase Auth first if configured
-    if (isSupabaseReady()) {
-      const result = await supabaseLogin(email, password)
-      if (result.success && result.user && result.clinicId) {
-        const user: User = {
-          id: result.user.id,
-          email: result.user.email,
-          name: result.user.name,
-          phone: result.user.phone,
-          createdAt: new Date().toISOString(),
-          forcePasswordChange: result.user.forcePasswordChange,
-        }
-        const newSession: AuthSession = { user, currentClinicId: result.clinicId }
-        setSession(newSession)
-        localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(newSession))
-        if (user.forcePasswordChange) setForcePasswordChange(true)
-        // Fetch full clinic data from Supabase and sync to localStorage
-        const sb = (await import('./supabase')).getSupabase()
-        if (sb) {
-          const { data: clinic } = await sb.from('clinics').select('*').eq('id', result.clinicId).single()
-          if (clinic) {
-            localStorage.setItem('clinic-q-type', clinic.type)
-            // Sync clinic to localStorage for Header/Sidebar
-            const existingClinics: Clinic[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.CLINICS) || '[]')
-            if (!existingClinics.find(c => c.id === clinic.id)) {
-              existingClinics.push({
-                id: clinic.id,
-                name: clinic.name,
-                type: clinic.type,
-                color: clinic.color || '#E91E63',
-                ownerId: user.id,
-                isActive: true,
-              })
-              localStorage.setItem(STORAGE_KEYS.CLINICS, JSON.stringify(existingClinics))
-            }
-            // Update clinic settings with name from Supabase (clinic-specific)
-            localStorage.setItem(`clinic-q-settings-${clinic.id}`, JSON.stringify({
-              clinicName: clinic.name,
-              logo: '',
-              operatingDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
-              openTime: '08:00',
-              closeTime: '20:00',
-            }))
-            // Sync membership
-            const { data: memberships } = await sb.from('clinic_memberships').select('*').eq('user_id', user.id).eq('is_active', true)
-            if (memberships) {
-              const existingMemberships: ClinicMembership[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.MEMBERSHIPS) || '[]')
-              for (const m of memberships) {
-                if (!existingMemberships.find(em => em.id === m.id)) {
-                  existingMemberships.push({
-                    id: m.id,
-                    userId: m.user_id,
-                    clinicId: m.clinic_id,
-                    role: m.role,
-                    isActive: m.is_active,
-                    createdAt: m.created_at,
-                  })
-                }
-              }
-              localStorage.setItem(STORAGE_KEYS.MEMBERSHIPS, JSON.stringify(existingMemberships))
-            }
-          }
-        }
-        return { success: true }
+  // ═══ Login — supports both email (owner) and username (staff) ═══
+  const login = useCallback(async (identifier: string, password: string): Promise<{ success: boolean; error?: string; needsClinicSelection?: boolean }> => {
+    if (!isSupabaseReady()) {
+      return { success: false, error: 'ระบบยังไม่ได้เชื่อมต่อกับฐานข้อมูล กรุณาติดต่อผู้ดูแลระบบ' }
+    }
+
+    const sb = getSupabase()
+    if (!sb) {
+      return { success: false, error: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้' }
+    }
+
+    // For owner email login, use direct Supabase Auth
+    // For staff username login, use server endpoint
+    const isEmailLike = identifier.includes('@') && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier)
+
+    if (isEmailLike) {
+      // Owner email login via Supabase Auth directly
+      const { data: authData, error: authError } = await sb.auth.signInWithPassword({
+        email: identifier,
+        password,
+      })
+
+      if (authError || !authData.user) {
+        return { success: false, error: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' }
       }
-      // Supabase failed - fallback to localStorage below
-    }
-    
-    // Fallback to localStorage
-    const freshUsers: User[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]')
-    const allUsers = [...users]
-    for (const fu of freshUsers) {
-      if (!allUsers.find(u => u.id === fu.id)) allUsers.push(fu)
-    }
-    let user: User | undefined = allUsers.find(u => u.email === email)
-    const freshMemberships: ClinicMembership[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.MEMBERSHIPS) || '[]')
-    const allMemberships = [...memberships]
-    for (const fm of freshMemberships) {
-      if (!allMemberships.find(m => m.id === fm.id)) allMemberships.push(fm)
-    }
-    const freshClinics: Clinic[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.CLINICS) || '[]')
-    const allClinics = [...clinics]
-    for (const fc of freshClinics) {
-      if (!allClinics.find(c => c.id === fc.id)) allClinics.push(fc)
-    }
-    const storedPasswords = JSON.parse(localStorage.getItem('clinicq-user-passwords') || '{}')
-    const storedPassword = storedPasswords[email] || (user?.forcePasswordChange ? '123456' : undefined)
-    if (!user || password !== storedPassword) {
-      return { success: false, error: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' }
-    }
-    if (!user) return { success: false, error: 'ไม่พบบัญชีผู้ใช้' }
-    const PLATFORM_OWNER_EMAILS = ['sakarinmam999@gmail.com']
-    const isPlatformOwner = PLATFORM_OWNER_EMAILS.includes(user.email)
-    const userMemberships = allMemberships.filter(m => m.userId === user!.id && m.isActive)
-    if (isPlatformOwner && userMemberships.length === 0) {
-      const newSession: AuthSession = { user, currentClinicId: null }
+
+      const supabaseUserId = authData.user.id
+      const supabaseEmail = (authData.user.email || '').toLowerCase()
+
+      const { data: profile } = await sb.from('users')
+        .select('*')
+        .eq('id', supabaseUserId)
+        .single()
+
+      const user: User = {
+        id: supabaseUserId,
+        email: supabaseEmail,
+        name: profile?.name || authData.user.user_metadata?.name || '',
+        phone: profile?.phone || '',
+        createdAt: profile?.created_at ? new Date(profile.created_at).toISOString() : new Date().toISOString(),
+        forcePasswordChange: profile?.force_password_change || false,
+      }
+
+      const { data: memberships } = await sb.from('clinic_memberships')
+        .select('*, clinics(*)')
+        .eq('user_id', supabaseUserId)
+        .eq('is_active', true)
+
+      let freshMemberships: ClinicMembership[] = []
+      let freshClinics: Clinic[] = []
+      if (memberships) {
+        freshMemberships = memberships.map((m: any) => ({
+          id: m.id,
+          userId: m.user_id,
+          clinicId: m.clinic_id,
+          role: m.role,
+          isActive: m.is_active,
+          createdAt: m.created_at ? new Date(m.created_at).toISOString() : new Date().toISOString(),
+        }))
+        freshClinics = memberships
+          .filter((m: any) => m.clinics)
+          .map((m: any) => ({
+            id: m.clinics.id,
+            name: m.clinics.name,
+            type: m.clinics.type,
+            color: m.clinics.color || '#E91E63',
+            ownerId: supabaseUserId,
+            isActive: true,
+          }))
+      }
+
+      const isPlatformOwner = PLATFORM_OWNER_EMAILS.includes(supabaseEmail)
+      if (freshMemberships.length === 0 && !isPlatformOwner) {
+        return { success: false, error: 'ไม่มีสิทธิ์เข้าใช้งาน กรุณาติดต่อผู้ดูแลระบบ' }
+      }
+
+      setMemberships(freshMemberships)
+      setClinics(freshClinics)
+
+      let currentClinicId: string | null = null
+      let needsSelection = false
+      if (freshMemberships.length === 1) {
+        currentClinicId = freshMemberships[0].clinicId
+      } else if (freshMemberships.length > 1) {
+        needsSelection = true
+        const lastClinicId = localStorage.getItem('clinicq-last-clinic-id')
+        if (lastClinicId && freshMemberships.some(m => m.clinicId === lastClinicId)) {
+          currentClinicId = lastClinicId
+          needsSelection = false
+        }
+      }
+
+      const newSession: AuthSession = { user, currentClinicId }
       setSession(newSession)
-      localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(newSession))
-      return { success: true }
-    }
-    if (!isPlatformOwner && userMemberships.length === 0) {
-      return { success: false, error: 'ไม่มีสิทธิ์เข้าใช้งาน กรุณาติดต่อผู้ดูแลระบบ' }
-    }
-    if (userMemberships.length === 1) {
-      const singleClinic = allClinics.find(c => c.id === userMemberships[0].clinicId)
-      const newSession: AuthSession = { user, currentClinicId: singleClinic?.id || null }
-      setSession(newSession)
-      localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(newSession))
-      if (singleClinic) localStorage.setItem('clinic-q-type', singleClinic.type)
+      saveToStorage(STORAGE_KEYS.AUTH, newSession)
+      setNeedsClinicSelection(needsSelection)
       if (user.forcePasswordChange) setForcePasswordChange(true)
-      return { success: true }
+
+      saveToStorage(STORAGE_KEYS.CLINICS, freshClinics)
+      saveToStorage(STORAGE_KEYS.MEMBERSHIPS, freshMemberships)
+
+      const activeClinic = freshClinics.find(c => c.id === currentClinicId)
+      if (activeClinic) {
+        localStorage.setItem('clinic-q-type', activeClinic.type)
+        const existingSettings = localStorage.getItem(`clinic-q-settings-${activeClinic.id}`)
+        if (!existingSettings) {
+          localStorage.setItem(`clinic-q-settings-${activeClinic.id}`, JSON.stringify({
+            clinicName: activeClinic.name,
+            logo: '',
+            operatingDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
+            openTime: '08:00',
+            closeTime: '20:00',
+          }))
+        }
+      } else if (isPlatformOwner) {
+        localStorage.removeItem('clinic-q-type')
+      }
+
+      return { success: true, needsClinicSelection: needsSelection }
+    } else {
+      // Staff username login via server endpoint
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier, password }),
+      })
+
+      const body = await res.json().catch(() => ({}))
+
+      if (!res.ok) {
+        return { success: false, error: body?.error || 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' }
+      }
+
+      const appSession: AuthSession = {
+        user: {
+          id: body.user?.id,
+          email: body.user?.email || '',
+          name: body.user?.name || '',
+          phone: body.user?.phone || '',
+          createdAt: new Date().toISOString(),
+          forcePasswordChange: body.forcePasswordChange || false,
+        },
+        currentClinicId: body.currentClinicId || null,
+      }
+
+      setSession(appSession)
+      saveToStorage(STORAGE_KEYS.AUTH, appSession)
+      setNeedsClinicSelection(body.needsClinicSelection || false)
+      if (body.forcePasswordChange) setForcePasswordChange(true)
+
+      if (body.memberships?.length) {
+        const freshMemberships = body.memberships.map((m: any) => ({
+          id: m.id,
+          userId: m.userId,
+          clinicId: m.clinicId,
+          role: m.role,
+          isActive: m.isActive,
+          createdAt: m.createdAt || new Date().toISOString(),
+        }))
+        setMemberships(freshMemberships)
+        saveToStorage(STORAGE_KEYS.MEMBERSHIPS, freshMemberships)
+      }
+      if (body.clinics?.length) {
+        setClinics(body.clinics)
+        saveToStorage(STORAGE_KEYS.CLINICS, body.clinics)
+      }
+
+      const clinic = body.clinics?.find((c: any) => c.id === body.currentClinicId)
+      if (clinic) {
+        localStorage.setItem('clinic-q-type', clinic.type)
+      }
+
+      return { success: true, needsClinicSelection: body.needsClinicSelection || false }
     }
-    const newSession: AuthSession = { user, currentClinicId: null }
-    setSession(newSession)
-    localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(newSession))
-    setNeedsClinicSelection(true)
-    return { success: true, needsClinicSelection: true }
-  }, [users, memberships, clinics])
+  }, [])
   
   // ═══ Logout ═══
-  const logout = useCallback(() => {
-    if (isSupabaseReady()) supabaseLogout()
+  // Awaits signOut() so the Supabase session (cookies) is actually cleared before
+  // the caller navigates away — otherwise a page reload right after logout would
+  // restore the session again from the still-valid cookies.
+  const logout = useCallback(async () => {
+    if (isSupabaseReady()) {
+      try { await supabaseLogout() } catch { /* best-effort */ }
+    }
     setSession(null)
     setNeedsClinicSelection(false)
     setForcePasswordChange(false)
     localStorage.removeItem(STORAGE_KEYS.AUTH)
   }, [])
   
-  // ═══ Update Password ═══
+  // ═══ Update Password (Supabase Auth only) ═══
   const updatePassword = useCallback(async (newPassword: string) => {
     if (!session?.user) return
-    if (isSupabaseReady()) {
-      await supabaseUpdatePassword(newPassword)
-    }
-    const userPasswords = JSON.parse(localStorage.getItem('clinicq-user-passwords') || '{}')
-    userPasswords[session.user.email] = newPassword
-    localStorage.setItem('clinicq-user-passwords', JSON.stringify(userPasswords))
-    
+    if (!isSupabaseReady()) return
+
+    await supabaseUpdatePassword(newPassword)
+
     // Update the forcePasswordChange flag in the user object
     const updatedUser = { ...session.user, forcePasswordChange: false }
     setSession(prev => prev ? { ...prev, user: updatedUser } : null)
     setForcePasswordChange(false)
-    
-    // Update in users state AND persist to localStorage
-    // Load fresh from localStorage first to ensure we have all users
+
+    // Update in users state (cache only — no passwords stored locally)
     const freshUsers: User[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]')
     const updatedUsers = freshUsers.map(u => 
       u.id === session.user.id ? { ...u, forcePasswordChange: false } : u
     )
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers))
     setUsers(updatedUsers)
-    
-    // password changed successfully
   }, [session])
 
-  // ═══ Reset Password by Email (for Forgot Password) ═══
+  // ═══ Reset Password by Email (Supabase Auth only) ═══
   const resetPasswordByEmail = useCallback(async (email: string): Promise<{ success: boolean; error?: string }> => {
-    if (isSupabaseReady()) {
-      return await supabaseResetPassword(email)
+    if (!isSupabaseReady()) {
+      return { success: false, error: 'ระบบยังไม่ได้เชื่อมต่อกับฐานข้อมูล กรุณาติดต่อผู้ดูแลระบบ' }
     }
-    const users = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]')
-    const userExists = users.some((u: any) => u.email === email)
-    if (!userExists) return { success: false, error: 'ไม่พบอีเมลนี้ในระบบ' }
-    const userPasswords = JSON.parse(localStorage.getItem('clinicq-user-passwords') || '{}')
-    userPasswords[email] = '123456'
-    localStorage.setItem('clinicq-user-passwords', JSON.stringify(userPasswords))
-    const updatedUsers = users.map((u: any) => 
-      u.email === email ? { ...u, forcePasswordChange: true } : u
-    )
-    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers))
-    setUsers(updatedUsers)
-    return { success: true }
+    return await supabaseResetPassword(email)
   }, [])
 
   // ═══ Select Clinic (for users with multiple clinics) ═══

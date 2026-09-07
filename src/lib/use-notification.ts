@@ -197,18 +197,19 @@ export function useNotification() {
   }, [])
 
   // Queue notification — called when status changes to 'serving'
-  const notifyQueueCalled = useCallback(async (queueNumber: string, roomNumber: number, patientName: string, phone?: string, practitionerName?: string) => {
+  const notifyQueueCalled = useCallback(async (queueNumber: string, roomNumber: number, patientName: string, firstName?: string, phone?: string, practitionerName?: string) => {
+    const displayName = firstName || patientName
     // Play melody sound first, then speak announcement
     playSound('called')
     // Wait for melody to finish (~0.8s) then speak
     setTimeout(() => {
-      speakAnnouncement(`ขอเชิญคิวที่ ${queueNumber} เข้าห้องตรวจที่ ${roomNumber}`)
+      speakAnnouncement(`ขอเชิญคิวที่ ${queueNumber} คุณ${displayName} เข้าห้องตรวจที่ ${roomNumber}`)
     }, 900)
 
     // Send browser notification
     const browserResult = await sendNotification({
       title: `🏥 ถึงคิว ${queueNumber} แล้ว!`,
-      body: `กรุณาเข้าห้องตรวจที่ ${roomNumber} — ${patientName}`,
+      body: `คุณ${displayName} เชิญเข้าห้องตรวจที่ ${roomNumber}`,
       tag: `queue-called-${queueNumber}`,
       url: `/track`,
       vibrate: [300, 100, 300, 100, 300],
@@ -217,7 +218,7 @@ export function useNotification() {
     // Send LINE notification if phone is provided
     if (phone) {
       try {
-        await sendQueueCalledNotification(phone, queueNumber, patientName, roomNumber, practitionerName)
+        await sendQueueCalledNotification(phone, queueNumber, displayName, roomNumber, practitionerName)
       } catch (error) {
         console.error('Failed to send LINE notification:', error)
       }

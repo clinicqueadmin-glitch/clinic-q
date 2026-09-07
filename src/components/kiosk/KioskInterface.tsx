@@ -17,7 +17,9 @@ import {
   type Branch,
   type Procedure,
 } from '@/lib/branch-data'
-import { staffRoles, generateQueueNumber } from '@/lib/booking-data'
+import { staffRoles } from '@/lib/booking-data'
+import { useQueue } from '@/lib/queue-context'
+import { usePractitioners } from '@/lib/practitioner-context'
 import PhoneInput from '@/components/ui/PhoneInput'
 
 type Step = 'info' | 'branch' | 'procedure' | 'confirm' | 'done'
@@ -42,6 +44,7 @@ const categoryNames: Record<string, string> = {
 
 export default function KioskInterface() {
   const { config, currentClinic } = useClinic()
+  usePractitioners()
   // Load branch data from clinic-specific storage
   const branchData = useMemo(() => {
     if (typeof window !== 'undefined') {
@@ -147,21 +150,43 @@ export default function KioskInterface() {
     return { room, practitioner }
   }, [branchData, clinicPractitioners, selectedProcedureId])
 
-  const handleConfirm = () => {
+  const { addQueueItem } = useQueue()
+
+  const handleConfirm = async () => {
     if (!selectedProcedure || !assignment || !config) return
 
-    const queueNum = generateQueueNumber(config.prefix, currentClinic || 'dental')
     const now = new Date()
+    const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
 
-    setResult({
-      queueNumber: queueNum,
-      room: assignment.room.id,
-      doctor: assignment.practitioner?.name || 'รอจัดสรร',
+    // Create queue item via atomic RPC (server generates number)
+    const newQueueItem = {
+      patientName: name,
+      phone: phone,
       procedure: selectedProcedure.name,
-      branch: selectedBranch?.name || '',
-      estimatedTime: `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`,
-    })
-    setStep('done')
+      procedureId: selectedProcedure.id,
+      branchId: selectedBranch?.id || '',
+      bookingMode: 'walkin' as const,
+      assignedRoom: assignment.room.id,
+      assignedDoctor: assignment.practitioner?.name || 'รอจัดสรร',
+      status: 'waiting' as const,
+      time: timeStr,
+      arrived: true,
+    }
+
+    try {
+      const result = await addQueueItem(newQueueItem as any)
+      setResult({
+        queueNumber: result.number,  // Use server-generated number
+        room: assignment.room.id,
+        doctor: assignment.practitioner?.name || 'รอจัดสรร',
+        procedure: selectedProcedure.name,
+        branch: selectedBranch?.name || '',
+        estimatedTime: timeStr,
+      })
+      setStep('done')
+    } catch (e) {
+      console.error('Failed to create queue item:', e)
+    }
   }
 
   const canProceed = name.trim().length >= 2 && phone.length === 10

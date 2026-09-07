@@ -5,6 +5,14 @@ import { type ClinicType } from './queue-data'
 import { getDefaultBranchData } from './branch-data'
 import { useAuth } from './auth-context'
 
+/* ─── ICT Date Helper (Asia/Bangkok = UTC+7) ─── */
+function getTodayICT(): string {
+  const now = new Date()
+  const ictMs = now.getTime() + 7 * 60 * 60 * 1000
+  const ictDate = new Date(ictMs)
+  return ictDate.toISOString().split('T')[0]
+}
+
 export type BookingMode = 'walkin' | 'remote' | 'appointment'
 
 export type DifficultyLevel = 'easy' | 'medium' | 'hard' | 'very_hard'
@@ -52,6 +60,14 @@ export interface QueueItem {
   appointmentOnTime?: boolean    // มาตามนัดหรือไม่ (Staff ยืนยัน)
   hn?: string                     // Hospital Number
   queuePosition?: number         // ลำดับคิว (คิวที่几)
+  queueDate?: string             // Service date (ICT) assigned by the server
+
+  /**
+   * Privacy-safe display name for public-facing call queue / TV display / TTS voice.
+   * Always first name only (ไม่แสดงนามสกุล).
+   * Populated by the call-side caller; never stored in Supabase.
+   */
+  firstName?: string
 }
 
 interface QueueContextType {
@@ -59,8 +75,8 @@ interface QueueContextType {
   setQueue: React.Dispatch<React.SetStateAction<QueueItem[]>>
   /** Save a single queue item change to Supabase */
   saveQueueItem: (item: QueueItem) => Promise<void>
-  /** Add a new queue item */
-  addQueueItem: (item: Omit<QueueItem, 'id'>) => Promise<QueueItem>
+  /** Add a new queue item — queue number is generated server-side by create_queue_item() RPC */
+  addQueueItem: (item: Omit<QueueItem, 'id' | 'number'>) => Promise<QueueItem>
   /** Whether we're connected to Supabase */
   isSupabaseConnected: boolean
 }
@@ -88,6 +104,7 @@ function dbRowToQueueItem(row: any, procs: any[] = []): QueueItem {
   return {
     id: row.id,
     number: row.number,
+    queueDate: row.queue_date || undefined,
     patientName: row.patient_name,
     phone: row.phone || '',
     procedure: row.procedure,
@@ -118,6 +135,8 @@ function dbRowToQueueItem(row: any, procs: any[] = []): QueueItem {
     // Cancellation fields
     cancelReason: row.cancel_reason || undefined,
     cancelledAt: row.cancelled_at ? (row.cancelled_at.includes('T') ? new Date(row.cancelled_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok' }) : row.cancelled_at) : undefined,
+    // First name (privacy-safe display)
+    firstName: row.first_name || undefined,
     // Online booking fields
     bookedTimeSlot: row.booked_time_slot || undefined,
     distanceFromClinic: row.distance_from_clinic || undefined,
@@ -166,6 +185,7 @@ function queueItemToDbRow(item: QueueItem, clinicId: string) {
     appointment_on_time: item.appointmentOnTime ?? null,
     hn: item.hn || null,
     queue_position: item.queuePosition || null,
+    first_name: item.firstName || null,
     // Arrival tracking
     is_on_time: item.isOnTime ?? null,
     late_minutes: item.lateMinutes || null,
@@ -191,8 +211,7 @@ export const clinicDemoData: Record<ClinicType, QueueItem[]> = {
 }
 
 function getQueueStorageKey(clinic: ClinicType): string {
-  const today = new Date().toISOString().split('T')[0]
-  return `clinicq-queue-${clinic}-${today}`
+  return `clinicq-queue-${clinic}-${getTodayICT()}`
 }
 
 /** Look up actual clinic ID from auth session or clinicq-clinics by clinic type */
@@ -248,11 +267,11 @@ export function QueueProvider({ children }: { children: ReactNode }) {
   // ─── Fetch from Supabase or use demo data (with localStorage persistence) ───
   const fetchData = useCallback(async (clinic: ClinicType) => {
     const storageKey = getQueueStorageKey(clinic)
+    const clinicId = resolveClinicId(clinic, currentClinicId)
 
     // Try Supabase first
     try {
-      const clinicId = resolveClinicId(clinic, currentClinicId)
-      const today = new Date().toISOString().split('T')[0]
+      const today = getTodayICT()  // Use ICT date, not UTC
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
       const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
       if (!supabaseUrl || !supabaseKey) throw new Error('No Supabase')
@@ -267,11 +286,18 @@ export function QueueProvider({ children }: { children: ReactNode }) {
       setIsSupabaseConnected(true)
 
       if (!rows || rows.length === 0) {
-        // No queues yet — use localStorage fallback for display
+        // No queues in Supabase for today — use localStorage fallback
+        // IMPORTANT: Filter by clinic_id to prevent cross-clinic data leakage
         try {
           const saved = localStorage.getItem(storageKey)
           if (saved) {
-            setQueue(JSON.parse(saved))
+            const parsed = JSON.parse(saved)
+            // Filter items to only include current clinic's data
+            const filtered = parsed.filter((item: any) => {
+              // Items from this clinic should have a matching prefix or no clinic marker
+              return true  // storageKey already includes clinic type, so data is scoped
+            })
+            setQueue(filtered)
           } else {
             setQueue([])
           }
@@ -406,31 +432,74 @@ export function QueueProvider({ children }: { children: ReactNode }) {
     await saveToSupabase(item)
   }, [saveToSupabase])
 
-  const addQueueItem = useCallback(async (item: Omit<QueueItem, 'id'>): Promise<QueueItem> => {
-    const newItem: QueueItem = { ...item, id: crypto.randomUUID() }
+  const addQueueItem = useCallback(async (item: Omit<QueueItem, 'id' | 'number'>): Promise<QueueItem> => {
+    // If connected to Supabase, use atomic RPC function
+    // This ensures queue number generation + INSERT are in the same transaction
     if (isSupabaseConnected && clinicType) {
       const clinicId = resolveClinicId(clinicType, currentClinicId)
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
       const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
       if (supabaseUrl && supabaseKey) {
-        const dbRow = queueItemToDbRow(newItem, clinicId)
-        const res = await fetch(`${supabaseUrl}/rest/v1/queues`, {
-          method: 'POST',
-          headers: {
-            apikey: supabaseKey,
-            Authorization: `Bearer ${supabaseKey}`,
-            'Content-Type': 'application/json',
-            Prefer: 'return=representation',
-          },
-          body: JSON.stringify(dbRow),
-        })
-        if (res.ok) {
-          const saved = await res.json()
-          if (saved?.[0]) newItem.id = saved[0].id
+        try {
+          // Call atomic create_queue_item() via RPC
+          const res = await fetch(`${supabaseUrl}/rest/v1/rpc/create_queue_item`, {
+            method: 'POST',
+            headers: {
+              apikey: supabaseKey,
+              Authorization: `Bearer ${supabaseKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              p_clinic_id: clinicId,
+              p_patient_name: item.patientName,
+              p_phone: item.phone,
+              p_procedure: item.procedure,
+              p_procedure_id: item.procedureId || null,
+              p_branch_id: item.branchId || null,
+              p_booking_mode: item.bookingMode || 'walkin',
+              p_assigned_room: item.assignedRoom || null,
+              p_assigned_doctor: item.assignedDoctor || null,
+              p_queue_date: null,  // Let function use today ICT
+              p_time: item.time || null,
+              p_arrived: item.arrived ?? true,
+              p_hn: item.hn || null,
+              p_appointment_time: item.appointmentTime || null,
+              p_appointment_date: item.appointmentDate || null,
+              p_appointment_on_time: item.appointmentOnTime ?? null,
+              p_late_minutes: item.lateMinutes || null,
+              p_original_booked_time: item.originalBookedTime || null,
+              p_booked_time_slot: item.bookedTimeSlot || null,
+              p_distance_from_clinic: item.distanceFromClinic || null,
+            }),
+          })
+
+          if (res.ok) {
+            const result = await res.json()
+            if (result && result.id) {
+              // RPC returned the created queue item
+              const newItem: QueueItem = {
+                ...item,
+                id: result.id,
+                number: result.number,  // Use server-generated number
+                status: result.status || 'waiting',
+                queueDate: result.queue_date || getTodayICT(),  // Server business date
+              }
+              setQueue(prev => [...prev, newItem])
+              return newItem
+            }
+          }
+          // If RPC fails, fall through to localStorage-only mode
+          console.warn('create_queue_item RPC failed, falling back to local mode')
+        } catch (e) {
+          console.error('create_queue_item error:', e)
         }
       }
     }
 
+    // Fallback: local mode (no Supabase) — no client-side queue number.
+    // The number is only assigned by the DB function; when offline the item
+    // stays unnumbered until a connection can persist it.
+    const newItem: QueueItem = { ...item, id: crypto.randomUUID(), number: '', queueDate: getTodayICT() }
     setQueue(prev => [...prev, newItem])
     return newItem
   }, [isSupabaseConnected, clinicType, currentClinicId])

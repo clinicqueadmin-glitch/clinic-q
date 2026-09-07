@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { X } from 'lucide-react'
 import {
   Stethoscope, Sparkles, Heart, Leaf, Brain, Bone,
-  ArrowRight, CheckCircle, Mail, User, Phone, Building2,
+  ArrowRight, CheckCircle, Mail, User, Phone, Building2, Lock,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 
@@ -29,6 +29,8 @@ export default function RegisterPage() {
     ownerName: '',
     email: '',
     phone: '',
+    password: '',
+    confirmPassword: '',
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [acceptTerms, setAcceptTerms] = useState(false)
@@ -44,6 +46,10 @@ export default function RegisterPage() {
     if (!form.email.trim()) errs.email = 'กรุณากรอกอีเมล'
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errs.email = 'อีเมลไม่ถูกต้อง'
     if (!form.phone.trim()) errs.phone = 'กรุณากรอกเบอร์โทรศัพท์'
+    if (!form.password) errs.password = 'กรุณาตั้งรหัสผ่าน'
+    else if (form.password.length < 6) errs.password = 'รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร'
+    if (!form.confirmPassword) errs.confirmPassword = 'กรุณายืนยันรหัสผ่าน'
+    else if (form.confirmPassword !== form.password) errs.confirmPassword = 'รหัสผ่านทั้งสองช่องไม่ตรงกัน'
 
     if (!acceptTerms) errs.acceptTerms = 'กรุณายอมรับเงื่อนไขการใช้งาน'
     setErrors(errs)
@@ -117,134 +123,45 @@ export default function RegisterPage() {
       return
     }
     
-    const now = new Date().toISOString()
-    const clinicId = `clinic-${Date.now()}`
-    const userId = `user-${Date.now()}`
-    const membershipId = `mem-${Date.now()}`
-    
-    // Try Supabase first
-    if (typeof window !== 'undefined') {
-      const { isSupabaseReady } = await import('@/lib/supabase')
-      if (isSupabaseReady()) {
-        const { supabaseRegister } = await import('@/lib/supabase-auth')
-        const result = await supabaseRegister({
-          email: form.email,
-          password: '123456',
-          name: form.ownerName,
-          phone: form.phone,
-          clinicName: form.clinicName,
-          clinicType: selectedType || 'dental',
-        })
-        if (result.success) {
-          setStep('success')
-          return
-        }
-        // If Supabase fails, fallback to localStorage
+    // Registration goes through Supabase Auth only (no localStorage fallback)
+    if (typeof window === 'undefined') return
+    const { isSupabaseReady } = await import('@/lib/supabase')
+    if (!isSupabaseReady()) {
+      alert('ระบบยังไม่ได้เชื่อมต่อกับฐานข้อมูล กรุณาติดต่อผู้ดูแลระบบ')
+      return
+    }
+    const { supabaseRegister } = await import('@/lib/supabase-auth')
+    const result = await supabaseRegister({
+      email: form.email,
+      password: form.password,
+      name: form.ownerName,
+      phone: form.phone,
+      clinicName: form.clinicName,
+      clinicType: selectedType || 'dental',
+    })
+    if (!result.success) {
+      alert(result.error || 'สมัครใช้งานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง')
+      return
+    }
+
+    // After owner registration, create default Manager + Counter accounts
+    // for the new clinic via the server-side API. Best-effort: if it fails
+    // the clinic still works, but staff won't have default logins.
+    try {
+      const clinicId = (result as any).clinicId || (result as any).userId || ''
+      const res = await fetch(`/api/clinics/${encodeURIComponent(clinicId)}/users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'default' }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (res.ok && body.accounts && body.accounts.length) {
+        sessionStorage.setItem('defaultAccounts', JSON.stringify(body.accounts))
       }
+    } catch (e) {
+      console.error('Failed to create default accounts:', e)
     }
-    
-    // Fallback: localStorage
-    // 1. Create User record
-    const users = JSON.parse(localStorage.getItem('clinicq-users') || '[]')
-    const newUser = {
-      id: userId,
-      email: form.email,
-      name: form.ownerName,
-      phone: form.phone,
-      createdAt: now,
-      forcePasswordChange: true, // Force change password on first login
-    }
-    users.push(newUser)
-    localStorage.setItem('clinicq-users', JSON.stringify(users))
-    
-    // 2. Store default password (user must change on first login)
-    const passwords = JSON.parse(localStorage.getItem('clinicq-user-passwords') || '{}')
-    passwords[form.email] = '123456'
-    localStorage.setItem('clinicq-user-passwords', JSON.stringify(passwords))
-    
-    // 3. Create Clinic record
-    const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
-    const newClinic = {
-      id: clinicId,
-      name: form.clinicName,
-      type: selectedType,
-      phone: form.phone,
-      ownerName: form.ownerName,
-      createdAt: now,
-    }
-    clinics.push(newClinic)
-    localStorage.setItem('clinicq-clinics', JSON.stringify(clinics))
-    
-    // 4. Create Membership (owner role)
-    const memberships = JSON.parse(localStorage.getItem('clinicq-memberships') || '[]')
-    const newMembership = {
-      id: membershipId,
-      userId: userId,
-      clinicId: clinicId,
-      role: 'owner',
-      isActive: true,
-      createdAt: now,
-    }
-    memberships.push(newMembership)
-    localStorage.setItem('clinicq-memberships', JSON.stringify(memberships))
-    
-    // 5. Save registration info (legacy)
-    const registered = JSON.parse(localStorage.getItem('clinicq-registered-clinics') || '{}')
-    registered[form.email] = {
-      clinicType: selectedType,
-      clinicName: form.clinicName,
-      ownerName: form.ownerName,
-      phone: form.phone,
-      email: form.email,
-      registeredAt: now,
-    }
-    localStorage.setItem('clinicq-registered-clinics', JSON.stringify(registered))
-    
-    // 6. Set default clinic type for ClinicContext
-    localStorage.setItem('clinic-q-type', selectedType || 'dental')
-    
-    // 6.1 Store trial end date (30 days from now)
-    const trialEnd = new Date()
-    trialEnd.setDate(trialEnd.getDate() + 30)
-    localStorage.setItem(`clinicq-subscription-${clinicId}`, JSON.stringify({
-      plan: 'trial',
-      status: 'active',
-      startDate: now,
-      trialEndDate: trialEnd.toISOString(),
-      paidEndDate: null,
-    }))
-    
-    // 7. Initialize clinic-specific settings with clinic name
-    localStorage.setItem(`clinic-q-settings-${clinicId}`, JSON.stringify({
-      clinicName: form.clinicName,
-      logo: '',
-      operatingDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
-      openTime: '08:00',
-      closeTime: '20:00',
-    }))
-    
-    // 8. Initialize default rooms for this clinic
-    const defaultRooms = [
-      { id: 1, name: 'ห้อง 1', color: '#0891B2', branchId: '', practitionerId: '', slotDuration: 30, workingStartTime: '09:00', workingEndTime: '17:00', active: true },
-      { id: 2, name: 'ห้อง 2', color: '#10B981', branchId: '', practitionerId: '', slotDuration: 30, workingStartTime: '09:00', workingEndTime: '17:00', active: true },
-      { id: 3, name: 'ห้อง 3', color: '#F59E0B', branchId: '', practitionerId: '', slotDuration: 30, workingStartTime: '09:00', workingEndTime: '17:00', active: true },
-    ]
-    localStorage.setItem(`clinic-rooms-${clinicId}`, JSON.stringify(defaultRooms))
-    
-    // 9. Initialize user list with owner (registrant)
-    const ownerUser = {
-      id: userId,
-      email: form.email,
-      name: form.ownerName,
-      phone: form.phone || '',
-      createdAt: now,
-      roles: ['owner'],
-      branchIds: [],
-      isActive: true,
-      forcePasswordChange: true,
-    }
-    localStorage.setItem(`clinicq-users-with-roles-${clinicId}`, JSON.stringify([ownerUser]))
-    
+
     setStep('success')
   }
 
@@ -362,6 +279,24 @@ export default function RegisterPage() {
                 onChange={v => setForm(f => ({ ...f, phone: v }))}
                 error={errors.phone}
               />
+              <InputField
+                icon={<Lock className="w-4 h-4" />}
+                label="ตั้งรหัสผ่าน"
+                type="password"
+                placeholder="อย่างน้อย 6 ตัวอักษร"
+                value={form.password}
+                onChange={v => setForm(f => ({ ...f, password: v }))}
+                error={errors.password}
+              />
+              <InputField
+                icon={<Lock className="w-4 h-4" />}
+                label="ยืนยันรหัสผ่าน"
+                type="password"
+                placeholder="กรอกรหัสผ่านอีกครั้ง"
+                value={form.confirmPassword}
+                onChange={v => setForm(f => ({ ...f, confirmPassword: v }))}
+                error={errors.confirmPassword}
+              />
 
             </div>
 
@@ -469,12 +404,60 @@ export default function RegisterPage() {
                 📧 อีเมล: <strong>{form.email}</strong>
               </p>
               <p className="text-sm text-blue-700">
-                🔑 รหัสผ่านเริ่มต้น: <strong>123456</strong>
+                🔑 ใช้รหัสผ่านที่ตั้งไว้ตอนสมัครเพื่อเข้าสู่ระบบ
               </p>
               <p className="text-xs text-blue-600">
                 ⚠️ ระบบจะให้เปลี่ยนรหัสผ่านใหม่ในการเข้าใช้งานครั้งแรก
               </p>
             </div>
+
+            {/* Default accounts (Manager + Counter) — read from sessionStorage since
+                the success step re-renders and defaultAccounts may be out of scope */}
+            {typeof window !== 'undefined' && (() => {
+              try {
+                const stored = JSON.parse(sessionStorage.getItem('defaultAccounts') || '[]')
+                if (!stored.length) return null
+                return (
+                  <div className="bg-amber-50 rounded-2xl p-4 border border-amber-200 space-y-3">
+                    <p className="text-sm font-bold text-amber-800">
+                      📋 บัญชีเริ่มต้นของคลินิก (บันทึกไว้ทันที — แสดงเพียงครั้งเดียว)
+                    </p>
+                    {stored.map((acc: { role: string; username: string; temporaryPassword: string }) => (
+                      <div key={acc.role} className="bg-white rounded-xl p-4 border border-amber-100">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-gray-700">
+                            {acc.role === 'manager' ? '👨‍💼 ผู้จัดการ' : '🧑‍💼 เจ้าหน้าที่เคาน์เตอร์'}
+                          </span>
+                          <button
+                            onClick={() => navigator.clipboard?.writeText(acc.username).catch(() => {})}
+                            className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                          >
+                            📋 คัดลอก Username
+                          </button>
+                        </div>
+                        <div className="space-y-1 text-sm">
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-500">Username:</span>
+                            <code className="font-mono bg-gray-100 px-2 py-1 rounded text-xs">{acc.username}</code>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-500">รหัสผ่านชั่วคราว:</span>
+                            <code className="font-mono bg-gray-100 px-2 py-1 rounded text-xs tracking-wider">{acc.temporaryPassword}</code>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    <p className="text-xs text-amber-600">
+                      ⚠️ รหัสผ่านชั่วคราวนี้จะแสดงเพียงครั้งเดียว หลังจากนี้ระบบจะไม่สามารถแสดงอีกได้
+                      {' '}•{' '}
+                      หากLost ให้ผู้จัดการรีเซ็ตรหัสผ่านจากหน้าจัดการผู้ใช้
+                    </p>
+                  </div>
+                )
+              } catch {
+                return null
+              }
+            })()}
             <div className="bg-amber-50 rounded-2xl p-4 border border-amber-200">
               <p className="text-sm text-amber-700 font-medium">
                 ⚠️ ทดลองใช้จะสิ้นสุดใน 30 วัน — อัปเกรดเป็นแพ็กเกจชำระเงินเพื่อใช้งานต่อ

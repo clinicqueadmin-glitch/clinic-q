@@ -64,11 +64,20 @@ export default function QueueManager() {
   const arrivedFiltered = useMemo(() => filteredQueue.filter(q => q.arrived), [filteredQueue])
   const upcomingFiltered = useMemo(() => filteredQueue.filter(q => !q.arrived), [filteredQueue])
 
+  // Extract first name only (no last name) for privacy-safe call display
+  const extractFirstName = (fullName: string): string => {
+    const trimmed = fullName.trim()
+    // Thai names often use 'คุณ' + given name; take the first word
+    const firstWord = trimmed.split(/\s+/)[0]
+    return firstWord || trimmed
+  }
+
   const callQueue = async (id: string) => {
     const item = queue.find(q => q.id === id)
     if (!item) return
-    setQueue(prev => prev.map(q => q.id === id ? { ...q, status: 'serving' as const, servingAt: Date.now() } : q))
-    showToastMsg(`เรียก ${item.number} → ห้อง ${item.assignedRoom}`, 'success')
+    const firstName = extractFirstName(item.patientName)
+    setQueue(prev => prev.map(q => q.id === id ? { ...q, status: 'serving' as const, servingAt: Date.now(), firstName } : q))
+    showToastMsg(`คิวที่ ${item.number} คุณ${firstName} เชิญเข้าห้อง ${item.assignedRoom}`, 'success')
     
     // Send LINE notification
     if (item.phone) {
@@ -76,7 +85,7 @@ export default function QueueManager() {
         await sendQueueCalledNotification(
           item.phone,
           item.number,
-          item.patientName,
+          firstName,
           item.assignedRoom,
           item.assignedDoctor
         )
@@ -292,10 +301,9 @@ export default function QueueManager() {
                           <span className="text-xs leading-none">{item.number.charAt(0)}</span>
                           <span className="text-[9px]">{item.number.slice(1)}</span>
                         </div>
-                      </td>
-                      {/* ชื่อ */}
+                      </td>                       {/* ชื่อ */}
                       <td className="px-4 py-2.5">
-                        <p className="font-medium text-gray-900 truncate">{item.patientName}</p>
+                        <p className="font-medium text-gray-900 truncate">คุณ{item.firstName || item.patientName}</p>
                         <p className="text-[11px] text-gray-400 mt-0.5">{item.phone}</p>
                       </td>
                       {/* ประเภท */}

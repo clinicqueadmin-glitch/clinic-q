@@ -83,10 +83,22 @@ export default function TVCalledAlert({ queue, clinic, onDismiss }: TVCalledAler
           </span>
         </div>
 
-        {/* Procedure — NOT patient name */}
-        <h2 className="text-2xl md:text-3xl font-bold text-white mb-3">
-          📋 {queue.procedure || 'หัตถการ'}
+        {/* Patient first name only — no last name for privacy */}
+        <h2 className="text-3xl md:text-4xl font-bold text-white mb-3">
+          คุณ{queue.firstName || queue.patientName}
         </h2>
+
+        {/* Room assignment */}
+        {queue.assignedRoom > 0 && (
+          <p className="text-xl text-gray-300 mb-4">
+            เชิญเข้าห้อง {queue.assignedRoom}
+          </p>
+        )}
+
+        {/* Procedure */}
+        <p className="text-lg text-gray-400 mb-4">
+          📋 {queue.procedure || 'หัตถการ'}
+        </p>
 
         {/* Clinic Info */}
         <div
@@ -96,13 +108,6 @@ export default function TVCalledAlert({ queue, clinic, onDismiss }: TVCalledAler
           <span className="text-xl">{clinic.icon}</span>
           <span>{clinic.name}</span>
         </div>
-
-        {/* Doctor */}
-        {'assignedDoctor' in queue && (queue as any).assignedDoctor && (
-          <p className="mt-4 text-gray-400 text-lg">
-            {(queue as any).assignedDoctor}
-          </p>
-        )}
 
         {/* Instruction */}
         <p className="mt-8 text-sm text-gray-500">

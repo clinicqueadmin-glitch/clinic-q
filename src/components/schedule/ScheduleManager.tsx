@@ -27,7 +27,7 @@ export default function ScheduleManager() {
   const branchData = useMemo(() => getDefaultBranchData(currentClinic || 'dental'), [currentClinic])
   const activeRooms = useMemo(() => branchData.rooms.filter(r => r.active), [branchData])
   const { assignments, setAssignments, staff, leaves, setLeaves } = useSchedule()
-  const { queue, setQueue } = useQueue()
+  const { queue, setQueue, addQueueItem } = useQueue()
 
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
   const today = new Date()
@@ -330,7 +330,7 @@ export default function ScheduleManager() {
   }
 
   // Confirm booking
-  const confirmBooking = () => {
+  const confirmBooking = async () => {
     if (!bookingName || bookingPhone.length !== 10 || !bookingProcedure) {
       showToastMsg('กรุณากรอกข้อมูลให้ครบทุกช่อง (เบอร์โทร 10 หลัก)', 'error')
       setTimeout(() => setToast(null), 3000)
@@ -342,9 +342,8 @@ export default function ScheduleManager() {
     const timeMatch = bookingSlotId.match(/slot-(\d{2}:\d{2})/)
     const timeStr = timeMatch ? timeMatch[1] : '09:00'
 
+    // Queue number is generated server-side by create_queue_item() RPC
     const newQueue = {
-      id: String(Date.now()),
-      number: `${config?.prefix || 'E'}${String(Math.floor(Math.random() * 900) + 100).slice(0, 3)}`,
       patientName: bookingName,
       phone: bookingPhone,
       procedure: proc?.name || '',
@@ -360,10 +359,15 @@ export default function ScheduleManager() {
       arrived: false,
     }
 
-    setQueue(prev => [...prev, newQueue])
-    setShowBookingModal(false)
-    showToastMsg(`นัดหมายสำเร็จ — ${bookingName} กับ ${staffMember?.name} เวลา ${timeStr}`, 'success')
-    setTimeout(() => setToast(null), 3000)
+    try {
+      await addQueueItem(newQueue as any)
+      setShowBookingModal(false)
+      showToastMsg(`นัดหมายสำเร็จ — ${bookingName} กับ ${staffMember?.name} เวลา ${timeStr}`, 'success')
+      setTimeout(() => setToast(null), 3000)
+    } catch (e) {
+      console.error('Failed to create queue item:', e)
+      showToastMsg('เกิดข้อผิดพลาดในการสร้างคิว', 'error')
+    }
   }
 
   // Booking modal state
