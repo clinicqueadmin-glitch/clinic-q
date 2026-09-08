@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { X } from 'lucide-react'
 import {
@@ -18,12 +18,18 @@ const clinicTypes = [
   { id: 'thai', name: 'แพทย์แผนไทย', icon: '🌿', color: '#EAB308', desc: 'นวดแผนไทย, ยาสมุนไพร' },
 ]
 
-type Step = 'clinic_type' | 'info' | 'success'
+type Step = 'clinic_type' | 'info' | 'check_email' | 'success'
 
 export default function RegisterPage() {
   const router = useRouter()
   const [step, setStep] = useState<Step>('clinic_type')
   const [selectedType, setSelectedType] = useState<string | null>(null)
+  // Email confirmation pending — used by the "check your email" step
+  const [pendingEmail, setPendingEmail] = useState('')
+  const [resending, setResending] = useState(false)
+  const [resendResult, setResendResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [completingRegistration, setCompletingRegistration] = useState(false)
+  const [completeError, setCompleteError] = useState('')
   const [form, setForm] = useState({
     clinicName: '',
     ownerName: '',
@@ -144,11 +150,124 @@ export default function RegisterPage() {
       return
     }
 
-    // After owner registration, create default Manager + Counter accounts
-    // for the new clinic via the server-side API. Best-effort: if it fails
-    // the clinic still works, but staff won't have default logins.
+    // Email confirmation required → tell the user to check their inbox.
+    // Clinic setup (clinic + owner + default roles) finishes after the
+    // user clicks the confirmation link (see the ?confirmed=1 effect).
+    // Only non-sensitive data is kept in sessionStorage — never the password.
+    if ((result as any).needsEmailConfirmation) {
+      try {
+        sessionStorage.setItem('pendingRegistration', JSON.stringify({
+          userId: result.userId,
+          email: form.email,
+          name: form.ownerName,
+          phone: form.phone,
+          clinicName: form.clinicName,
+          clinicType: selectedType || 'dental',
+        }))
+      } catch {}
+      setPendingEmail(form.email)
+      setStep('check_email')
+      return
+    }
+
+    // Session available (confirmation disabled) → create defaults now.
+    await createDefaultAccounts((result as any).clinicId || '')
+    setStep('success')
+  }
+
+  // ═══ After email confirmation: finish clinic setup ═══
+  // Supabase redirects to /register?confirmed=1 via /auth/callback once the
+  // email link is clicked. Here we complete registration (clinic + owner +
+  // default roles) using the pending data saved at signup time.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('confirmed') !== '1') return
+    // Clean the URL so a refresh doesn't re-run the flow
+    window.history.replaceState({}, '', '/register')
+
+    let cancelled = false
+    ;(async () => {
+      let pending: any = null
+      try {
+        pending = JSON.parse(sessionStorage.getItem('pendingRegistration') || 'null')
+      } catch {}
+
+      if (!pending) {
+        // Edge case: user clicked the confirmation link in a fresh tab/session
+        // where the pending registration was never saved. If they already own
+        // a clinic (completed earlier), just let them log in.
+        try {
+          const { getSupabase } = await import('@/lib/supabase')
+          const sb = getSupabase()
+          if (sb) {
+            const { data: { session } } = await sb.auth.getSession()
+            if (session?.user) {
+              const { data: membership } = await sb
+                .from('clinic_memberships')
+                .select('clinic_id')
+                .eq('user_id', session.user.id)
+                .eq('role', 'owner')
+                .eq('is_active', true)
+                .maybeSingle()
+              if (membership?.clinic_id) {
+                if (!cancelled) { setStep('success'); return }
+              }
+            }
+          }
+        } catch {}
+        if (!cancelled) setCompleteError('ไม่พบข้อมูลการสมัครที่ค้างอยู่ กรุณาเข้าสู่ระบบหรือสมัครใหม่')
+        return
+      }
+
+      setCompletingRegistration(true)
+      // Restore the form + clinic type so the success screen renders correctly
+      // on this fresh page load (state would otherwise be empty)
+      if (pending.clinicType) setSelectedType(pending.clinicType)
+      setForm(f => ({
+        ...f,
+        clinicName: pending.clinicName || f.clinicName,
+        email: pending.email || f.email,
+        ownerName: pending.name || f.ownerName,
+        phone: pending.phone || f.phone,
+      }))
+      try {
+        const { supabaseCompleteRegistration } = await import('@/lib/supabase-auth')
+        const complete = await supabaseCompleteRegistration({
+          userId: pending.userId,
+          email: pending.email,
+          name: pending.name,
+          phone: pending.phone,
+          clinicName: pending.clinicName,
+          clinicType: pending.clinicType,
+        })
+        if (cancelled) return
+        if (!complete.success) {
+          setCompleteError(complete.error || 'ไม่สามารถสร้างคลินิกได้ กรุณาลองใหม่อีกครั้ง')
+          return
+        }
+
+        // Create default Manager / Staff / Practitioner accounts
+        await createDefaultAccounts(complete.clinicId || '')
+        try { sessionStorage.removeItem('pendingRegistration') } catch {}
+        setStep('success')
+      } catch (e) {
+        console.error('Failed to complete registration:', e)
+        if (!cancelled) setCompleteError('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง')
+      } finally {
+        if (!cancelled) setCompletingRegistration(false)
+      }
+    })()
+
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Create default Manager + Staff + Practitioner accounts for the new clinic
+  // via the server-side API. Best-effort: if it fails the clinic still works,
+  // but staff won't have default logins.
+  const createDefaultAccounts = async (clinicId: string) => {
+    if (!clinicId) return
     try {
-      const clinicId = (result as any).clinicId || (result as any).userId || ''
       const res = await fetch(`/api/clinics/${encodeURIComponent(clinicId)}/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -161,8 +280,24 @@ export default function RegisterPage() {
     } catch (e) {
       console.error('Failed to create default accounts:', e)
     }
+  }
 
-    setStep('success')
+  // Resend the confirmation email
+  const handleResend = async () => {
+    if (!pendingEmail.trim()) return
+    setResending(true)
+    setResendResult(null)
+    try {
+      const { supabaseResendConfirmation } = await import('@/lib/supabase-auth')
+      const result = await supabaseResendConfirmation(pendingEmail.trim())
+      setResendResult(result.success
+        ? { success: true, message: 'ระบบได้ส่งอีเมลยืนยันอีกครั้งแล้ว กรุณาตรวจสอบกล่องจดหมาย (รวมถึงสแปม)' }
+        : { success: false, message: result.error || 'ไม่สามารถส่งอีเมลยืนยันได้ กรุณาลองใหม่' })
+    } catch {
+      setResendResult({ success: false, message: 'ไม่สามารถส่งอีเมลยืนยันได้ กรุณาลองใหม่' })
+    } finally {
+      setResending(false)
+    }
   }
 
   return (
@@ -363,6 +498,55 @@ export default function RegisterPage() {
           </div>
         )}
 
+        {/* Step: Check Email (confirmation required) */}
+        {step === 'check_email' && (
+          <div className="text-center space-y-6">
+            <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
+              <Mail className="w-10 h-10 text-blue-500" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-extrabold text-gray-900">ตรวจสอบอีเมลของคุณ 📧</h2>
+              <p className="text-gray-500 mt-2">
+                ระบบได้ส่งลิงก์ยืนยันอีเมลไปยัง <strong>{pendingEmail}</strong>
+              </p>
+            </div>
+
+            <div className="bg-blue-50 rounded-2xl p-4 border border-blue-200 text-left space-y-2">
+              <p className="text-sm text-blue-700 leading-relaxed">
+                👉 คลิกลิงก์ยืนยันในอีเมลเพื่อเปิดใช้งานบัญชี จากนั้นระบบจะสร้างคลินิกและบัญชีเริ่มต้นให้อัตโนมัติ
+              </p>
+              <p className="text-xs text-blue-600">
+                ⚠️ หากไม่พบอีเมล กรุณาตรวจสอบโฟลเดอร์สแปม หรือกดปุ่มด้านล่างเพื่อส่งอีเมลยืนยันใหม่
+              </p>
+            </div>
+
+            {resendResult && (
+              <div className={clsx(
+                'rounded-2xl p-4 border text-sm',
+                resendResult.success ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-600'
+              )}>
+                {resendResult.success ? '✅' : '❌'} {resendResult.message}
+              </div>
+            )}
+
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={handleResend}
+                disabled={resending}
+                className="w-full py-3.5 rounded-2xl font-bold text-white bg-gradient-to-r from-blue-500 to-indigo-500 hover:shadow-lg shadow-blue-200 transition-all disabled:opacity-50"
+              >
+                {resending ? '⏳ กำลังส่ง...' : '📧 ส่งอีเมลยืนยันอีกครั้ง'}
+              </button>
+              <button
+                onClick={() => window.location.href = '/login'}
+                className="w-full py-3.5 rounded-2xl font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 transition-colors"
+              >
+                ไปที่หน้าเข้าสู่ระบบ
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Step 3: Success */}
         {step === 'success' && selectedClinic && (
           <div className="text-center space-y-6">
@@ -404,10 +588,7 @@ export default function RegisterPage() {
                 📧 อีเมล: <strong>{form.email}</strong>
               </p>
               <p className="text-sm text-blue-700">
-                🔑 ใช้รหัสผ่านที่ตั้งไว้ตอนสมัครเพื่อเข้าสู่ระบบ
-              </p>
-              <p className="text-xs text-blue-600">
-                ⚠️ ระบบจะให้เปลี่ยนรหัสผ่านใหม่ในการเข้าใช้งานครั้งแรก
+                🔑 ใช้รหัสผ่านที่ตั้งไว้ตอนสมัครเพื่อเข้าสู่ระบบได้ทันที
               </p>
             </div>
 
@@ -426,7 +607,10 @@ export default function RegisterPage() {
                       <div key={acc.role} className="bg-white rounded-xl p-4 border border-amber-100">
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-sm font-medium text-gray-700">
-                            {acc.role === 'manager' ? '👨‍💼 ผู้จัดการ' : '🧑‍💼 เจ้าหน้าที่เคาน์เตอร์'}
+                            {acc.role === 'manager' ? '👨‍💼 ผู้จัดการ' :
+                             acc.role === 'front_desk' || acc.role === 'staff' ? '🧑‍💼 เจ้าหน้าที่' :
+                             acc.role === 'practitioner' ? '👨‍⚕️ ผู้ทำหัตถการ' :
+                             '🧑‍💼 เจ้าหน้าที่'}
                           </span>
                           <button
                             onClick={() => navigator.clipboard?.writeText(acc.username).catch(() => {})}
@@ -450,7 +634,7 @@ export default function RegisterPage() {
                     <p className="text-xs text-amber-600">
                       ⚠️ รหัสผ่านชั่วคราวนี้จะแสดงเพียงครั้งเดียว หลังจากนี้ระบบจะไม่สามารถแสดงอีกได้
                       {' '}•{' '}
-                      หากLost ให้ผู้จัดการรีเซ็ตรหัสผ่านจากหน้าจัดการผู้ใช้
+                      หากลืม ให้ผู้จัดการรีเซ็ตรหัสผ่านจากหน้าจัดการผู้ใช้
                     </p>
                   </div>
                 )

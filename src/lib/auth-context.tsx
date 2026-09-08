@@ -10,7 +10,7 @@ import {
   type PlatformRole,
   type AuthSession 
 } from './auth-types'
-import { supabaseLogin, supabaseLogout, supabaseResetPassword, supabaseUpdatePassword, supabaseRegister } from './supabase-auth'
+import { supabaseLogout, supabaseResetPassword, supabaseUpdatePassword } from './supabase-auth'
 import { getSupabase, isSupabaseReady } from './supabase'
 
 interface AuthContextType {
@@ -178,7 +178,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(appSession)
     localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(appSession))
     setNeedsClinicSelection(needsSelection)
-    if (user.forcePasswordChange) setForcePasswordChange(true)
+    // NOTE: force_password_change is no longer enforced (MVP). Users can log
+    // in immediately with the password they were given.
   }, [])
 
   // ═══ Initialize auth: Supabase session is the source of truth ═══
@@ -199,10 +200,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const freshUser = users.find(u => u.id === saved.user.id)
           if (freshUser) {
             setSession({ ...saved, user: freshUser })
-            if (freshUser.forcePasswordChange) setForcePasswordChange(true)
           } else {
             setSession(saved)
-            if (saved.user.forcePasswordChange) setForcePasswordChange(true)
           }
         }
         setIsLoading(false)
@@ -222,10 +221,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const freshUser = users.find(u => u.id === saved.user.id)
           if (freshUser) {
             setSession({ ...saved, user: freshUser })
-            if (freshUser.forcePasswordChange) setForcePasswordChange(true)
           } else {
             setSession(saved)
-            if (saved.user.forcePasswordChange) setForcePasswordChange(true)
           }
         }
       }
@@ -318,6 +315,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
 
       if (authError || !authData.user) {
+        // Give a clear Thai message when the email hasn't been confirmed yet
+        const msg = (authError?.message || '').toLowerCase()
+        if (msg.includes('email not confirmed') || msg.includes('email_not_confirmed')) {
+          return { success: false, error: 'ยังไม่ได้ยืนยันอีเมล กรุณาตรวจสอบอีเมลของคุณ (รวมถึงโฟลเดอร์สแปม) แล้วคลิกลิงก์ยืนยัน' }
+        }
         return { success: false, error: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' }
       }
 
@@ -391,7 +393,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(newSession)
       saveToStorage(STORAGE_KEYS.AUTH, newSession)
       setNeedsClinicSelection(needsSelection)
-      if (user.forcePasswordChange) setForcePasswordChange(true)
+      // force_password_change is no longer enforced (MVP).
 
       saveToStorage(STORAGE_KEYS.CLINICS, freshClinics)
       saveToStorage(STORAGE_KEYS.MEMBERSHIPS, freshMemberships)
@@ -452,7 +454,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(appSession)
       saveToStorage(STORAGE_KEYS.AUTH, appSession)
       setNeedsClinicSelection(body.needsClinicSelection || false)
-      if (body.forcePasswordChange) setForcePasswordChange(true)
+      // force_password_change is no longer enforced (MVP).
 
       if (body.memberships?.length) {
         const freshMemberships = body.memberships.map((m: any) => ({

@@ -19,10 +19,12 @@ export const dynamic = 'force-dynamic'
  *   1. Generate a secure temporary password (not 123456, not reusable).
  *   2. Use Supabase service-role admin.updateUser(userId, { password }) to
  *      set the new password in Supabase Auth.
- *   3. Set force_password_change = true in public.users so the next login
- *      forces the user to choose a new password.
- *   4. Return the temporary password ONCE to the authorized caller. It is
+ *   3. Return the temporary password ONCE to the authorized caller. It is
  *      never stored in any application table.
+ *
+ * NOTE: force_password_change is no longer enforced in the MVP — the user can
+ * log in immediately with the temporary password. The column is kept for
+ * future use.
  */
 
 export async function POST(
@@ -128,24 +130,13 @@ export async function POST(
     return NextResponse.json({ error: 'failed to update auth password' }, { status: 500 })
   }
 
-  // ── 7. Force password change in public.users ──────────────────
-  const db = admin as any
-  const { error: flagError } = await db.from('users')
-    .update({ force_password_change: true })
-    .eq('id', userId)
-
-  if (flagError) {
-    // The auth password was already changed. This is a partial failure;
-    // we still return the temp password so the user can log in and then
-    // change it. Log server-side only.
-    console.error('Failed to set force_password_change for', userId, flagError)
-  }
-
-  // ── 8. Return temporary password once ────────────────────────
+  // ── 7. Return temporary password once ────────────────────────
+  // force_password_change is intentionally NOT set: the MVP lets users log in
+  // immediately with the temporary password.
   return NextResponse.json({
     userId,
     temporaryPassword: tempPassword,
-    message: 'Password has been reset. The user must log in with the temporary password and choose a new one.',
+    message: 'Password has been reset. The user can log in with the temporary password right away.',
   }, { status: 200 })
 }
 

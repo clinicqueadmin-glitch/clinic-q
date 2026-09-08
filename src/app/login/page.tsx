@@ -273,7 +273,7 @@ export default function LoginPage() {
               {/* First-time user guidance */}
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mt-3">
                 <p className="text-xs text-blue-700">
-                  👤 ผู้ใช้ครั้งแรก: ให้ใช้รหัสผ่านชั่วคราวที่ได้รับจากผู้จัดการ จากนั้นระบบจะให้เปลี่ยนรหัสผ่านใหม่
+                  👤 ผู้ใช้ครั้งแรก: ใช้รหัสผ่านชั่วคราวที่ได้รับจากผู้จัดการเพื่อเข้าสู่ระบบได้ทันที
                 </p>
               </div>
             </form>

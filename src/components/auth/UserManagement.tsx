@@ -259,7 +259,7 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
           roles: u.roles,
           branchIds: u.branchIds || [],
           isActive: true,
-          forcePasswordChange: true,
+          forcePasswordChange: false,
         }
         setUsers(prev => [...prev, newUser])
         // Sync practitioner into local cache if applicable
@@ -412,7 +412,7 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
 
 รหัสผ่านชั่วคราว: ${body.temporaryPassword}
 
-หมายเหตุ: รหัสผ่านนี้ใช้ได้เพียงครั้งเดียว หลังจากนั้นระบบจะไม่สามารถแสดงอีกได้`)
+หมายเหตุ: รหัสผ่านนี้แสดงเพียงครั้งเดียว หลังจากนั้นระบบจะไม่สามารถแสดงอีกได้`)
     } catch (e: any) {
       alert(e?.message || 'เกิดข้อผิดพลาดของเครือข่าย')
     } finally {
@@ -449,7 +449,7 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
             <div className="mt-2 p-3 bg-indigo-50 border border-indigo-100 rounded-xl">
               <p className="text-xs text-indigo-600 leading-relaxed">
                 💡 <strong>Owner</strong> ใช้อีเมลในการเข้าสู่ระบบ •{' '}
-                <strong>Manager / Counter / Staff / Practitioner</strong> ใช้ Username + รหัสผ่านที่ระบบสร้างให้
+                <strong>Manager / Staff / Practitioner</strong> ใช้ Username + รหัสผ่านที่ระบบสร้างให้
                 {' '}•{' '}
                 เมื่อสร้างผู้ใช้สำเร็จ ระบบจะแสดงรหัสผ่านชั่วคราวให้ <span className="font-medium">ครั้งเดียวเท่านั้น</span>
               </p>
@@ -698,17 +698,45 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
                 />
               </div>
 
-              {/* Email */}
+              {/* Email (owner only — staff use username) */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">อีเมล *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  อีเมล {form.roles.includes('owner') ? '*' : '(ไม่บังคับ)'}
+                </label>
                 <input 
                   type="email"
                   value={form.email} 
                   onChange={(e) => setForm({ ...form, email: e.target.value })} 
                   className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" 
-                  placeholder="email@example.com" 
+                  placeholder={form.roles.includes('owner') ? 'email@example.com' : 'เฉพาะเจ้าของคลินิก'}
                 />
               </div>
+
+              {/* Username (staff/manager/practitioner — required for login) */}
+              {form.roles.some(r => r !== 'owner') && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Username {form.roles.length > 0 && !form.roles.includes('owner') ? '*' : '(ไม่บังคับ)'}
+                  </label>
+                  <div className="flex gap-2">
+                    <input 
+                      value={form.username} 
+                      onChange={(e) => setForm({ ...form, username: e.target.value })} 
+                      className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" 
+                      placeholder="เช่น SM4827-staff01"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, username: suggestUsername(form.name) })}
+                      className="px-3 py-2 rounded-xl bg-gray-100 text-gray-600 text-xs font-medium hover:bg-gray-200 transition-colors whitespace-nowrap"
+                      title="สร้าง Username อัตโนมัติจากชื่อ"
+                    >
+                      ✨ สร้างอัตโนมัติ
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">ใช้สำหรับเข้าสู่ระบบแทนอีเมล · ตัวอักษร ตัวเลข ขีดล่าง หรือขีดกลางเท่านั้น</p>
+                </div>
+              )}
 
               {/* Phone */}
               <PhoneInput
@@ -723,7 +751,7 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
                   <p className="text-sm text-blue-700 leading-relaxed">
                     🔑 ระบบจะสร้างรหัสผ่านชั่วคราวให้โดยอัตโนมัติ
                     {' '}•{' '}
-                    ผู้ใช้จะต้องเปลี่ยนรหัสผ่านหลังล็อกอินครั้งแรก
+                    ผู้ใช้สามารถเข้าสู่ระบบได้ทันทีด้วยรหัสผ่านชั่วคราวนี้
                   </p>
                   {form.roles.some(r => r !== 'owner') && (
                     <p className="text-xs text-blue-600 mt-2">
@@ -908,9 +936,9 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
               </div>
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
                 <p className="text-xs text-blue-700 leading-relaxed">
-                  ⚠️ ผู้ใช้จะต้องเปลี่ยนรหัสผ่านนี้หลังเข้าสู่ระบบครั้งแรก
+                  ✅ ผู้ใช้สามารถเข้าสู่ระบบได้ทันทีด้วยรหัสผ่านชั่วคราวนี้
                   {' '}•{' '}
-                  หากลืมรหัสผ่านนี้ ผู้จัดการสามารถรีเซ็ตได้จาก表格นี้
+                  หากลืมรหัสผ่าน ผู้จัดการสามารถรีเซ็ตได้จากหน้าจัดการผู้ใช้
                 </p>
               </div>
             </div>

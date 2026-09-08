@@ -2,7 +2,24 @@
 
 import { getSupabase } from './supabase'
 
+// Where Supabase should redirect the user after clicking the email
+// confirmation link. The /auth/callback route exchanges the code and
+// lands the user back on the registration flow to finish setup.
+function getEmailRedirectTo(): string {
+  if (typeof window === 'undefined') return ''
+  return `${window.location.origin}/auth/callback`
+}
+
 // ═══ Register new user ═══
+//
+// Behavior depends on whether Supabase has "Confirm email" enabled:
+//   - Confirmation OFF → signUp returns a session immediately → clinic +
+//     owner membership are created right away (same as before).
+//   - Confirmation ON  → signUp returns NO session yet → we return
+//     needsEmailConfirmation so the UI can show "check your email".
+//     Clinic creation is deferred to supabaseCompleteRegistration()
+//     which runs after the user confirms (via /auth/callback).
+//
 export async function supabaseRegister(data: {
   email: string
   password: string
@@ -10,17 +27,18 @@ export async function supabaseRegister(data: {
   phone?: string
   clinicName: string
   clinicType: string
-}): Promise<{ success: boolean; error?: string; userId?: string; clinicId?: string }> {
+}): Promise<{ success: boolean; error?: string; userId?: string; clinicId?: string; needsEmailConfirmation?: boolean }> {
   const sb = getSupabase()
   if (!sb) return { success: false, error: 'Supabase ไม่ได้เชื่อมต่อ' }
 
-  // 1. Create auth user
+  // 1. Create auth user (with email confirmation redirect)
   const { data: authData, error: authError } = await sb.auth.signUp({
     email: data.email,
     password: data.password,
     options: {
-      data: { name: data.name, phone: data.phone }
-    }
+      data: { name: data.name, phone: data.phone },
+      emailRedirectTo: getEmailRedirectTo(),
+    },
   })
 
   if (authError) {
@@ -31,49 +49,152 @@ export async function supabaseRegister(data: {
 
   const userId = authData.user.id
 
-  // 2. Create user record in our users table
-  const { error: userError } = await sb.from('users').insert({
-    id: userId,
+  // Email confirmation required → no session yet. Defer clinic creation.
+  if (!authData.session) {
+    return { success: true, userId, needsEmailConfirmation: true }
+  }
+
+  // Confirmation disabled → session exists, create clinic now.
+  const created = await createClinicAndOwner(sb, {
+    userId,
     email: data.email,
     name: data.name,
     phone: data.phone || '',
-    force_password_change: true,
+    clinicName: data.clinicName,
+    clinicType: data.clinicType,
   })
+  if (!created.success) return created
+  return { success: true, userId, clinicId: created.clinicId }
+}
 
-  if (userError) {
-    console.error('Failed to create user record:', userError)
-    // Don't fail - auth user was created
+// ═══ Complete registration after email confirmation ═══
+// Called by /register?confirmed=1 (after /auth/callback exchanged the code).
+// Idempotent: if the clinic/owner already exist for this user it returns
+// the existing clinic instead of creating duplicates.
+export async function supabaseCompleteRegistration(data: {
+  userId: string
+  email: string
+  name: string
+  phone?: string
+  clinicName: string
+  clinicType: string
+}): Promise<{ success: boolean; error?: string; clinicId?: string }> {
+  const sb = getSupabase()
+  if (!sb) return { success: false, error: 'Supabase ไม่ได้เชื่อมต่อ' }
+
+  // Must have a confirmed session to create the clinic
+  const { data: { session } } = await sb.auth.getSession()
+  if (!session) {
+    return { success: false, error: 'กรุณายืนยันอีเมลก่อนดำเนินการต่อ' }
   }
 
-  // 3. Create clinic
-  const clinicId = `clinic-${Date.now()}`
-  const { error: clinicError } = await sb.from('clinics').insert({
-    id: clinicId,
-    name: data.clinicName,
-    type: data.clinicType,
-    color: '#E91E63',
-    icon: '🏥',
-    prefix: 'E',
-  })
+  // Idempotent: if the owner already has a membership, reuse that clinic
+  const { data: existingMembership } = await sb
+    .from('clinic_memberships')
+    .select('clinic_id')
+    .eq('user_id', data.userId)
+    .eq('role', 'owner')
+    .eq('is_active', true)
+    .maybeSingle()
 
-  if (clinicError) {
-    console.error('Failed to create clinic:', clinicError)
+  if (existingMembership?.clinic_id) {
+    return { success: true, clinicId: existingMembership.clinic_id }
   }
 
-  // 4. Create membership (owner)
-  const { error: memberError } = await sb.from('clinic_memberships').insert({
-    id: `mem-${Date.now()}`,
-    user_id: userId,
-    clinic_id: clinicId,
-    role: 'owner',
-    is_active: true,
+  return createClinicAndOwner(sb, {
+    userId: data.userId,
+    email: data.email,
+    name: data.name,
+    phone: data.phone || '',
+    clinicName: data.clinicName,
+    clinicType: data.clinicType,
   })
+}
+
+// ═══ Stable clinic code (used for default usernames like MD4827-manager) ═══
+function generateClinicCode(clinicType?: string): string {
+  const prefix = clinicType === 'dental' ? 'DT'
+    : clinicType === 'medical' ? 'MD'
+    : clinicType === 'aesthetic' ? 'AE'
+    : clinicType === 'thai' ? 'TH'
+    : clinicType === 'chinese' ? 'CH'
+    : clinicType === 'physical' ? 'PH'
+    : 'CL'
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  let suffix = ''
+  if (typeof crypto !== 'undefined' && 'getRandomValues' in crypto) {
+    const array = new Uint8Array(4)
+    crypto.getRandomValues(array)
+    for (let i = 0; i < 4; i++) {
+      suffix += chars[array[i] % chars.length]
+    }
+  } else {
+    suffix = Math.random().toString(36).slice(2, 6).toUpperCase()
+  }
+  return prefix + suffix
+}
+
+// ═══ Shared: create users row + clinic + owner membership ═══
+// Deterministic IDs (based on the auth user id) so a retry cannot create
+// a second clinic or a second owner membership.
+async function createClinicAndOwner(
+  sb: NonNullable<ReturnType<typeof getSupabase>>,
+  data: {
+    userId: string
+    email: string
+    name: string
+    phone: string
+    clinicName: string
+    clinicType: string
+  }
+): Promise<{ success: boolean; error?: string; clinicId?: string }> {
+  const clinicId = `clinic-${data.userId}`
+  const clinicCode = generateClinicCode(data.clinicType)
+
+  // 1. Create user record in our users table (idempotent)
+  await sb.from('users').upsert(
+    {
+      id: data.userId,
+      email: data.email,
+      name: data.name,
+      phone: data.phone || '',
+      force_password_change: false,
+    },
+    { onConflict: 'id' }
+  )
+
+  // 2. Create clinic (idempotent) — stable code powers default usernames
+  await sb.from('clinics').upsert(
+    {
+      id: clinicId,
+      name: data.clinicName,
+      type: data.clinicType,
+      color: '#E91E63',
+      icon: '🏥',
+      prefix: 'E',
+      code: clinicCode,
+    },
+    { onConflict: 'id' }
+  )
+
+  // 3. Create membership (owner) — idempotent via unique(user_id, clinic_id, role)
+  const { error: memberError } = await sb.from('clinic_memberships').upsert(
+    {
+      id: `mem-${data.userId}-owner`,
+      user_id: data.userId,
+      clinic_id: clinicId,
+      role: 'owner',
+      is_active: true,
+    },
+    { onConflict: 'id' }
+  )
 
   if (memberError) {
     console.error('Failed to create membership:', memberError)
+    return { success: false, error: 'ไม่สามารถสร้างสมาชิกคลินิกได้ กรุณาลองอีกครั้ง' }
   }
 
-  // 5. Initialize clinic-specific localStorage data
+  // 4. Initialize clinic-specific localStorage data
   if (typeof window !== 'undefined') {
     // Set clinic type
     localStorage.setItem('clinic-q-type', data.clinicType)
@@ -117,7 +238,7 @@ export async function supabaseRegister(data: {
     
     // Initialize user list with owner (registrant)
     const ownerUser = {
-      id: userId,
+      id: data.userId,
       email: data.email,
       name: data.name,
       phone: data.phone || '',
@@ -125,12 +246,27 @@ export async function supabaseRegister(data: {
       roles: ['owner'],
       branchIds: [],
       isActive: true,
-      forcePasswordChange: true,
+      forcePasswordChange: false,
     }
     localStorage.setItem(`clinicq-users-with-roles-${clinicId}`, JSON.stringify([ownerUser]))
   }
 
-  return { success: true, userId, clinicId }
+  return { success: true, clinicId }
+}
+
+// ═══ Resend email confirmation ═══
+export async function supabaseResendConfirmation(email: string): Promise<{ success: boolean; error?: string }> {
+  const sb = getSupabase()
+  if (!sb) return { success: false, error: 'Supabase ไม่ได้เชื่อมต่อ' }
+
+  const { error } = await sb.auth.resend({
+    type: 'signup',
+    email,
+    options: { emailRedirectTo: getEmailRedirectTo() },
+  })
+
+  if (error) return { success: false, error: error.message }
+  return { success: true }
 }
 
 // ═══ Platform owner emails — allowed to log in without any clinic membership ═══

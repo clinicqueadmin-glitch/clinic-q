@@ -110,13 +110,15 @@ function buildSyntheticAuthEmail(authUserId: string): string {
  *
  * Examples:
  *   SM4827-manager
- *   SM4827-counter
- *   SM4827-staff01
+ *   SM4827-staff
+ *   SM4827-practitioner
+ *   SM4827-staff01   (extra staff accounts)
  */
 function buildDefaultUsername(clinicCode: string, role: string, index?: number): string {
   if (role === 'manager') return `${clinicCode}-manager`
-  if (role === 'counter') return `${clinicCode}-counter`
-  // For staff / other roles, use a counter suffix
+  if (role === 'front_desk' || role === 'staff') return `${clinicCode}-staff`
+  if (role === 'practitioner') return `${clinicCode}-practitioner`
+  // For other roles, use a counter suffix
   const suffix = index != null ? String(index).padStart(2, '0') : '01'
   return `${clinicCode}-staff${suffix}`
 }
@@ -344,6 +346,8 @@ export async function POST(
 
   // ── 9. Generate temporary password ────────────────────────────
   const tempPassword = generateTempPassword()
+  // NOTE: force_password_change is no longer enforced in the MVP — users log
+  // in immediately with the temporary password. The column is kept for future use.
 
   // ── 10. Create auth user (transaction) ────────────────────────
   // We create the auth user, then do all the local inserts. If local inserts
@@ -398,7 +402,7 @@ export async function POST(
       email: authEmail,           // synthetic email stored here, not exposed to staff
       name,
       phone: normalizedPhone || '',
-      force_password_change: true,
+      force_password_change: false,
     })
 
     // 10c. Insert clinic_memberships (one per role)
@@ -447,8 +451,8 @@ export async function POST(
       },
       temporaryPassword: tempPassword,
       message: isPractitioner && effectiveEmail
-        ? 'Account created. If the practitioner has a real email, they can use it to log in. Otherwise they must use their username and the temporary password above, then change it on first login.'
-        : 'Account created. The user must log in with username + the temporary password above, then change it on first login.',
+        ? 'Account created. The user can log in with their email or username and the temporary password above.'
+        : 'Account created. The user can log in with username + the temporary password above.',
     }, { status: 201 })
 
   } catch (err: any) {
@@ -482,12 +486,17 @@ export async function POST(
 // ────────────────────────────────────────────────────────────────
 
 /**
- * Create default manager + counter accounts when a new clinic is created.
+ * Create default manager + staff + practitioner accounts when a new clinic
+ * is created.
  *
  * Called when the registration flow creates a new clinic and wants the
- * clinic to be immediately usable with default staff accounts.
+ * clinic to be immediately usable with default accounts for each role:
  *
- * Returns both accounts' usernames + temporary passwords ONCE.
+ *   {code}-manager       → ผู้จัดการ        (role: manager)
+ *   {code}-staff         → เจ้าหน้าที่      (role: front_desk)
+ *   {code}-practitioner  → ผู้ทำหัตถการ    (role: practitioner)
+ *
+ * Returns all accounts' usernames + temporary passwords ONCE.
  */
 async function createDefaultClinicAccounts(
   caller: any,
@@ -509,144 +518,120 @@ async function createDefaultClinicAccounts(
   }
   const clinicCode = clinic.code
 
-  // Check that default accounts don't already exist
-  const { data: existingManager } = await db
-    .from('staff_usernames')
-    .select('id')
-    .eq('clinic_id', clinicId)
-    .eq('username', `${clinicCode}-manager`)
-    .maybeSingle()
-  if (existingManager) {
-    return NextResponse.json({ error: 'default manager account already exists for this clinic' }, { status: 409 })
-  }
+  // Default account definitions (role must match the clinic_memberships
+  // CHECK constraint: owner | manager | front_desk | practitioner)
+  const defaults = [
+    { username: `${clinicCode}-manager`, role: 'manager', name: 'ผู้จัดการ' },
+    { username: `${clinicCode}-staff`, role: 'front_desk', name: 'เจ้าหน้าที่' },
+    { username: `${clinicCode}-practitioner`, role: 'practitioner', name: 'ผู้ทำหัตถการ' },
+  ]
 
-  const { data: existingCounter } = await db
-    .from('staff_usernames')
-    .select('id')
-    .eq('clinic_id', clinicId)
-    .eq('username', `${clinicCode}-counter`)
-    .maybeSingle()
-  if (existingCounter) {
-    return NextResponse.json({ error: 'default counter account already exists for this clinic' }, { status: 409 })
+  // Check which defaults already exist — if all exist, treat as already created
+  let allExist = true
+  for (const d of defaults) {
+    const { data: existing } = await db
+      .from('staff_usernames')
+      .select('id')
+      .eq('clinic_id', clinicId)
+      .eq('username', d.username)
+      .maybeSingle()
+    if (!existing) {
+      allExist = false
+      break
+    }
+  }
+  if (allExist) {
+    return NextResponse.json({ error: 'default accounts already exist for this clinic' }, { status: 409 })
   }
 
   // Generate temporary passwords
-  const managerTempPassword = generateTempPassword()
-  const counterTempPassword = generateTempPassword()
-
-  let managerAuthUserId: string | null = null
-  let counterAuthUserId: string | null = null
+  const tempPasswords = defaults.map(() => generateTempPassword())
+  const createdAuthUserIds: string[] = []
 
   try {
-    // ── Manager ─────────────────────────────────────────────────
-    const managerUsername = `${clinicCode}-manager`
-    const managerResult = await createStaffAuthUser(
-      admin,
-      'ผู้จัดการคลินิก',
-      clinicId,
-      clinicCode,
-      'manager',
-      managerTempPassword,
-      managerUsername,
-    )
-    managerAuthUserId = managerResult.authUserId
+    const accounts: Array<{ role: string; username: string; name: string; temporaryPassword: string }> = []
 
-    // public.users
-    await db.from('users').insert({
-      id: managerAuthUserId,
-      email: managerResult.authEmail,
-      name: 'ผู้จัดการคลินิก',
-      phone: '',
-      force_password_change: true,
-    })
+    for (let i = 0; i < defaults.length; i++) {
+      const d = defaults[i]
+      const tempPassword = tempPasswords[i]
 
-    // clinic_memberships
-    await db.from('clinic_memberships').insert({
-      id: `mem-${managerAuthUserId}-manager`,
-      user_id: managerAuthUserId,
-      clinic_id: clinicId,
-      role: 'manager',
-      is_active: true,
-    })
+      // Skip if this specific account already exists (partial retry)
+      const { data: existing } = await db
+        .from('staff_usernames')
+        .select('id')
+        .eq('clinic_id', clinicId)
+        .eq('username', d.username)
+        .maybeSingle()
+      if (existing) continue
 
-    // staff_usernames
-    await db.from('staff_usernames').insert({
-      clinic_id: clinicId,
-      username: managerUsername,
-      user_id: managerAuthUserId,
-    })
+      const result = await createStaffAuthUser(
+        admin,
+        d.name,
+        clinicId,
+        clinicCode,
+        d.role,
+        tempPassword,
+        d.username,
+      )
+      createdAuthUserIds.push(result.authUserId)
 
-    // ── Counter ─────────────────────────────────────────────────
-    const counterUsername = `${clinicCode}-counter`
-    const counterResult = await createStaffAuthUser(
-      admin,
-      'เจ้าหน้าที่เคาน์เตอร์',
-      clinicId,
-      clinicCode,
-      'counter',
-      counterTempPassword,
-      counterUsername,
-    )
-    counterAuthUserId = counterResult.authUserId
+      // public.users
+      await db.from('users').insert({
+        id: result.authUserId,
+        email: result.authEmail,
+        name: d.name,
+        phone: '',
+        force_password_change: false,
+      })
 
-    // public.users
-    await db.from('users').insert({
-      id: counterAuthUserId,
-      email: counterResult.authEmail,
-      name: 'เจ้าหน้าที่เคาน์เตอร์',
-      phone: '',
-      force_password_change: true,
-    })
+      // clinic_memberships
+      await db.from('clinic_memberships').insert({
+        id: `mem-${result.authUserId}-${d.role}`,
+        user_id: result.authUserId,
+        clinic_id: clinicId,
+        role: d.role,
+        is_active: true,
+      })
 
-    // clinic_memberships
-    await db.from('clinic_memberships').insert({
-      id: `mem-${counterAuthUserId}-counter`,
-      user_id: counterAuthUserId,
-      clinic_id: clinicId,
-      role: 'counter',
-      is_active: true,
-    })
+      // staff_usernames
+      await db.from('staff_usernames').insert({
+        clinic_id: clinicId,
+        username: d.username,
+        user_id: result.authUserId,
+      })
 
-    // staff_usernames
-    await db.from('staff_usernames').insert({
-      clinic_id: clinicId,
-      username: counterUsername,
-      user_id: counterAuthUserId,
-    })
+      // practitioners (only for practitioner role)
+      if (d.role === 'practitioner') {
+        await db.from('practitioners').insert({
+          id: `pract-${result.authUserId}`,
+          user_id: result.authUserId,
+          clinic_id: clinicId,
+          name: d.name,
+          branch_ids: [],
+          is_active: true,
+        })
+      }
 
-    // ── Return both accounts ────────────────────────────────────
+      accounts.push({
+        role: d.role,
+        username: d.username,
+        name: d.name,
+        temporaryPassword: tempPassword,
+      })
+    }
+
     return NextResponse.json({
-      accounts: [
-        {
-          role: 'manager',
-          username: managerUsername,
-          name: 'ผู้จัดการคลินิก',
-          temporaryPassword: managerTempPassword,
-        },
-        {
-          role: 'counter',
-          username: counterUsername,
-          name: 'เจ้าหน้าที่เคาน์เตอร์',
-          temporaryPassword: counterTempPassword,
-        },
-      ],
-      message: 'Default manager and counter accounts created. Save the temporary passwords now — they cannot be retrieved later.',
+      accounts,
+      message: 'Default manager, staff and practitioner accounts created. Save the temporary passwords now — they cannot be retrieved later.',
     }, { status: 201 })
 
   } catch (err: any) {
     // Compensation: delete any created auth users
-    if (managerAuthUserId) {
+    for (const id of createdAuthUserIds) {
       try {
-        await (admin.auth.admin as any).deleteUser(managerAuthUserId)
+        await (admin.auth.admin as any).deleteUser(id)
       } catch (e) {
-        console.error('Compensation deleteUser failed for manager', managerAuthUserId, e)
-      }
-    }
-    if (counterAuthUserId) {
-      try {
-        await (admin.auth.admin as any).deleteUser(counterAuthUserId)
-      } catch (e) {
-        console.error('Compensation deleteUser failed for counter', counterAuthUserId, e)
+        console.error('Compensation deleteUser failed for', id, e)
       }
     }
 
