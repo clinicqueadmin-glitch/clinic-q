@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic'
  *
  * Effect:
  *   1. Generate a secure temporary password (not 123456, not reusable).
- *   2. Use Supabase service-role admin.updateUser(userId, { password }) to
+ *   2. Use Supabase service-role admin.updateUserById(userId, { password }) to
  *      set the new password in Supabase Auth.
  *   3. Return the temporary password ONCE to the authorized caller. It is
  *      never stored in any application table.
@@ -118,7 +118,9 @@ export async function POST(
   }
 
   // Cast as any: generated admin types are not installed in this project.
-  const { error: updateError } = await (admin.auth.admin as any).updateUser(userId, {
+  // NOTE: supabase-js >= 2.45 uses admin.updateUserById; the deprecated
+  // updateUser alias was removed.
+  const { error: updateError } = await (admin.auth.admin as any).updateUserById(userId, {
     password: tempPassword,
   })
 
