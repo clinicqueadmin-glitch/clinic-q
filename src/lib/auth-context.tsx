@@ -235,10 +235,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // (another tab logging in/out, recovery session established, etc.).
     let authSub: { data: { subscription: { unsubscribe: () => void } } } | null = null
     if (sb) {
-      authSub = sb.auth.onAuthStateChange(async (_event: AuthChangeEvent, supabaseSession: SupabaseSessionType | null) => {
+      authSub = sb.auth.onAuthStateChange(async (event: AuthChangeEvent, supabaseSession: SupabaseSessionType | null) => {
         if (cancelled) return
         if (supabaseSession?.user) {
+          // A real Supabase session is authoritative — rebuild the app session.
           await restoreFromSupabaseSession(supabaseSession.user.id, supabaseSession.user.email || '')
+        } else if (event === 'INITIAL_SESSION') {
+          // INITIAL_SESSION is only an echo of the current Supabase client state.
+          // It fires (often with null) immediately after subscription — before
+          // init() has finished restoring the app session from the localStorage
+          // fallback. Wiping here would log out a user whose session was just
+          // restored (e.g. staff logins whose session lives server-side).
+          // init() owns the restore decision; a genuine sign-out (SIGNED_OUT /
+          // another tab) still takes the branch below.
         } else {
           setSession(null)
           setNeedsClinicSelection(false)
