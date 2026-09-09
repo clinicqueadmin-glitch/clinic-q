@@ -94,7 +94,7 @@ function ClinicRouter({ children }: { children: ReactNode }) {
   if (pathname === '/login' || pathname.startsWith('/login') || pathname === '/register' || pathname === '/pricing' || pathname === '/terms' || pathname === '/privacy') {
     return <>{children}</>
   }
-  if (pathname === '/tv' || pathname === '/kiosk' || pathname === '/book' || pathname.startsWith('/book') || pathname === '/walkin' || pathname.startsWith('/walkin') || pathname === '/track' || pathname.startsWith('/track') || pathname === '/queue-status' || pathname.startsWith('/queue-status')) {
+  if (pathname === '/tv' || pathname === '/kiosk' || pathname === '/book' || pathname.startsWith('/book') || pathname === '/walkin' || pathname.startsWith('/walkin') || pathname === '/track' || pathname.startsWith('/track') || pathname === '/queue-status' || pathname.startsWith('/queue-status') || pathname === '/qr' || pathname.startsWith('/qr')) {
     return <>{children}</>
   }
 
@@ -152,7 +152,7 @@ function ClinicRouter({ children }: { children: ReactNode }) {
 
   // ═══ Trial Expiry Check ═══
   // Skip for platform owner and public routes
-  const isPublicRoute = pathname === '/login' || pathname.startsWith('/login') || pathname === '/register' || pathname === '/pricing' || pathname === '/terms' || pathname === '/privacy' || pathname === '/tv' || pathname === '/kiosk' || pathname === '/book' || pathname.startsWith('/book') || pathname === '/walkin' || pathname.startsWith('/walkin') || pathname === '/track' || pathname.startsWith('/track') || pathname === '/queue-status' || pathname.startsWith('/queue-status')
+  const isPublicRoute = pathname === '/login' || pathname.startsWith('/login') || pathname === '/register' || pathname === '/pricing' || pathname === '/terms' || pathname === '/privacy' || pathname === '/tv' || pathname === '/kiosk' || pathname === '/book' || pathname.startsWith('/book') || pathname === '/walkin' || pathname.startsWith('/walkin') || pathname === '/track' || pathname.startsWith('/track') || pathname === '/queue-status' || pathname.startsWith('/queue-status') || pathname === '/qr' || pathname.startsWith('/qr')
   if (currentRole !== 'platform_owner' && isAuthenticated && currentClinicId && !isPublicRoute) {
     try {
       const saved = localStorage.getItem(`clinicq-subscription-${currentClinicId}`)

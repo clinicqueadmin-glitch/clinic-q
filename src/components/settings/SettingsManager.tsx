@@ -328,14 +328,18 @@ export default function SettingsManager() {
 
   const trackingUrl = useMemo(() => {
     const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'
-    return `${base}/book?clinic=${currentClinic || 'medical'}`
-  }, [currentClinic])
+    const clinicParam = currentClinic || 'medical'
+    const idParam = currentClinicId ? `&clinicId=${encodeURIComponent(currentClinicId)}` : ''
+    return `${base}/qr?clinic=${clinicParam}${idParam}`
+  }, [currentClinic, currentClinicId])
 
-  // URL สำหรับ LINE OA — ใช้ตรวจสอบคิวด้วยเบอร์โทร
+  // URL สำหรับ LINE OA / Website — ลิงก์เดียวกับ QR Code หลัก (หน้าเมนูรวม)
   const lineTrackingUrl = useMemo(() => {
     const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'
-    return `${base}/track?phone=`
-  }, [])
+    const clinicParam = currentClinic || 'medical'
+    const idParam = currentClinicId ? `&clinicId=${encodeURIComponent(currentClinicId)}` : ''
+    return `${base}/qr?clinic=${clinicParam}${idParam}`
+  }, [currentClinic, currentClinicId])
 
   // Webhook URL สำหรับ LINE OA
   const lineWebhookUrl = useMemo(() => {
@@ -811,11 +815,11 @@ export default function SettingsManager() {
                   <p className="text-sm text-gray-500">QR Code อันเดียว ใช้ได้ทั้งสแกนที่หน้าคลินิก (Walk-in) และจองออนไลน์ (LINE OA / Facebook / Website)</p>
                 </div>
 
-                {/* ═══ SECTION 1: QR Code for Booking ═══ */}
+                {/* ═══ SECTION 1: Main Clinic QR Code ═══ */}
                 <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
                   <div className="px-5 py-4 border-b border-gray-100">
-                    <h3 className="font-bold text-gray-900">🎫 QR Code จองคิว & ลงทะเบียน Walk-in</h3>
-                    <p className="text-xs text-gray-500 mt-1">สำหรับวางที่เคาน์เตอร์หรือฝังใน LINE OA / Facebook / Website</p>
+                    <h3 className="font-bold text-gray-900">🎫 QR Code หลักของคลินิก</h3>
+                    <p className="text-xs text-gray-500 mt-1">QR อันเดียว สแกนแล้วเจอเมนูครบ: จองคิว · ตรวจสอบคิว · ดูสถานะคิววันนี้</p>
                   </div>
                   <div className="p-5">
                     {/* QR Preview Card */}
@@ -823,7 +827,7 @@ export default function SettingsManager() {
                       <div className="bg-white rounded-xl shadow-sm max-w-sm mx-auto overflow-hidden border border-gray-100">
                         <div className="text-center py-4 px-4" style={{ backgroundColor: config.color }}>
                           <div className="text-white text-sm font-medium opacity-90">🏥 {config.name}</div>
-                          <div className="text-white text-2xl font-black mt-1">จองคิว / Walk-in</div>
+                          <div className="text-white text-2xl font-black mt-1">เมนูผู้ป่วย</div>
                           <div className="text-white/70 text-xs mt-1">สแกน QR Code ด้วยมือถือ</div>
                         </div>
                         <div className="flex flex-col items-center py-6 px-4 bg-white">
@@ -832,8 +836,8 @@ export default function SettingsManager() {
                           </div>
                           <div className="space-y-1.5 text-xs text-gray-600">
                             <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full text-white text-[9px] font-bold flex items-center justify-center" style={{ backgroundColor: config.color }}>1</span> สแกน QR Code ด้วยกล้องมือถือ</div>
-                            <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full text-white text-[9px] font-bold flex items-center justify-center" style={{ backgroundColor: config.color }}>2</span> กรอกข้อมูล เลือกหัตถการ</div>
-                            <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full text-white text-[9px] font-bold flex items-center justify-center" style={{ backgroundColor: config.color }}>3</span> อยู่ใกล้ → Walk-in | อยู่ไกล → จองออนไลน์</div>
+                            <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full text-white text-[9px] font-bold flex items-center justify-center" style={{ backgroundColor: config.color }}>2</span> เลือกบริการจากเมนู 3 ปุ่ม</div>
+                            <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full text-white text-[9px] font-bold flex items-center justify-center" style={{ backgroundColor: config.color }}>3</span> 📝 จองคิว | 🔍 ตรวจสอบคิว | 📺 สถานะคิววันนี้</div>
                           </div>
                         </div>
                       </div>
@@ -853,11 +857,11 @@ export default function SettingsManager() {
                   </div>
                 </div>
 
-                {/* ═══ SECTION 2: LINE OA Queue Tracking ═══ */}
+                {/* ═══ SECTION 2: Embed Link (LINE OA / Facebook / Website) ═══ */}
                 <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
                   <div className="px-5 py-4 border-b border-gray-100 bg-green-50/50">
-                    <h3 className="font-bold text-gray-900">🔍 ลิงก์ตรวจสอบคิว (LINE OA)</h3>
-                    <p className="text-xs text-gray-500 mt-1">ฝังลิงก์นี้ใน LINE OA เพื่อให้คนไข้ตรวจสอบสถานะคิวของตนเอง</p>
+                    <h3 className="font-bold text-gray-900">🔗 ลิงก์สำหรับฝัง (LINE OA / Facebook / Website)</h3>
+                    <p className="text-xs text-gray-500 mt-1">ลิงก์เดียวกับ QR Code หลัก — คนไข้กดแล้วเจอเมนูรวมเหมือนสแกน QR</p>
                   </div>
                   <div className="p-5">
                     <div className="flex gap-2 mb-3">
@@ -869,85 +873,41 @@ export default function SettingsManager() {
                     <div className="p-3 bg-green-50 rounded-lg border border-green-100">
                       <p className="text-xs font-bold text-green-800 mb-2">💡 วิธีตั้งค่าใน LINE OA:</p>
                       <ol className="text-xs text-green-700 space-y-1 list-decimal list-inside">
-                        <li>คัดลอกลิงก์ด้านบน</li>
+                        <li>คัดลอกลิงก์ด้านบน (ลิงก์เดียวกับ QR Code หลัก)</li>
                         <li>เปิด LINE Official Account Manager → แก้ไข Rich Menu</li>
-                        <li>เพิ่มปุ่ม "ตรวจสอบคิว" → วางลิงก์</li>
-                        <li>คนไข้กดปุ่ม → กรอกเบอร์โทร → เห็นสถานะคิวทันที</li>
+                        <li>เพิ่มปุ่ม "จองคิว / ตรวจสอบคิว" → วางลิงก์</li>
+                        <li>คนไข้กดปุ่ม → หน้าเมนูรวม → เลือกบริการที่ต้องการ</li>
                       </ol>
                     </div>
                   </div>
                 </div>
 
-                {/* ═══ SECTION 3: Queue Status QR Code ═══ */}
-                <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-                  <div className="px-5 py-4 border-b border-gray-100 bg-amber-50/50">
-                    <h3 className="font-bold text-gray-900">📊 QR Code สถานะคิววันนี้</h3>
-                    <p className="text-xs text-gray-500 mt-1">สำหรับวางที่หน้าจอทีวีหรือฝังใน LINE OA เพื่อให้คนไข้ดูสถานะคิวรวม</p>
-                  </div>
-                  <div className="p-5">
-                    <div className="flex gap-4 items-start">
-                      <div className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex-shrink-0">
-                        <QRCodeSVG
-                          value={`${typeof window !== 'undefined' ? window.location.origin : ''}/queue-status?clinic=${currentClinic || 'dental'}`}
-                          size={120}
-                          level="M"
-                        />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-gray-900 mb-1">สถานะคิวปัจจุบัน</p>
-                        <p className="text-xs text-gray-500 mb-3">แสดงจำนวนคิวรอ + เวลาคาดการณ์ ของคลินิก พร้อม auto-refresh ทุก 30 วินาที</p>
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            onClick={() => {
-                              const url = `${window.location.origin}/queue-status?clinic=${currentClinic || 'dental'}`
-                              navigator.clipboard.writeText(url)
-                              setCopied(true)
-                              setTimeout(() => setCopied(false), 2000)
-                            }}
-                            className="px-3 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-700 text-xs font-medium flex items-center gap-1"
-                          >
-                            {copied ? <><Check className="w-3 h-3" /> คัดลอกแล้ว</> : <><Copy className="w-3 h-3" /> คัดลอกลิงก์</>}
-                          </button>
-                          <a
-                            href={`/queue-status?clinic=${currentClinic || 'dental'}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium flex items-center gap-1"
-                          >
-                            <ExternalLink className="w-3 h-3" /> เปิดดู
-                          </a>
-                          <button
-                            onClick={() => window.print()}
-                            className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium flex items-center gap-1"
-                          >
-                            🖨️ พิมพ์
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* ═══ SECTION 4: How to Use ═══ */}
+                {/* ═══ SECTION 3: How to Use ═══ */}
                 <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5">
-                  <h4 className="font-bold text-blue-900 mb-3">📖 วิธีใช้งาน</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <h4 className="font-bold text-blue-900 mb-3">📖 เมื่อสแกน QR แล้ว คนไข้จะเห็นเมนู 3 ปุ่ม</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div className="bg-white rounded-xl p-3 border border-blue-100">
-                      <p className="text-xs font-bold text-blue-800 mb-2">🎫 สำหรับ QR Code จองคิว</p>
+                      <p className="text-xs font-bold text-blue-800 mb-2">📝 จองคิว / ลงทะเบียน Walk-in</p>
                       <ol className="text-xs text-blue-700 space-y-1 list-decimal list-inside">
-                        <li>พิมพ์ QR Code ลงกระดาษ A5/A4</li>
-                        <li>วางไว้ที่เคาน์เตอร์ต้อนรับ</li>
-                        <li>หรือฝังใน LINE OA / Facebook / Website</li>
-                        <li>คนไข้สแกน → ลงทะเบียน Walk-in หรือจองออนไลน์</li>
+                        <li>อยู่ใกล้คลินิก → ลงทะเบียน Walk-in</li>
+                        <li>อยู่ไกล → จองออนไลน์</li>
+                        <li>เลือกวัน เวลา และหัตถการ</li>
                       </ol>
                     </div>
                     <div className="bg-white rounded-xl p-3 border border-blue-100">
-                      <p className="text-xs font-bold text-blue-800 mb-2">🔍 สำหรับลิงก์ตรวจสอบคิว</p>
+                      <p className="text-xs font-bold text-blue-800 mb-2">🔍 ตรวจสอบคิวของฉัน</p>
                       <ol className="text-xs text-blue-700 space-y-1 list-decimal list-inside">
-                        <li>คัดลอกลิงก์ไปวางใน LINE OA</li>
-                        <li>สร้างปุ่ม "ตรวจสอบคิว" ใน Rich Menu</li>
-                        <li>คนไข้กดปุ่ม → กรอกเบอร์โทร</li>
-                        <li>เห็นสถานะคิวของตนเองทันที</li>
+                        <li>กรอกเบอร์โทรศัพท์</li>
+                        <li>ดูสถานะและเวลาคิวของตัวเอง</li>
+                        <li>เห็นลำดับคิวปัจจุบัน</li>
+                      </ol>
+                    </div>
+                    <div className="bg-white rounded-xl p-3 border border-blue-100">
+                      <p className="text-xs font-bold text-blue-800 mb-2">📺 ดูสถานะคิววันนี้</p>
+                      <ol className="text-xs text-blue-700 space-y-1 list-decimal list-inside">
+                        <li>จำนวนคิวรอ + เวลาคาดการณ์</li>
+                        <li>auto-refresh ทุก 30 วินาที</li>
+                        <li>เหมาะกับวางที่หน้าร้าน / LINE OA</li>
                       </ol>
                     </div>
                   </div>
