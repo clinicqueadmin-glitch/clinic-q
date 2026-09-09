@@ -5,7 +5,7 @@ import {
   Save, RotateCcw, Building, Users, QrCode, Monitor,
   Plus, Edit, Trash2, X, Phone, MapPin, Clock,
   Copy, Check, Volume2, VolumeX, Palette,
-  AlertTriangle, ExternalLink, Eye, Stethoscope, Film, DoorOpen, CreditCard, MessageCircle,
+  ExternalLink, Eye, Stethoscope, Film, DoorOpen, CreditCard, MessageCircle,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { QRCodeSVG } from 'qrcode.react'
@@ -34,16 +34,7 @@ const tabs: { id: SettingsTab; name: string; icon: React.ComponentType<{ classNa
   { id: 'line', name: 'LINE OA', icon: MessageCircle, description: 'ตั้งค่าการแจ้งเตือนผ่าน LINE' },
 ]
 
-/* ─────────────── Staff Types ─────────────── */
-interface StaffMember {
-  id: string
-  name: string
-  role: 'doctor' | 'nurse' | 'staff'
-  specialty?: string
-  phone: string
-  active: boolean
-}
-
+/* ─────────────── TV Ad Types ─────────────── */
 interface TVAd {
   id: string
   type: 'text'
@@ -53,23 +44,14 @@ interface TVAd {
   active: boolean
 }
 
-const initialStaff: StaffMember[] = [
-  { id: '1', name: 'นพ.วิชัย มั่นคง', role: 'doctor', specialty: 'เวชกรรมทั่วไป', phone: '081-111-1111', active: true },
-  { id: '2', name: 'ทพ.สมบูรณ์ สุขใจ', role: 'doctor', specialty: 'ทันตกรรม', phone: '082-222-2222', active: true },
-  { id: '3', name: 'พญ.พิมพ์ใจ รักสุข', role: 'doctor', specialty: 'เสริมความงาม', phone: '083-333-3333', active: true },
-  { id: '4', name: 'สุภาพร วงศ์สวัสดิ์', role: 'nurse', phone: '084-444-4444', active: true },
-  { id: '5', name: 'เจ้าหน้าที่สมชาย', role: 'staff', phone: '085-555-5555', active: true },
-]
-
-const roleLabels = { doctor: 'แพทย์', nurse: 'พยาบาล', staff: 'เจ้าหน้าที่' }
-const roleColors = { doctor: 'bg-blue-50 text-blue-600', nurse: 'bg-green-50 text-green-600', staff: 'bg-gray-100 text-gray-600' }
-
 export default function SettingsManager() {
   const { config, currentClinic } = useClinic()
   const { currentRole, currentClinicId } = useAuth()
   const isOwner = currentRole === 'owner' || currentRole === 'platform_owner'
   usePractitioners()
   const canManageSubscription = isOwner || currentRole === 'manager'
+  // Owner + Manager can manage clinic users (server API enforces the actual rules)
+  const canManageUsers = isOwner || currentRole === 'manager'
   const [activeTab, setActiveTab] = useState<SettingsTab>('clinic')
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
 
@@ -186,79 +168,9 @@ export default function SettingsManager() {
     fetchClinicData()
   }, [])
 
-  /* ───── Staff State (legacy local-staff UI; to be migrated to Supabase practitioners in a later phase) ───── */
-  const [staff, setStaff] = useState<StaffMember[]>(initialStaff)
-  const [showStaffModal, setShowStaffModal] = useState(false)
-  const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null)
-  const [confirmDeleteStaff, setConfirmDeleteStaff] = useState<string | null>(null)
-  const [staffForm, setStaffForm] = useState({ name: '', role: 'doctor' as StaffMember['role'], specialty: '', phone: '' })
-
   /* ───── QR State ───── */
   const [copied, setCopied] = useState(false)
   const [qrCustomUrl, setQrCustomUrl] = useState('')
-
-  // Notice banner shown when the deprecated local-staff/legacy-user-management flows are visible.
-  const [dismissedNotice, setDismissedNotice] = useState(false)
-
-  function NoticeBanner() {
-    if (dismissedNotice) return null
-    return (
-      <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl mb-2">
-        <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-        <div className="flex-1">
-          <p className="text-sm font-semibold text-amber-800">ระบบกำลังปรับปรุง — หน้าจัดการผู้ใช้บางส่วนยังใช้โหมดแสดงผลจำลอง</p>
-          <p className="text-xs text-amber-700 mt-1">
-            ส่วนที่ใช้ staff ตัวอย่าง、branch เก่า、以及การเพิ่มผู้ใช้ด้วยตนเองในหน้านี้กำลังถูกโยกย้ายไปยังระบบบัญชี Supabase
-            ที่ผสานกับ <span className="font-medium">จัดการผู้ใช้</span> ด้านบน
-          </p>
-          <p className="text-xs text-amber-700 mt-1">
-            ข้อมูลจริงของคลินิกจะมาอยู่ใน Supabase เมื่อการโยกย้ายเสร็จสิ้น
-          </p>
-          <button
-            onClick={() => setDismissedNotice(true)}
-            className="mt-2 text-xs text-amber-600 hover:text-amber-800 underline"
-          >
-            ไม่แสดงอีกครั้ง
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  function LegacyStaffPanel() {
-    return (
-      <div className="mt-6 p-4 border border-dashed border-gray-300 rounded-xl bg-gray-50">
-        <h3 className="text-sm font-medium text-gray-700 mb-2">โหมดแสดงผลจำลอง — Staff ตัวอย่าง</h3>
-        <p className="text-xs text-gray-500 mb-3">ข้อมูลนี้เป็นตัวอย่างเท่านั้น ยังไม่ได้เชื่อมกับบัญชีผู้ใช้จริงใน Supabase</p>
-        {staff.length > 0 && (
-          <div className="space-y-2">
-            {staff.map((s) => (
-              <div key={s.id} className="flex items-center justify-between text-sm bg-white rounded-lg border border-gray-200 px-3 py-2">
-                <div className="flex items-center gap-3">
-                  <div className={clsx('w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold', roleColors[s.role])}>
-                    {roleLabels[s.role][0]}
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{s.name}</p>
-                    {s.specialty && <p className="text-xs text-gray-500">{s.specialty}</p>}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={clsx('px-2 py-0.5 rounded-full text-xs font-medium', roleColors[s.role])}>{roleLabels[s.role]}</span>
-                  <button onClick={() => toggleStaffActive(s.id)} className="text-xs text-gray-500 hover:text-gray-700">
-                    {s.active ? 'ปิดการใช้งาน' : 'เปิดการใช้งาน'}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-        {staff.length === 0 && (
-          <p className="text-sm text-gray-500">ยังไม่มีเจ้าหน้าที่ในระบบตัวอย่าง</p>
-        )}
-      </div>
-    )
-  }
 
   /* ───── TV Settings State ───── */
   const [tvTheme, setTvTheme] = useState<'dark' | 'light'>('dark')
@@ -486,43 +398,6 @@ export default function SettingsManager() {
   }
 
 
-  /* ───── Staff CRUD ───── */
-  const openAddStaff = () => {
-    setEditingStaff(null)
-    setStaffForm({ name: '', role: 'doctor', specialty: '', phone: '' })
-    setShowStaffModal(true)
-  }
-  const openEditStaff = (s: StaffMember) => {
-    setEditingStaff(s)
-    setStaffForm({ name: s.name, role: s.role, specialty: s.specialty || '', phone: s.phone })
-    setShowStaffModal(true)
-  }
-  const saveStaff = () => {
-    if (!staffForm.name || staffForm.phone.length !== 10) {
-      showToastMsg('กรุณากรอกชื่อและเบอร์โทร 10 หลัก', 'error')
-      return
-    }
-    if (editingStaff) {
-      setStaff(prev => prev.map(s => s.id === editingStaff.id ? { ...s, ...staffForm } : s))
-      showToastMsg('แก้ไขข้อมูลสำเร็จ!', 'success')
-    } else {
-      const newStaff: StaffMember = { id: String(Date.now()), ...staffForm, active: true }
-      setStaff(prev => [...prev, newStaff])
-      showToastMsg('เพิ่มเจ้าหน้าที่สำเร็จ!', 'success')
-    }
-    setShowStaffModal(false)
-  }
-  const deleteStaff = (id: string) => {
-    setStaff(prev => prev.filter(s => s.id !== id))
-    setConfirmDeleteStaff(null)
-    showToastMsg('ลบเจ้าหน้าที่แล้ว', 'info')
-  }
-  const toggleStaffActive = (id: string) => {
-    setStaff(prev => prev.map(s => s.id === id ? { ...s, active: !s.active } : s))
-  }
-
-
-
   /* ───── QR Copy ───── */
   const copyLink = () => {
     navigator.clipboard.writeText(trackingUrl).catch(() => {})
@@ -542,67 +417,6 @@ export default function SettingsManager() {
           onClose={() => setSaveResult(null)}
           onRetry={saveResult.retry}
         />
-      )}
-
-      {/* Staff Modal */}
-      {showStaffModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-xl font-bold text-gray-900">{editingStaff ? 'แก้ไขเจ้าหน้าที่' : 'เพิ่มเจ้าหน้าที่ใหม่'}</h2>
-              <button onClick={() => setShowStaffModal(false)} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อ-นามสกุล *</label>
-                <input type="text" value={staffForm.name} onChange={(e) => setStaffForm({ ...staffForm, name: e.target.value })} placeholder="กรอกชื่อ-นามสกุล" className="input-field" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">ตำแหน่ง *</label>
-                  <select value={staffForm.role} onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value as StaffMember['role'] })} className="input-field">
-                    <option value="doctor">แพทย์</option>
-                    <option value="nurse">พยาบาล</option>
-                    <option value="staff">เจ้าหน้าที่</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">สาขา</label>
-                  <input type="text" value={staffForm.specialty} onChange={(e) => setStaffForm({ ...staffForm, specialty: e.target.value })} placeholder="เช่น ทันตกรรมทั่วไป" className="input-field" />
-                </div>
-              </div>
-              <PhoneInput
-                label="เบอร์โทรศัพท์"
-                value={staffForm.phone}
-                onChange={(v) => setStaffForm({ ...staffForm, phone: v })}
-                required
-              />
-            </div>
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-100">
-              <button onClick={() => setShowStaffModal(false)} className="btn-secondary">ยกเลิก</button>
-              <button onClick={saveStaff} className="btn-primary" style={{ backgroundColor: config.color }}>
-                {editingStaff ? 'บันทึก' : 'เพิ่มเจ้าหน้าที่'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Staff Confirmation */}
-      {confirmDeleteStaff && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center"><AlertTriangle className="w-5 h-5 text-red-500" /></div>
-              <h3 className="text-lg font-bold text-gray-900">ยืนยันการลบ</h3>
-            </div>
-            <p className="text-gray-600 mb-6">ต้องการลบเจ้าหน้าที่คนนี้ใช่หรือไม่?</p>
-            <div className="flex justify-end gap-3">
-              <button onClick={() => setConfirmDeleteStaff(null)} className="btn-secondary">ยกเลิก</button>
-              <button onClick={() => deleteStaff(confirmDeleteStaff)} className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 font-medium">ลบ</button>
-            </div>
-          </div>
-        </div>
       )}
 
       {/* ─── Ad Modal ─── */}
@@ -892,9 +706,7 @@ export default function SettingsManager() {
             )}              {/* ═══════ TAB: ผู้ใช้งานในคลินิก ═══════ */}
             {activeTab === 'users' && (
               <div className="space-y-6">
-                <NoticeBanner />
-                <UserManagement isOwner={isOwner} />
-                <LegacyStaffPanel />
+                <UserManagement canManageUsers={canManageUsers} currentRole={currentRole} />
               </div>
             )}
 

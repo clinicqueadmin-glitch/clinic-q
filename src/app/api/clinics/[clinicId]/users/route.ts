@@ -271,6 +271,17 @@ export async function POST(
     return createDefaultClinicAccounts(caller, callerRole, clinicId, sb)
   }
 
+  // ── 3a. Role escalation guard (server-side) ────────────────────
+  // Owner role may only be assigned by the registration flow
+  // (createClinicAndOwner). Manager must never create an owner.
+  const rawRoles = Array.isArray(body?.roles) ? body.roles.filter((r: unknown): r is string => typeof r === 'string') : []
+  if (rawRoles.includes('owner')) {
+    return NextResponse.json({ error: 'cannot create owner account through this endpoint' }, { status: 403 })
+  }
+  if (callerRole === 'manager' && rawRoles.includes('manager')) {
+    return NextResponse.json({ error: 'manager cannot create another manager account' }, { status: 403 })
+  }
+
   // Regular staff creation mode
   const name = typeof body?.name === 'string' ? body.name.trim() : ''
   const username = typeof body?.username === 'string' ? body.username.trim() : ''
@@ -301,8 +312,9 @@ export async function POST(
   const normalizedPhone = phone
 
   // Role whitelist: only roles allowed by the clinic_memberships CHECK
-  // constraint may be created through this endpoint.
-  const ALLOWED_ROLES = ['owner', 'manager', 'front_desk', 'practitioner']
+  // constraint may be created through this endpoint. Owner is deliberately
+  // excluded — owner accounts are created only by the registration flow.
+  const ALLOWED_ROLES = ['manager', 'front_desk', 'practitioner']
   const invalidRole = (roles as string[]).find(r => !ALLOWED_ROLES.includes(r))
   if (invalidRole) {
     return NextResponse.json({ error: 'บทบาทไม่ถูกต้อง' }, { status: 400 })
@@ -699,4 +711,451 @@ async function createDefaultClinicAccounts(
 
     return NextResponse.json({ error: 'failed to create default accounts' }, { status: 500 })
   }
+}
+
+// ────────────────────────────────────────────────────────────────
+// GET /api/clinics/[clinicId]/users
+// ────────────────────────────────────────────────────────────────
+
+/**
+ * List every member of the clinic with their roles.
+ *
+ * Authorization:
+ *   - Any ACTIVE member of the clinic may view the member list
+ *     (matches the pre-existing UI behavior where the users tab is
+ *     visible to every clinic role).
+ *
+ * Data source: Supabase is the single source of truth. No localStorage.
+ * Returns members merged from users + clinic_memberships +
+ * staff_usernames + practitioners.
+ */
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: { clinicId: string } }
+) {
+  const { clinicId } = params
+  if (!clinicId) {
+    return NextResponse.json({ error: 'clinicId is required' }, { status: 400 })
+  }
+
+  // ── 1. Authenticated caller ───────────────────────────────────
+  const cookieStore = await cookies()
+  const sb = createClient(cookieStore)
+
+  const { data: { user: caller }, error: callerError } = await sb.auth.getUser()
+  if (callerError || !caller) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  }
+
+  // ── 2. Verify caller is an ACTIVE member of the clinic ─────────
+  const { data: membership, error: memError } = await sb
+    .from('clinic_memberships')
+    .select('id')
+    .eq('user_id', caller.id)
+    .eq('clinic_id', clinicId)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (memError || !membership) {
+    return NextResponse.json({ error: 'not authorized for this clinic' }, { status: 403 })
+  }
+
+  // ── 3. Read all clinic members via service role (server-side only) ──
+  const admin = getAdminClient()
+  if (!admin) {
+    return NextResponse.json({ error: 'server not configured' }, { status: 500 })
+  }
+  const db = admin as any
+
+  const [membershipsRes, usersRes, usernamesRes, practitionersRes] = await Promise.all([
+    db.from('clinic_memberships').select('user_id, role, is_active').eq('clinic_id', clinicId),
+    db.from('users').select('id, email, name, phone, created_at, force_password_change'),
+    db.from('staff_usernames').select('user_id, username').eq('clinic_id', clinicId),
+    db.from('practitioners').select('user_id, branch_ids, is_active').eq('clinic_id', clinicId),
+  ])
+
+  const memberships = membershipsRes.data || []
+  const users = usersRes.data || []
+  const usernames = usernamesRes.data || []
+  const practitioners = practitionersRes.data || []
+
+  const usernameByUserId = new Map<string, string>()
+  for (const u of usernames) usernameByUserId.set(u.user_id, u.username)
+
+  const practitionerByUserId = new Map<string, { branch_ids: string[]; is_active: boolean }>()
+  for (const p of practitioners) {
+    practitionerByUserId.set(p.user_id, { branch_ids: p.branch_ids || [], is_active: p.is_active })
+  }
+
+  // Group memberships per user — roles come from ACTIVE memberships only.
+  const rolesByUserId = new Map<string, string[]>()
+  const anyActiveByUserId = new Map<string, boolean>()
+  for (const m of memberships) {
+    const roles = rolesByUserId.get(m.user_id) || []
+    if (m.is_active && !roles.includes(m.role)) roles.push(m.role)
+    rolesByUserId.set(m.user_id, roles)
+    if (m.is_active) anyActiveByUserId.set(m.user_id, true)
+  }
+
+  const memberIds = new Set(memberships.map((m: any) => m.user_id))
+
+  const result = users
+    .filter((u: any) => memberIds.has(u.id))
+    .map((u: any) => {
+      const pract = practitionerByUserId.get(u.id)
+      return {
+        id: u.id,
+        email: u.email || '',
+        username: usernameByUserId.get(u.id) || '',
+        name: u.name || '',
+        phone: u.phone || '',
+        createdAt: u.created_at || new Date().toISOString(),
+        roles: rolesByUserId.get(u.id) || [],
+        branchIds: pract?.branch_ids || [],
+        isActive: anyActiveByUserId.has(u.id) || false,
+        forcePasswordChange: u.force_password_change || false,
+      }
+    })
+    .sort((a: any, b: any) => a.name.localeCompare(b.name, 'th'))
+
+  return NextResponse.json({ users: result }, { status: 200 })
+}
+
+// ────────────────────────────────────────────────────────────────
+// PATCH /api/clinics/[clinicId]/users
+// ────────────────────────────────────────────────────────────────
+
+/**
+ * Edit an existing clinic member.
+ *
+ * Request body:
+ *   {
+ *     userId: string,          // required — target member
+ *     name?: string,
+ *     phone?: string,
+ *     roles?: ClinicRole[],    // replaces the member's role set
+ *     branchIds?: string[],    // practitioner branches
+ *     isActive?: boolean,      // true = activate, false = soft-deactivate
+ *   }
+ *
+ * Authorization (server-side enforcement):
+ *   - Caller must be an ACTIVE owner or manager of the clinic.
+ *   - Manager:
+ *       • may only target staff-level members (front_desk / practitioner)
+ *       • may NOT target owner or another manager
+ *       • may NOT assign the owner or manager role
+ *   - Owner:
+ *       • may target manager / front_desk / practitioner
+ *       • may NOT target another owner-role member
+ *       • may NOT assign the owner role (registration flow only)
+ *       • may NOT deactivate their own account
+ *   - No caller may deactivate an owner-role member.
+ *
+ * Effects:
+ *   - users.name / users.phone
+ *   - clinic_memberships: adds new role memberships, soft-removes removed
+ *     ones (is_active = false), activates/deactivates on isActive toggle
+ *   - practitioners.branch_ids / is_active when practitioner role involved
+ */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { clinicId: string } }
+) {
+  const { clinicId } = params
+  if (!clinicId) {
+    return NextResponse.json({ error: 'clinicId is required' }, { status: 400 })
+  }
+
+  // ── 1. Authenticated caller ───────────────────────────────────
+  const cookieStore = await cookies()
+  const sb = createClient(cookieStore)
+
+  const { data: { user: caller }, error: callerError } = await sb.auth.getUser()
+  if (callerError || !caller) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  }
+
+  // ── 2. Verify caller is an ACTIVE owner/manager of the clinic ──
+  const { data: callerMembership, error: memError } = await sb
+    .from('clinic_memberships')
+    .select('id, role')
+    .eq('user_id', caller.id)
+    .eq('clinic_id', clinicId)
+    .in('role', ['owner', 'manager'])
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (memError || !callerMembership) {
+    return NextResponse.json({ error: 'not authorized for this clinic' }, { status: 403 })
+  }
+
+  const callerRole = callerMembership.role as string
+
+  // ── 3. Parse + validate input ──────────────────────────────────
+  let body: any
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+  }
+
+  const userId = typeof body?.userId === 'string' ? body.userId.trim() : ''
+  if (!userId) {
+    return NextResponse.json({ error: 'userId is required' }, { status: 400 })
+  }
+
+  const name = typeof body?.name === 'string' ? body.name.trim() : undefined
+  const phone = typeof body?.phone === 'string' && body.phone.trim() ? body.phone.trim() : undefined
+  const roles: string[] | undefined = Array.isArray(body?.roles)
+    ? (body.roles as unknown[]).filter((r): r is string => typeof r === 'string')
+    : undefined
+  const branchIds = Array.isArray(body?.branchIds)
+    ? body.branchIds.filter((b: unknown): b is string => typeof b === 'string')
+    : undefined
+  const isActive = typeof body?.isActive === 'boolean' ? body.isActive : undefined
+
+  if (name !== undefined && !name) {
+    return NextResponse.json({ error: 'name cannot be empty' }, { status: 400 })
+  }
+  if (phone !== undefined && !/^[0-9]{10}$/.test(phone)) {
+    return NextResponse.json({ error: 'กรุณากรอกเบอร์โทรศัพท์ 10 หลัก' }, { status: 400 })
+  }
+
+  const EDITABLE_ROLES = ['manager', 'front_desk', 'practitioner']
+  if (roles !== undefined) {
+    if (roles.length === 0) {
+      return NextResponse.json({ error: 'at least one role is required' }, { status: 400 })
+    }
+    const invalidRole = roles.find(r => !EDITABLE_ROLES.includes(r))
+    if (invalidRole) {
+      return NextResponse.json({ error: 'บทบาทไม่ถูกต้อง' }, { status: 400 })
+    }
+    // Role escalation: nobody may assign the owner role through this API.
+    if (roles.includes('owner')) {
+      return NextResponse.json({ error: 'cannot assign owner role through this endpoint' }, { status: 403 })
+    }
+    // Manager may not assign the manager role.
+    if (callerRole === 'manager' && roles.includes('manager')) {
+      return NextResponse.json({ error: 'manager cannot assign the manager role' }, { status: 403 })
+    }
+  }
+
+  // ── 4. Resolve target membership(s) in this clinic ────────────
+  const admin = getAdminClient()
+  if (!admin) {
+    return NextResponse.json({ error: 'server not configured for account management' }, { status: 500 })
+  }
+  const db = admin as any
+
+  const { data: targetMemberships, error: targetMemError } = await db
+    .from('clinic_memberships')
+    .select('id, role, is_active')
+    .eq('user_id', userId)
+    .eq('clinic_id', clinicId)
+
+  if (targetMemError) {
+    return NextResponse.json({ error: 'failed to resolve target membership' }, { status: 500 })
+  }
+  if (!targetMemberships || targetMemberships.length === 0) {
+    return NextResponse.json({ error: 'user is not a member of this clinic' }, { status: 403 })
+  }
+
+  const currentRoles = targetMemberships
+    .filter((m: any) => m.is_active)
+    .map((m: any) => m.role)
+  const targetIsOwner = currentRoles.includes('owner')
+  const targetIsManager = currentRoles.includes('manager')
+
+  // ── 5. Authorization rules ─────────────────────────────────────
+  if (callerRole === 'manager') {
+    if (targetIsOwner) {
+      return NextResponse.json({ error: 'cannot edit owner account' }, { status: 403 })
+    }
+    if (targetIsManager) {
+      return NextResponse.json({ error: 'cannot edit another manager account' }, { status: 403 })
+    }
+  } else if (callerRole === 'owner') {
+    if (targetIsOwner && userId !== caller.id) {
+      return NextResponse.json({ error: 'cannot edit another owner account' }, { status: 403 })
+    }
+    // Owner editing themself: only name/phone allowed, roles must stay put.
+    if (userId === caller.id && targetIsOwner) {
+      if (roles !== undefined || isActive !== undefined) {
+        return NextResponse.json({ error: 'owner cannot change own roles or status here' }, { status: 403 })
+      }
+    }
+  }
+
+  // Self-deactivation guard — nobody may deactivate their own account.
+  if (isActive === false && userId === caller.id) {
+    return NextResponse.json({ error: 'cannot deactivate your own account' }, { status: 400 })
+  }
+  // No caller may deactivate an owner-role member.
+  if (isActive === false && targetIsOwner) {
+    return NextResponse.json({ error: 'cannot deactivate owner account' }, { status: 403 })
+  }
+
+  // ── 6. Apply changes (best-effort transaction with compensation) ──
+  const nextRoles = roles !== undefined ? roles : currentRoles
+
+  // Phone duplicate guard — reject moving a phone onto another clinic member.
+  if (phone !== undefined) {
+    const { data: phoneUser } = await db
+      .from('users')
+      .select('id')
+      .eq('phone', phone)
+      .neq('id', userId)
+      .maybeSingle()
+    if (phoneUser) {
+      const { data: sameClinicMember } = await db
+        .from('clinic_memberships')
+        .select('id')
+        .eq('user_id', phoneUser.id)
+        .eq('clinic_id', clinicId)
+        .maybeSingle()
+      if (sameClinicMember) {
+        return NextResponse.json(
+          { error: 'เบอร์โทรศัพท์นี้ถูกใช้โดยผู้ใช้ในคลินิกนี้แล้ว' },
+          { status: 409 }
+        )
+      }
+    }
+  }
+
+  // 6a. Update public.users (name / phone)
+  if (name !== undefined || phone !== undefined) {
+    const patch: Record<string, unknown> = {}
+    if (name !== undefined) patch.name = name
+    if (phone !== undefined) patch.phone = phone
+    const { error: userErr } = await db.from('users').update(patch).eq('id', userId)
+    if (userErr) {
+      return NextResponse.json({ error: 'failed to update user profile' }, { status: 500 })
+    }
+  }
+
+  // 6b. Sync clinic_memberships to the new role set / active state
+  try {
+    const activeTargetIds = new Set(
+      targetMemberships.filter((m: any) => m.is_active).map((m: any) => m.role)
+    )
+
+    // Add / re-activate role memberships. A membership row with the
+    // deterministic id `mem-{userId}-{role}` may already exist as an
+    // INACTIVE row (role removed or user soft-deleted earlier) — re-activate
+    // it instead of inserting, which would violate the primary key.
+    for (const role of nextRoles) {
+      if (activeTargetIds.has(role)) continue
+      const existing = targetMemberships.find((m: any) => m.role === role)
+      if (existing) {
+        const { error: updErr } = await db
+          .from('clinic_memberships')
+          .update({ is_active: true })
+          .eq('id', existing.id)
+        if (updErr) throw updErr
+      } else {
+        const { error: insErr } = await db.from('clinic_memberships').insert({
+          id: `mem-${userId}-${role}`,
+          user_id: userId,
+          clinic_id: clinicId,
+          role,
+          is_active: true,
+        })
+        if (insErr) throw insErr
+      }
+    }
+
+    // Soft-remove roles that are no longer in the set
+    for (const m of targetMemberships) {
+      if (!nextRoles.includes(m.role) && m.is_active) {
+        const { error: updErr } = await db
+          .from('clinic_memberships')
+          .update({ is_active: false })
+          .eq('id', m.id)
+        if (updErr) throw updErr
+      }
+    }
+
+    // Activation / deactivation toggle — only affects the CURRENT role set.
+    // Removed roles stay soft-removed (inactive).
+    if (isActive !== undefined) {
+      for (const m of targetMemberships) {
+        if (!nextRoles.includes(m.role)) continue
+        if (m.is_active === isActive) continue
+        const { error: updErr } = await db
+          .from('clinic_memberships')
+          .update({ is_active: isActive })
+          .eq('id', m.id)
+        if (updErr) throw updErr
+      }
+    }
+
+    // 6c. Sync practitioners (branch assignment + active state)
+    const { data: existingPractitioner } = await db
+      .from('practitioners')
+      .select('id, is_active')
+      .eq('user_id', userId)
+      .eq('clinic_id', clinicId)
+      .maybeSingle()
+
+    const practActive = nextRoles.includes('practitioner') && (isActive === undefined ? true : isActive)
+    if (nextRoles.includes('practitioner') && !existingPractitioner) {
+      const { error: insErr } = await db.from('practitioners').insert({
+        id: `pract-${userId}`,
+        user_id: userId,
+        clinic_id: clinicId,
+        name: name !== undefined ? name : 'ผู้ทำหัตถการ',
+        branch_ids: branchIds !== undefined ? branchIds : [],
+        is_active: practActive,
+      })
+      if (insErr) throw insErr
+    } else if (existingPractitioner) {
+      const practPatch: Record<string, unknown> = {
+        is_active: practActive,
+      }
+      if (name !== undefined) practPatch.name = name
+      if (branchIds !== undefined) practPatch.branch_ids = branchIds
+      const { error: updErr } = await db
+        .from('practitioners')
+        .update(practPatch)
+        .eq('id', existingPractitioner.id)
+      if (updErr) throw updErr
+    }
+  } catch (err: any) {
+    return NextResponse.json({ error: 'failed to update user roles' }, { status: 500 })
+  }
+
+  // ── 7. Return the refreshed member ────────────────────────────
+  const [membershipsRes, usersRes, usernamesRes, practitionersRes] = await Promise.all([
+    db.from('clinic_memberships').select('user_id, role, is_active').eq('user_id', userId).eq('clinic_id', clinicId),
+    db.from('users').select('id, email, name, phone, created_at, force_password_change').eq('id', userId),
+    db.from('staff_usernames').select('user_id, username').eq('clinic_id', clinicId),
+    db.from('practitioners').select('user_id, branch_ids, is_active').eq('user_id', userId).eq('clinic_id', clinicId),
+  ])
+
+  const updatedMemberships = membershipsRes.data || []
+  const updatedUsers = usersRes.data || []
+  const updatedUsernames = usernamesRes.data || []
+  const updatedPractitioners = practitionersRes.data || []
+
+  const username = updatedUsernames.find((u: any) => u.user_id === userId)?.username || ''
+  const pract = updatedPractitioners[0]
+  const activeRoles = updatedMemberships
+    .filter((m: any) => m.is_active)
+    .map((m: any) => m.role)
+  const anyActive = updatedMemberships.some((m: any) => m.is_active)
+
+  const updatedUser = {
+    id: userId,
+    email: updatedUsers[0]?.email || '',
+    username,
+    name: updatedUsers[0]?.name || '',
+    phone: updatedUsers[0]?.phone || '',
+    createdAt: updatedUsers[0]?.created_at || new Date().toISOString(),
+    roles: activeRoles,
+    branchIds: pract?.branch_ids || [],
+    isActive: anyActive,
+    forcePasswordChange: updatedUsers[0]?.force_password_change || false,
+  }
+
+  return NextResponse.json({ user: updatedUser }, { status: 200 })
 }

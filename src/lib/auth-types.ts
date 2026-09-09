@@ -123,6 +123,7 @@ export const rolePermissions: Record<ClinicRole, Permission[]> = {
     'manage_schedule',
     'manage_clinic_settings',
     'manage_branches_rooms',
+    'manage_users',
     'manage_qr_code',
     'manage_tv_display',
   ],

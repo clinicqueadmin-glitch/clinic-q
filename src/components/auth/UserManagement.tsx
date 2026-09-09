@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { 
   type ClinicRole, 
   type UserRole,
@@ -40,16 +40,16 @@ interface RoleAssignmentForm {
   branchIds: string[]
 }
 
-export default function UserManagement({ isOwner = false }: { isOwner?: boolean }) {
+export default function UserManagement({ canManageUsers = false, currentRole }: { canManageUsers?: boolean; currentRole?: string | null }) {
   const { currentClinicId } = useAuth()
   const { currentClinic } = useClinic()
-  const { practitioners, addPractitioner, updatePractitioner, deletePractitioner } = usePractitioners()
+  const { practitioners, addPractitioner, deletePractitioner } = usePractitioners()
   const branchData = getDefaultBranchData(currentClinic || 'dental')
 
-  // Use clinic-specific storage key
-  const storageKey = currentClinicId ? `clinicq-users-with-roles-${currentClinicId}` : 'clinicq-users-with-roles'
-
+  // Supabase (via the server API) is the single source of truth for the
+  // member list — localStorage is never used to store users/roles.
   const [users, setUsers] = useState<UserWithRoles[]>([])
+  const [loadingUsers, setLoadingUsers] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingUser, setEditingUser] = useState<UserWithRoles | null>(null)
@@ -75,53 +75,47 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
 
   const branches = branchData.branches.filter(b => b.active)
 
-  // Load users from clinic-specific localStorage
-  useEffect(() => {
-    if (typeof window === 'undefined' || !currentClinicId) return
-    
-    // First try clinic-specific storage
-    const savedUsers = localStorage.getItem(storageKey)
-    if (savedUsers) {
-      try {
-        const parsed = JSON.parse(savedUsers)
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setUsers(parsed)
-          return
-        }
-      } catch {}
-    }
-    
-    // If no clinic-specific data, auto-add current user as owner
-    const authSession = JSON.parse(localStorage.getItem('clinicq-auth') || '{}')
-    if (authSession?.user) {
-      const ownerUser: UserWithRoles = {
-        id: authSession.user.id,
-        email: authSession.user.email,
-        name: authSession.user.name || '',
-        phone: authSession.user.phone || '',
-        createdAt: authSession.user.createdAt || new Date().toISOString(),
-        roles: ['owner'],
-        branchIds: [],
-        isActive: true,
-        forcePasswordChange: false,
-      }
-      setUsers([ownerUser])
-    } else {
+  // Load the member list from the server (GET /api/clinics/[clinicId]/users).
+  // Called on mount and re-called after every mutation so the UI always
+  // reflects the real Supabase state.
+  const loadUsers = useCallback(async () => {
+    if (!currentClinicId) {
       setUsers([])
+      setLoadingUsers(false)
+      return
     }
-  }, [currentClinicId, storageKey])
+    try {
+      const res = await fetch(`/api/clinics/${encodeURIComponent(currentClinicId)}/users`)
+      if (!res.ok) throw new Error('failed to load users')
+      const data = await res.json()
+      setUsers(Array.isArray(data.users) ? data.users : [])
+    } catch {
+      setUsers([])
+    } finally {
+      setLoadingUsers(false)
+    }
+  }, [currentClinicId])
 
-  // Save to clinic-specific localStorage
   useEffect(() => {
-    if (users.length > 0 && currentClinicId) {
-      localStorage.setItem(storageKey, JSON.stringify(users))
-    }
-  }, [users, currentClinicId, storageKey])
+    setLoadingUsers(true)
+    void loadUsers()
+  }, [loadUsers])
 
-  // Get users with roles for current clinic
-  const clinicUsers = useMemo(() => {
-    return users.filter(u => u.roles.length > 0)
-  }, [users])
+  // All members returned by the server belong to this clinic — no filtering needed.
+  const clinicUsers = useMemo(() => users, [users])
+
+  // Whether the CURRENT caller may manage a given member row.
+  // Owner rows are protected from everyone. A manager caller may only manage
+  // staff-level members (front_desk / practitioner).
+  const canManageUserRow = useCallback((user: UserWithRoles) => {
+    if (!canManageUsers) return false
+    const roles = user.roles || []
+    if (roles.includes('owner')) return false
+    if (currentRole === 'manager') {
+      return roles.length > 0 && roles.every(r => r === 'front_desk' || r === 'practitioner')
+    }
+    return true
+  }, [canManageUsers, currentRole])
 
   // Open add user modal
   const openAddUser = () => {
@@ -146,26 +140,40 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
 
   // Save user
   const handleSaveUser = async () => {
-    if (!form.name || !form.roles.length) return
+    if (!form.name) return
 
     if (editingUser) {
-      // Update existing user (cache only — real account update via server API)
-      setUsers(prev => prev.map(u =>
-        u.id === editingUser.id
-          ? {
-              ...u,
-              name: form.name,
-              username: form.username || u.username || '',
-              email: form.email || u.email || '',
-              phone: form.phone,
-              roles: form.roles,
-              branchIds: form.branchIds
-            }
-          : u
-      ))
-
-      // Note: Editing an existing user's password requires the Reset Password feature.
-      // The owner/manager can reset a staff password via the Reset Password button.
+      // Update an existing member via the server API:
+      //   PATCH /api/clinics/[clinicId]/users
+      if (!currentClinicId) {
+        alert('ยังไม่ได้เลือกคลินิก')
+        return
+      }
+      setSaving(true)
+      try {
+        const res = await fetch(`/api/clinics/${encodeURIComponent(currentClinicId)}/users`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: editingUser.id,
+            name: form.name,
+            phone: form.phone || undefined,
+            // Only send roles when at least one is selected; otherwise keep the
+            // existing role set untouched (e.g. editing name of a deactivated user).
+            ...(form.roles.length > 0 ? { roles: form.roles, branchIds: form.branchIds } : {}),
+          }),
+        })
+        const body = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          alert(body?.error || 'ไม่สามารถบันทึกการแก้ไขได้')
+          return
+        }
+        await loadUsers()
+      } catch (e: any) {
+        alert(e?.message || 'เกิดข้อผิดพลาดของเครือข่าย')
+      } finally {
+        setSaving(false)
+      }
     } else {
       // Create a REAL auth account via the server-side API:
       //   POST /api/clinics/[clinicId]/users
@@ -204,32 +212,8 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
             roles: u.roles,
           })
         }
-        // Add the real account to the local role list
-        const newUser: UserWithRoles = {
-          id: u.id,
-          name: u.name,
-          username: u.username || '',
-          email: u.email || '',
-          phone: u.phone || '',
-          createdAt: new Date().toISOString(),
-          roles: u.roles,
-          branchIds: u.branchIds || [],
-          isActive: true,
-          forcePasswordChange: false,
-        }
-        setUsers(prev => [...prev, newUser])
-        // Sync practitioner into local cache if applicable
-        if (u.isPractitioner) {
-          addPractitioner({
-            id: `pract-${u.id}`,
-            name: u.name,
-            phone: form.phone || '',
-            branchId: (u.branchIds && u.branchIds[0]) || '',
-            active: true,
-            userId: u.id,
-            clinicId: currentClinicId,
-          })
-        }
+        // Re-fetch the member list so the new user appears from Supabase.
+        await loadUsers()
       } catch (e: any) {
         alert(e?.message || 'เกิดข้อผิดพลาดของเครือข่าย')
       } finally {
@@ -239,20 +223,35 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
     setShowAddModal(false)
   }
 
-  // Delete user
-  const deleteUser = (userId: string) => {
+  // Delete (soft-delete) user via the server API:
+  //   DELETE /api/clinics/[clinicId]/users/[userId]
+  const deleteUser = async (userId: string) => {
     if (!confirm('ต้องการลบผู้ใช้งานนี้ออกจากระบบหรือไม่?')) return
-    
-    // Remove practitioner if exists
-    const user = users.find(u => u.id === userId)
-    if (user?.roles.includes('practitioner')) {
-      const practitioner = practitioners.find(p => p.userId === userId)
-      if (practitioner) {
-        deletePractitioner(practitioner.id)
+    if (!currentClinicId) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/clinics/${encodeURIComponent(currentClinicId)}/users/${encodeURIComponent(userId)}`, {
+        method: 'DELETE',
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(body?.error || 'ไม่สามารถลบผู้ใช้ได้')
+        return
       }
+      // Remove practitioner from the local cache if it exists
+      const user = users.find(u => u.id === userId)
+      if (user?.roles.includes('practitioner')) {
+        const practitioner = practitioners.find(p => p.userId === userId)
+        if (practitioner) {
+          deletePractitioner(practitioner.id)
+        }
+      }
+      await loadUsers()
+    } catch (e: any) {
+      alert(e?.message || 'เกิดข้อผิดพลาดของเครือข่าย')
+    } finally {
+      setSaving(false)
     }
-    
-    setUsers(prev => prev.filter(u => u.id !== userId))
   }
 
   // Sync existing users with practitioners (cache-only; real accounts are
@@ -280,11 +279,27 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
     })
   }, [users, practitioners, addPractitioner, currentClinicId])
 
-  // Toggle user active status
-  const toggleUserActive = (userId: string) => {
-    setUsers(prev => prev.map(u => 
-      u.id === userId ? { ...u, isActive: !u.isActive } : u
-    ))
+  // Toggle user active status via the server API (PATCH isActive)
+  const toggleUserActive = async (user: UserWithRoles) => {
+    if (!currentClinicId) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/clinics/${encodeURIComponent(currentClinicId)}/users`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, isActive: !user.isActive }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(body?.error || 'ไม่สามารถเปลี่ยนสถานะผู้ใช้ได้')
+        return
+      }
+      await loadUsers()
+    } catch (e: any) {
+      alert(e?.message || 'เกิดข้อผิดพลาดของเครือข่าย')
+    } finally {
+      setSaving(false)
+    }
   }
 
   // Open add role modal
@@ -295,59 +310,109 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
     setShowAddRoleModal(true)
   }
 
-  // Add role to user
-  const handleAddRole = () => {
-    if (!selectedUserId) return
-    
-    setUsers(prev => prev.map(u => {
-      if (u.id === selectedUserId) {
-        // Check if role already exists
-        if (u.roles.includes(newRole)) {
-          alert('บทบาทนี้มีอยู่แล้ว')
-          return u
-        }
-        
-        const updatedBranchIds = newRole === 'practitioner' 
-          ? [...new Set([...(u.branchIds || []), ...newBranchIds])]
-          : u.branchIds
-        
-        return {
-          ...u,
-          roles: [...u.roles, newRole],
-          branchIds: updatedBranchIds
-        }
+  // Add role to user via the server API (PATCH roles)
+  const handleAddRole = async () => {
+    if (!selectedUserId || !currentClinicId) return
+
+    const target = users.find(u => u.id === selectedUserId)
+    if (!target) return
+    if (target.roles.includes(newRole)) {
+      alert('บทบาทนี้มีอยู่แล้ว')
+      return
+    }
+
+    const updatedBranchIds = newRole === 'practitioner'
+      ? [...new Set([...(target.branchIds || []), ...newBranchIds])]
+      : target.branchIds
+
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/clinics/${encodeURIComponent(currentClinicId)}/users`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: selectedUserId,
+          roles: [...target.roles, newRole],
+          branchIds: updatedBranchIds,
+        }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(body?.error || 'ไม่สามารถเพิ่มบทบาทได้')
+        return
       }
-      return u
-    }))
-    setShowAddRoleModal(false)
+      await loadUsers()
+      setShowAddRoleModal(false)
+    } catch (e: any) {
+      alert(e?.message || 'เกิดข้อผิดพลาดของเครือข่าย')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  // Remove role from user
-  const removeRole = (userId: string, role: ClinicRole) => {
+  // Remove role from user via the server API (PATCH roles)
+  const removeRole = async (userId: string, role: ClinicRole) => {
     if (!confirm(`ต้องการลบบทบาท ${roleConfig[role].label} ออกหรือไม่?`)) return
+    if (!currentClinicId) return
 
-    setUsers(prev => prev.map(u => {
-      if (u.id === userId) {
-        const newRoles = u.roles.filter(r => r !== role)
-        // If removing practitioner role, clear branchIds
-        const newBranchIds = role === 'practitioner' ? [] : u.branchIds
-        return { ...u, roles: newRoles, branchIds: newBranchIds }
+    const target = users.find(u => u.id === userId)
+    if (!target) return
+    const newRoles = target.roles.filter(r => r !== role)
+    const newBranchIds = role === 'practitioner' ? [] : target.branchIds
+
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/clinics/${encodeURIComponent(currentClinicId)}/users`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          roles: newRoles,
+          branchIds: newBranchIds,
+        }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(body?.error || 'ไม่สามารถลบบทบาทได้')
+        return
       }
-      return u
-    }))
+      await loadUsers()
+    } catch (e: any) {
+      alert(e?.message || 'เกิดข้อผิดพลาดของเครือข่าย')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  // Remove branch from practitioner
-  const removeBranch = (userId: string, branchId: string) => {
-    setUsers(prev => prev.map(u => {
-      if (u.id === userId) {
-        return {
-          ...u,
-          branchIds: (u.branchIds || []).filter(b => b !== branchId)
-        }
+  // Remove branch from practitioner via the server API (PATCH branchIds)
+  const removeBranch = async (userId: string, branchId: string) => {
+    if (!currentClinicId) return
+
+    const target = users.find(u => u.id === userId)
+    if (!target) return
+
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/clinics/${encodeURIComponent(currentClinicId)}/users`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          roles: target.roles,
+          branchIds: (target.branchIds || []).filter(b => b !== branchId),
+        }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(body?.error || 'ไม่สามารถลบสาขาได้')
+        return
       }
-      return u
-    }))
+      await loadUsers()
+    } catch (e: any) {
+      alert(e?.message || 'เกิดข้อผิดพลาดของเครือข่าย')
+    } finally {
+      setSaving(false)
+    }
   }
 
   // Reset password for a staff/user
@@ -400,8 +465,8 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
           <p className="text-sm text-gray-500">
             จัดการผู้ใช้งานและกำหนดบทบาท • 1 คนมีได้หลายบทบาท
           </p>
-          {/* Guidance for owner */}
-          {isOwner && (
+          {/* Guidance for users with manage permission */}
+          {canManageUsers && (
             <div className="mt-2 p-3 bg-indigo-50 border border-indigo-100 rounded-xl">
               <p className="text-xs text-indigo-600 leading-relaxed">
                 💡 <strong>Owner</strong> ใช้อีเมลในการเข้าสู่ระบบ •{' '}
@@ -413,7 +478,7 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
           )
           }
         </div>
-        {isOwner && (
+        {canManageUsers && (
           <button
             onClick={openAddUser}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-600 transition-colors"
@@ -436,12 +501,23 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
             </tr>
           </thead>
           <tbody>
-            {clinicUsers.length === 0 ? (
+            {loadingUsers ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-12 text-center text-gray-400">
+                  <div className="mx-auto w-8 h-8 rounded-full border-2 border-indigo-200 border-t-indigo-500 animate-spin mb-3" />
+                  <p className="font-medium">กำลังโหลดรายชื่อผู้ใช้...</p>
+                </td>
+              </tr>
+            ) : clinicUsers.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-4 py-12 text-center text-gray-400">
                   <Users className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                   <p className="font-medium">ยังไม่มีผู้ใช้ในคลินิก</p>
-                  <p className="text-sm mt-1">กดปุ่ม "เพิ่มผู้ใช้" เพื่อเริ่มต้น</p>
+                  {canManageUsers ? (
+                    <p className="text-sm mt-1">กดปุ่ม "เพิ่มผู้ใช้" เพื่อเริ่มต้น</p>
+                  ) : (
+                    <p className="text-sm mt-1">ผู้ใช้ที่มีสิทธิ์จัดการจะสามารถเพิ่มผู้ใช้ได้</p>
+                  )}
                 </td>
               </tr>
             ) : (
@@ -482,7 +558,7 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
                       {user.roles.map(role => (
                         <div key={role} className="flex items-center gap-1">
                           <RoleBadge role={role} />
-                          {isOwner && role !== 'owner' && (
+                          {canManageUserRow(user) && role !== 'owner' && (
                             <button
                               onClick={() => removeRole(user.id, role)}
                               className="p-0.5 rounded hover:bg-red-100 transition-colors"
@@ -493,7 +569,7 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
                           )}
                         </div>
                       ))}
-                      {isOwner && user.roles.length < Object.keys(roleConfig).length && (
+                      {canManageUserRow(user) && user.roles.length < Object.keys(roleConfig).length && (
                         <button
                           onClick={() => openAddRole(user.id)}
                           className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors"
@@ -514,7 +590,7 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
                             return (
                               <span key={branchId} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-600">
                                 {branch?.name || branchId}
-                                {isOwner && (
+                                {canManageUserRow(user) && (
                                   <button
                                     onClick={() => removeBranch(user.id, branchId)}
                                     className="hover:text-red-500"
@@ -532,20 +608,29 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <button
-                      onClick={() => toggleUserActive(user.id)}
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors ${
-                        user.isActive
-                          ? 'bg-green-100 text-green-600 hover:bg-green-200'
-                          : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
-                      }`}
-                    >
-                      {user.isActive ? '✓ ใช้งาน' : '○ ปิดใช้งาน'}
-                    </button>
+                    {canManageUserRow(user) ? (
+                      <button
+                        onClick={() => toggleUserActive(user)}
+                        disabled={saving}
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors ${
+                          user.isActive
+                            ? 'bg-green-100 text-green-600 hover:bg-green-200'
+                            : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                        }`}
+                      >
+                        {user.isActive ? '✓ ใช้งาน' : '○ ปิดใช้งาน'}
+                      </button>
+                    ) : (
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                        user.isActive ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
+                      }`}>
+                        {user.isActive ? '✓ ใช้งาน' : '○ ปิดใช้งาน'}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      {isOwner && (
+                      {canManageUserRow(user) && (
                         <>
                           <button
                             onClick={() => openEditUser(user)}
@@ -565,7 +650,7 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
                           {user.roles.some(r => r !== 'owner') && (
                             <button
                               onClick={() => handleResetPassword(user.id, user.roles)}
-                              disabled={resettingPassword === user.id}
+                              disabled={resettingPassword === user.id || saving}
                               className="p-1.5 rounded-lg hover:bg-amber-50 transition-colors"
                               title="รีเซ็ตรหัสผ่าน"
                             >
@@ -588,7 +673,7 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
       </div>
 
       {/* Permission Matrix */}
-      {isOwner && (
+      {canManageUsers && (
         <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-4">
             <Shield className="w-4 h-4 text-indigo-500" />
@@ -682,7 +767,7 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   {Object.entries(roleConfig)
-                    .filter(([key]) => key !== 'platform_owner' && key !== 'owner')
+                    .filter(([key]) => key !== 'platform_owner' && key !== 'owner' && !(currentRole === 'manager' && key === 'manager'))
                     .map(([key, cfg]) => {
                       const isSelected = editingUser
                         ? form.roles.includes(key as ClinicRole)
@@ -788,7 +873,7 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
               </button>
               <button
                 onClick={handleSaveUser}
-                disabled={!form.name || form.roles.length === 0 || saving}
+                disabled={!form.name || saving}
                 className="flex-1 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {saving ? '⏳ กำลังสร้างบัญชี...' : editingUser ? 'บันทึกการแก้ไข' : 'เพิ่มผู้ใช้'}
@@ -952,7 +1037,12 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
                 <label className="block text-sm font-medium text-gray-700 mb-2">เลือกบทบาทที่ต้องการเพิ่ม</label>
                 <div className="space-y-2">
                   {Object.entries(roleConfig)
-                    .filter(([key]) => key !== 'platform_owner' && !users.find(u => u.id === selectedUserId)?.roles.includes(key as ClinicRole))
+                    .filter(([key]) =>
+                      key !== 'platform_owner' &&
+                      key !== 'owner' &&
+                      !(currentRole === 'manager' && key === 'manager') &&
+                      !users.find(u => u.id === selectedUserId)?.roles.includes(key as ClinicRole)
+                    )
                     .map(([key, cfg]) => (
                       <button
                         key={key}
