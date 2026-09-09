@@ -29,6 +29,9 @@ ON CONFLICT (id) DO UPDATE SET
 -- 2. SECURITY DEFINER helper — is the caller an ACTIVE member of this clinic?
 --    SECURITY DEFINER bypasses clinic_memberships RLS, so this check is safe
 --    to call from storage policies.
+--    NOTE: clinic_memberships.user_id is TEXT (stores the auth UUID as text), so
+--    auth.uid() (uuid) must be cast to text for the comparison — never cast the
+--    TEXT column to uuid.
 CREATE OR REPLACE FUNCTION public.is_clinic_member(p_clinic_id TEXT)
 RETURNS BOOLEAN
 LANGUAGE sql
@@ -38,7 +41,7 @@ AS $$
   SELECT EXISTS (
     SELECT 1 FROM public.clinic_memberships cm
     WHERE cm.clinic_id = p_clinic_id
-      AND cm.user_id = auth.uid()
+      AND cm.user_id = auth.uid()::text
       AND cm.is_active = TRUE
   );
 $$;
