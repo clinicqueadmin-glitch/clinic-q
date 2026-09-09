@@ -106,21 +106,41 @@ function buildSyntheticAuthEmail(authUserId: string): string {
 }
 
 /**
- * Generate default staff username from clinic code and role.
+ * Generate a unique staff username from clinic code + role + running number.
  *
- * Examples:
- *   SM4827-manager
- *   SM4827-staff
- *   SM4827-practitioner
- *   SM4827-staff01   (extra staff accounts)
+ * Format: {clinicCode}-{roleKey}{NN}
+ *   CL4469-manager01
+ *   CL4469-staff01
+ *   CL4469-practitioner01
+ *   CL4469-manager02   (second manager — running number increments)
+ *
+ * Uniqueness is checked against staff_usernames (clinic-scoped) before
+ * returning, and the running number is incremented until a free username
+ * is found. Never returns a username that already exists.
  */
-function buildDefaultUsername(clinicCode: string, role: string, index?: number): string {
-  if (role === 'manager') return `${clinicCode}-manager`
-  if (role === 'front_desk' || role === 'staff') return `${clinicCode}-staff`
-  if (role === 'practitioner') return `${clinicCode}-practitioner`
-  // For other roles, use a counter suffix
-  const suffix = index != null ? String(index).padStart(2, '0') : '01'
-  return `${clinicCode}-staff${suffix}`
+async function generateUniqueUsername(
+  db: any,
+  clinicCode: string,
+  role: string,
+  clinicId: string,
+): Promise<string> {
+  const roleKey = role === 'front_desk' ? 'staff'
+    : role === 'manager' ? 'manager'
+    : role === 'practitioner' ? 'practitioner'
+    : 'staff'
+
+  for (let i = 1; i <= 999; i++) {
+    const candidate = `${clinicCode}-${roleKey}${String(i).padStart(2, '0')}`
+    const { data: existing } = await db
+      .from('staff_usernames')
+      .select('id')
+      .eq('clinic_id', clinicId)
+      .eq('username', candidate)
+      .maybeSingle()
+    if (!existing) return candidate
+  }
+
+  throw new Error('UNABLE_TO_GENERATE_USERNAME')
 }
 
 /**
@@ -269,20 +289,23 @@ export async function POST(
     return NextResponse.json({ error: 'at least one role is required' }, { status: 400 })
   }
 
-  // Phone validation: if provided, must be exactly 10 digits
-  if (phone && !/^[0-9]{10}$/.test(phone.replace(/[^0-9]/g, ''))) {
+  // Phone validation: if provided, must be EXACTLY 10 digits.
+  // 9/11 digits, letters, spaces and symbols are all rejected — no
+  // silent stripping or truncation.
+  if (phone && !/^[0-9]{10}$/.test(phone)) {
     return NextResponse.json(
-      { error: 'เบอร์โทรศัพท์ต้องเป็นตัวเลข 10 หลัก 정확히' },
+      { error: 'กรุณากรอกเบอร์โทรศัพท์ 10 หลัก' },
       { status: 400 }
     )
   }
-  // Normalize phone to digits only
-  const normalizedPhone = phone.replace(/[^0-9]/g, '')
+  const normalizedPhone = phone
 
-  // Username: required for staff accounts; optional for owners
-  const requiresUsername = !isPractitioner || roles.includes('practitioner')
-  if (!username && requiresUsername) {
-    // Will be auto-generated below
+  // Role whitelist: only roles allowed by the clinic_memberships CHECK
+  // constraint may be created through this endpoint.
+  const ALLOWED_ROLES = ['owner', 'manager', 'front_desk', 'practitioner']
+  const invalidRole = (roles as string[]).find(r => !ALLOWED_ROLES.includes(r))
+  if (invalidRole) {
+    return NextResponse.json({ error: 'บทบาทไม่ถูกต้อง' }, { status: 400 })
   }
 
   // ── 4. Rate limit ─────────────────────────────────────────────
@@ -303,7 +326,14 @@ export async function POST(
   const clinicCode = clinic?.code || 'CL0000'
 
   // ── 7. Resolve or generate username ───────────────────────────
-  const finalUsername = username || buildDefaultUsername(clinicCode, roles[0], undefined)
+  // If the client supplied a username, keep it. Otherwise auto-generate a
+  // unique {code}-{role}{NN} username server-side (never from the client).
+  let finalUsername: string
+  if (username) {
+    finalUsername = username
+  } else {
+    finalUsername = await generateUniqueUsername(db, clinicCode, roles[0], clinicId)
+  }
 
   // ── 8. Duplicate checks ────────────────────────────────────────
   // Check username uniqueness in staff_usernames
@@ -328,6 +358,30 @@ export async function POST(
       .maybeSingle()
     if (existingPractitioner) {
       return NextResponse.json({ error: 'practitioner already exists in this clinic' }, { status: 409 })
+    }
+  }
+
+  // Duplicate phone check: reject creating a second user with the same phone
+  // inside the same clinic (prevents accidental duplicate staff accounts).
+  if (normalizedPhone) {
+    const { data: existingPhoneUser } = await db
+      .from('users')
+      .select('id')
+      .eq('phone', normalizedPhone)
+      .maybeSingle()
+    if (existingPhoneUser) {
+      const { data: sameClinicMember } = await db
+        .from('clinic_memberships')
+        .select('id')
+        .eq('user_id', existingPhoneUser.id)
+        .eq('clinic_id', clinicId)
+        .maybeSingle()
+      if (sameClinicMember) {
+        return NextResponse.json(
+          { error: 'เบอร์โทรศัพท์นี้ถูกใช้โดยผู้ใช้ในคลินิกนี้แล้ว' },
+          { status: 409 }
+        )
+      }
     }
   }
 
@@ -475,6 +529,9 @@ export async function POST(
     }
     if (msg === 'AUTH_NO_ID') {
       return NextResponse.json({ error: 'failed to resolve auth account' }, { status: 500 })
+    }
+    if (msg === 'UNABLE_TO_GENERATE_USERNAME') {
+      return NextResponse.json({ error: 'ไม่สามารถสร้าง Username อัตโนมัติได้ กรุณาลองใหม่' }, { status: 500 })
     }
 
     return NextResponse.json({ error: 'failed to create user' }, { status: 500 })

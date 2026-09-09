@@ -64,11 +64,6 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
 
   // Reset form to defaults
   const resetForm = () => setForm({ name: '', username: '', email: '', phone: '', roles: [], branchIds: [] })
-
-  // Get clinic code for username suggestions
-  const clinicCode = (typeof currentClinic === 'object' && currentClinic && 'code' in currentClinic)
-    ? (currentClinic as any).code as string | undefined
-    : undefined
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
   const [showAddRoleModal, setShowAddRoleModal] = useState(false)
   const [newRole, setNewRole] = useState<ClinicRole>('front_desk')
@@ -76,6 +71,7 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
   const [tempCredentials, setTempCredentials] = useState<{ username: string; tempPassword: string; name: string; roles: ClinicRole[] } | null>(null)
   const [resettingPassword, setResettingPassword] = useState<string | null>(null)
   const [resetTempPassword, setResetTempPassword] = useState<string | null>(null)
+  const [copiedField, setCopiedField] = useState<'username' | 'password' | null>(null)
 
   const branches = branchData.branches.filter(b => b.active)
 
@@ -148,47 +144,9 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
     setShowAddModal(true)
   }
 
-  // Generate a suggested username from name + clinic code
-  const suggestUsername = (name: string): string => {
-    const cleaned = name
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '')
-      .replace(/\s+/g, '-')
-      .replace(/-+/g, '-')
-      .slice(0, 20)
-    const prefix = clinicCode ? `${clinicCode}-` : 'CL-'
-    return prefix + (cleaned || 'staff')
-  }
-
   // Save user
   const handleSaveUser = async () => {
     if (!form.name || !form.roles.length) return
-
-    // For staff (non-practitioner, non-owner): username is required
-    const isStaff = form.roles.some(r => r !== 'owner' && r !== 'practitioner')
-    const isPractitioner = form.roles.includes('practitioner')
-    if (isStaff || isPractitioner) {
-      if (!form.username.trim()) {
-        alert('กรุณากรอก Username สำหรับผู้ใช้ประเภทนี้')
-        return
-      }
-      // Validate username: alphanumeric, hyphens, underscores only
-      if (!/^[a-zA-Z0-9_-]+$/.test(form.username.trim())) {
-        alert('Username ต้องเป็นตัวอักษร ตัวเลข ขีดล่าง หรือขีดกลางเท่านั้น')
-        return
-      }
-    }
-
-    // For owner: email is required
-    if (form.roles.includes('owner') && !form.email.trim()) {
-      alert('กรุณากรอก Email สำหรับเจ้าของคลินิก')
-      return
-    }
-    // Email format check if provided
-    if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
-      alert('ฟอร์มัตอีเมลไม่ถูกต้อง')
-      return
-    }
 
     if (editingUser) {
       // Update existing user (cache only — real account update via server API)
@@ -225,8 +183,6 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: form.name,
-            username: form.username || undefined,
-            email: form.email || undefined,
             phone: form.phone || undefined,
             roles: form.roles,
             branchIds: form.branchIds,
@@ -449,9 +405,9 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
             <div className="mt-2 p-3 bg-indigo-50 border border-indigo-100 rounded-xl">
               <p className="text-xs text-indigo-600 leading-relaxed">
                 💡 <strong>Owner</strong> ใช้อีเมลในการเข้าสู่ระบบ •{' '}
-                <strong>Manager / Staff / Practitioner</strong> ใช้ Username + รหัสผ่านที่ระบบสร้างให้
+                <strong>Manager / Staff / Practitioner</strong> ใช้ Username + รหัสผ่านที่ระบบสร้างให้โดยอัตโนมัติ
                 {' '}•{' '}
-                เมื่อสร้างผู้ใช้สำเร็จ ระบบจะแสดงรหัสผ่านชั่วคราวให้ <span className="font-medium">ครั้งเดียวเท่านั้น</span>
+                เมื่อสร้างผู้ใช้สำเร็จ ระบบจะแสดง Username และรหัสผ่านชั่วคราวให้ <span className="font-medium">ครั้งเดียวเท่านั้น</span>
               </p>
             </div>
           )
@@ -698,46 +654,6 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
                 />
               </div>
 
-              {/* Email (owner only — staff use username) */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  อีเมล {form.roles.includes('owner') ? '*' : '(ไม่บังคับ)'}
-                </label>
-                <input 
-                  type="email"
-                  value={form.email} 
-                  onChange={(e) => setForm({ ...form, email: e.target.value })} 
-                  className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" 
-                  placeholder={form.roles.includes('owner') ? 'email@example.com' : 'เฉพาะเจ้าของคลินิก'}
-                />
-              </div>
-
-              {/* Username (staff/manager/practitioner — required for login) */}
-              {form.roles.some(r => r !== 'owner') && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Username {form.roles.length > 0 && !form.roles.includes('owner') ? '*' : '(ไม่บังคับ)'}
-                  </label>
-                  <div className="flex gap-2">
-                    <input 
-                      value={form.username} 
-                      onChange={(e) => setForm({ ...form, username: e.target.value })} 
-                      className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" 
-                      placeholder="เช่น SM4827-staff01"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setForm({ ...form, username: suggestUsername(form.name) })}
-                      className="px-3 py-2 rounded-xl bg-gray-100 text-gray-600 text-xs font-medium hover:bg-gray-200 transition-colors whitespace-nowrap"
-                      title="สร้าง Username อัตโนมัติจากชื่อ"
-                    >
-                      ✨ สร้างอัตโนมัติ
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-400 mt-1">ใช้สำหรับเข้าสู่ระบบแทนอีเมล · ตัวอักษร ตัวเลข ขีดล่าง หรือขีดกลางเท่านั้น</p>
-                </div>
-              )}
-
               {/* Phone */}
               <PhoneInput
                 label="เบอร์โทรศัพท์"
@@ -745,64 +661,78 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
                 onChange={(v) => setForm({ ...form, phone: v })}
               />
 
-              {/* Account info — password is generated by server */}
+              {/* Account info — username + password generated by server */}
               {!editingUser && (
                 <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
                   <p className="text-sm text-blue-700 leading-relaxed">
-                    🔑 ระบบจะสร้างรหัสผ่านชั่วคราวให้โดยอัตโนมัติ
+                    🔑 ระบบจะสร้าง <strong>Username</strong> และ <strong>รหัสผ่านชั่วคราว</strong> ให้โดยอัตโนมัติ
                     {' '}•{' '}
-                    ผู้ใช้สามารถเข้าสู่ระบบได้ทันทีด้วยรหัสผ่านชั่วคราวนี้
+                    ผู้ใช้เข้าสู่ระบบด้วย Username + รหัสผ่านชั่วคราวได้ทันที
                   </p>
-                  {form.roles.some(r => r !== 'owner') && (
-                    <p className="text-xs text-blue-600 mt-2">
-                      Username ใช้สำหรับเข้าสู่ระบบแทนอีเมล
-                    </p>
-                  )}
+                  <p className="text-xs text-blue-600 mt-2">
+                    รหัสผ่านชั่วคราวจะแสดงเพียงครั้งเดียวหลังสร้างสำเร็จ
+                  </p>
                 </div>
               )}
 
-              {/* Roles */}
+              {/* Roles — single select for new users (username auto-generated per role) */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">บทบาทในคลินิก (เลือกได้หลายบทบาท)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  บทบาท * {editingUser ? '(เลือกได้หลายบทบาท)' : '(เลือก 1 บทบาท)'}
+                </label>
                 <div className="grid grid-cols-2 gap-2">
-                  {Object.entries(roleConfig).filter(([key]) => key !== 'platform_owner').map(([key, cfg]) => {
-                    const isSelected = form.roles.includes(key as ClinicRole)
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => {
-                          if (isSelected) {
-                            setForm({ 
-                              ...form, 
-                              roles: form.roles.filter(r => r !== key),
-                              branchIds: key === 'practitioner' ? [] : form.branchIds
-                            })
-                          } else {
-                            setForm({ ...form, roles: [...form.roles, key as ClinicRole] })
-                          }
-                        }}
-                        className={`flex items-center gap-2 p-3 rounded-xl border-2 transition-all text-left ${
-                          isSelected
-                            ? 'border-current'
-                            : 'border-gray-200 hover:border-gray-300'
-                        }`}
-                        style={{ 
-                          borderColor: isSelected ? cfg.color : undefined,
-                          backgroundColor: isSelected ? cfg.bgColor : 'white'
-                        }}
-                      >
-                        <span className="text-lg">{cfg.icon}</span>
-                        <div className="flex-1">
-                          <div className="font-medium text-sm" style={{ color: cfg.color }}>{cfg.label}</div>
-                          <div className="text-[10px] text-gray-500">{cfg.labelEn}</div>
-                        </div>
-                        {isSelected && (
-                          <span className="text-green-500">✓</span>
-                        )}
-                      </button>
-                    )
-                  })}
+                  {Object.entries(roleConfig)
+                    .filter(([key]) => key !== 'platform_owner' && key !== 'owner')
+                    .map(([key, cfg]) => {
+                      const isSelected = editingUser
+                        ? form.roles.includes(key as ClinicRole)
+                        : form.roles[0] === key
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => {
+                            if (editingUser) {
+                              if (isSelected) {
+                                setForm({ 
+                                  ...form, 
+                                  roles: form.roles.filter(r => r !== key),
+                                  branchIds: key === 'practitioner' ? [] : form.branchIds
+                                })
+                              } else {
+                                setForm({ ...form, roles: [...form.roles, key as ClinicRole] })
+                              }
+                            } else {
+                              // Add mode: single role → the system generates the
+                              // username ({code}-{role}NN) and temp password.
+                              setForm({
+                                ...form,
+                                roles: [key as ClinicRole],
+                                branchIds: key === 'practitioner' ? form.branchIds : [],
+                              })
+                            }
+                          }}
+                          className={`flex items-center gap-2 p-3 rounded-xl border-2 transition-all text-left ${
+                            isSelected
+                              ? 'border-current'
+                              : 'border-gray-200 hover:border-gray-300'
+                          }`}
+                          style={{ 
+                            borderColor: isSelected ? cfg.color : undefined,
+                            backgroundColor: isSelected ? cfg.bgColor : 'white'
+                          }}
+                        >
+                          <span className="text-lg">{cfg.icon}</span>
+                          <div className="flex-1">
+                            <div className="font-medium text-sm" style={{ color: cfg.color }}>{cfg.label}</div>
+                            <div className="text-[10px] text-gray-500">{cfg.labelEn}</div>
+                          </div>
+                          {isSelected && (
+                            <span className="text-green-500">✓</span>
+                          )}
+                        </button>
+                      )
+                    })}
                 </div>
               </div>
 
@@ -852,7 +782,7 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
                 </div>
               )}
             </div>
-            <div className="flex gap-3 p-6 border-t border-gray-100 sticky bottom-0 bg-white">
+            <div className="flex gap-3 p-6 border-t border-gray-100 bg-white">
               <button onClick={() => setShowAddModal(false)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50">
                 ยกเลิก
               </button>
@@ -868,21 +798,24 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
         </div>
       )}
 
-      {/* ═══ Temporary Credentials Modal (shown once after account creation) ═══ */}
+      {/* ═══ Success Modal — Username + Temp Password (shown once after creation) ═══ */}
       {tempCredentials && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="bg-gradient-to-r from-amber-500 to-orange-500 p-5 text-center">
+            <div className="bg-gradient-to-r from-emerald-500 to-teal-500 p-5 text-center">
               <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3">
-                <Lock className="w-7 h-7 text-white" />
+                <CheckCircle2 className="w-7 h-7 text-white" />
               </div>
-              <h3 className="text-lg font-extrabold text-white">บันทึกรหัสผ่านชั่วคราว</h3>
-              <p className="text-xs text-white/80 mt-1">แสดงเพียงครั้งเดียว — ระบบจะไม่สามารถดูซ้ำได้อีก</p>
+              <h3 className="text-lg font-extrabold text-white">สร้างผู้ใช้งานสำเร็จ</h3>
+              <p className="text-xs text-white/80 mt-1">บันทึกข้อมูลการเข้าสู่ระบบนี้ไว้ให้เรียบร้อย</p>
             </div>
             <div className="p-6 space-y-4">
               <div className="bg-gray-50 rounded-xl p-4">
-                <div className="text-sm text-gray-500 mb-1">สำหรับ: <span className="font-medium text-gray-900">{tempCredentials.name}</span></div>
+                <div className="text-sm text-gray-500 mb-1">
+                  ชื่อ: <span className="font-medium text-gray-900">{tempCredentials.name}</span>
+                </div>
                 <div className="flex items-center gap-2 text-sm text-gray-600 mb-3">
+                  บทบาท:
                   {tempCredentials.roles.map(r => (
                     <span key={r} className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-indigo-100 text-indigo-700">
                       {roleConfig[r]?.label || r}
@@ -892,68 +825,51 @@ export default function UserManagement({ isOwner = false }: { isOwner?: boolean 
                 <div className="space-y-2">
                   <div>
                     <div className="text-xs text-gray-400 mb-0.5">Username</div>
-                    <div className="flex items-center gap-2">
-                      <code className="flex-1 bg-white border border-gray-200 px-3 py-2 rounded-lg text-sm font-mono text-gray-900 break-all">
-                        {tempCredentials.username}
-                      </code>
-                      <button
-                        type="button"
-                        onClick={() => navigator.clipboard?.writeText(tempCredentials.username).then(() => {
-                          const btn = document.querySelector('[data-copy-username]') as HTMLButtonElement
-                          if (btn) {
-                            btn.textContent = '✓ คัดลอก'
-                            setTimeout(() => { btn.textContent = 'คัดลอก' }, 2000)
-                          }
-                        }).catch(() => {})}
-                        className="px-3 py-2 rounded-lg bg-indigo-500 text-white text-xs font-medium hover:bg-indigo-600 transition-colors data-copy-username"
-                      >
-                        📋 คัดลอก
-                      </button>
-                    </div>
+                    <code className="block bg-white border border-gray-200 px-3 py-2 rounded-lg text-sm font-mono text-gray-900 break-all">
+                      {tempCredentials.username}
+                    </code>
                   </div>
                   <div>
                     <div className="text-xs text-gray-400 mb-0.5">รหัสผ่านชั่วคราว</div>
-                    <div className="flex items-center gap-2">
-                      <code className="flex-1 bg-white border border-gray-200 px-3 py-2 rounded-lg text-sm font-mono text-gray-900 tracking-wider">
-                        {tempCredentials.tempPassword}
-                      </code>
-                      <button
-                        type="button"
-                        onClick={() => navigator.clipboard?.writeText(tempCredentials.tempPassword).then(() => {
-                          const btn = document.querySelector('[data-copy-password]') as HTMLButtonElement
-                          if (btn) {
-                            btn.textContent = '✓ คัดลอก'
-                            setTimeout(() => { btn.textContent = 'คัดลอก' }, 2000)
-                          }
-                        }).catch(() => {})}
-                        className="px-3 py-2 rounded-lg bg-indigo-500 text-white text-xs font-medium hover:bg-indigo-600 transition-colors data-copy-password"
-                      >
-                        📋 คัดลอก
-                      </button>
-                    </div>
+                    <code className="block bg-white border border-gray-200 px-3 py-2 rounded-lg text-sm font-mono text-gray-900 tracking-wider">
+                      {tempCredentials.tempPassword}
+                    </code>
                   </div>
                 </div>
               </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
-                <p className="text-xs text-blue-700 leading-relaxed">
-                  ✅ ผู้ใช้สามารถเข้าสู่ระบบได้ทันทีด้วยรหัสผ่านชั่วคราวนี้
-                  {' '}•{' '}
-                  หากลืมรหัสผ่าน ผู้จัดการสามารถรีเซ็ตได้จากหน้าจัดการผู้ใช้
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                <p className="text-xs text-amber-700 leading-relaxed">
+                  ⚠️ <strong>กรุณาบันทึกข้อมูลการเข้าสู่ระบบนี้ไว้</strong>
+                  {' '}— รหัสผ่านชั่วคราวจะแสดงเพียงครั้งเดียว ระบบจะไม่สามารถแสดงซ้ำได้อีก
                 </p>
               </div>
             </div>
             <div className="flex gap-3 p-6 border-t border-gray-100 bg-gray-50">
               <button
-                onClick={() => setTempCredentials(null)}
+                onClick={() => {
+                  navigator.clipboard?.writeText(tempCredentials.username).catch(() => {})
+                  setCopiedField('username')
+                  setTimeout(() => setCopiedField(null), 2000)
+                }}
                 className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-white transition-colors"
               >
-                ปิด
+                {copiedField === 'username' ? '✓ คัดลอกแล้ว' : 'คัดลอก Username'}
               </button>
               <button
-                onClick={() => { navigator.clipboard?.writeText(tempCredentials!.tempPassword).catch(() => {}); setTempCredentials(null) }}
-                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white text-sm font-medium hover:from-amber-600 hover:to-orange-600 transition-colors"
+                onClick={() => {
+                  navigator.clipboard?.writeText(tempCredentials.tempPassword).catch(() => {})
+                  setCopiedField('password')
+                  setTimeout(() => setCopiedField(null), 2000)
+                }}
+                className="flex-1 py-2.5 rounded-xl border border-amber-200 text-sm font-medium text-amber-700 hover:bg-white transition-colors"
               >
-                คัดลอกรหัสผ่าน & ปิด
+                {copiedField === 'password' ? '✓ คัดลอกแล้ว' : 'คัดลอกรหัสผ่าน'}
+              </button>
+              <button
+                onClick={() => setTempCredentials(null)}
+                className="flex-1 py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-medium hover:bg-emerald-600 transition-colors"
+              >
+                เสร็จสิ้น
               </button>
             </div>
           </div>
