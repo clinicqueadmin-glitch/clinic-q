@@ -52,6 +52,7 @@ function loadPractitioners(clinicType: ClinicType, clinicId?: string | null): Pr
       const parsed = JSON.parse(sharedSaved)
       if (Array.isArray(parsed)) {
         // Only include practitioners that explicitly belong to THIS clinic
+        // Legacy practitioners without clinicId are excluded to prevent cross-clinic leakage
         const filtered = parsed.filter((p: any) => p.clinicId && p.clinicId === clinicId)
         return filtered.map((p: any) => ({
           ...p,
@@ -135,11 +136,24 @@ export function PractitionerProvider({ children, clinicType, clinicId }: { child
   const saveToStorage = useCallback((data: Practitioner[]) => {
     const storageKey = clinicId ? `clinic-practitioners-${clinicId}` : 'clinic-practitioners'
     localStorage.setItem(storageKey, JSON.stringify(data))
-    // Also save to Supabase in background
+    // Also merge into Supabase branch_data — never overwrite the full row.
+    // Read the current branch_data first to preserve branches + procedures,
+    // then replace only the practitioners field.
     if (clinicId) {
       const clinicPractitioners = data.filter(p => p.clinicId === clinicId)
-      import('./clinic-data').then(({ setClinicSetting }) => {
-        setClinicSetting(clinicId, 'branch_data', { practitioners: clinicPractitioners })
+      import('./clinic-data').then(async ({ setClinicSetting, getClinicSetting }) => {
+        try {
+          const existing = await getClinicSetting(clinicId, 'branch_data') as any
+          const currentBranchData = (existing && typeof existing === 'object' && existing.branches) ? existing : {}
+          const merged = {
+            ...currentBranchData,
+            practitioners: clinicPractitioners,
+          }
+          await setClinicSetting(clinicId, 'branch_data', merged)
+        } catch {
+          // Fallback: write practitioners only if read fails (avoids total data loss)
+          await setClinicSetting(clinicId, 'branch_data', { practitioners: clinicPractitioners })
+        }
       }).catch(() => {})
     }
   }, [clinicId])
@@ -197,8 +211,8 @@ export function PractitionerProvider({ children, clinicType, clinicId }: { child
   return (
     <PractitionerContext.Provider value={{ 
       practitioners: filteredPractitioners,
-      updatePractitioner, 
-      addPractitioner, 
+      updatePractitioner,
+      addPractitioner,
       deletePractitioner,
       togglePractitioner,
       getPractitionerByUserId,

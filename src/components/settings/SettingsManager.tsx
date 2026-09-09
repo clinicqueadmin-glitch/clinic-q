@@ -198,6 +198,29 @@ export default function SettingsManager() {
       { id: '1', type: 'text' as const, url: '', text: '🦷 โปรโมชั่นพิเศษ! จองคิวออนไลน์วันนี้', duration: 15, active: true },
     ]
   })
+  // Sync TV Ads from Supabase on mount — Supabase is the source of truth.
+  useEffect(() => {
+    if (!currentClinicId) return
+    const loadTvAds = async () => {
+      if (!isSupabaseReady()) return
+      const sb = getSupabase()
+      if (!sb) return
+      try {
+        const { data: row } = await sb
+          .from('clinic_settings')
+          .select('setting_value')
+          .eq('clinic_id', currentClinicId)
+          .eq('setting_key', 'tv_ads')
+          .maybeSingle()
+        const raw = row?.setting_value
+        if (raw && Array.isArray(raw) && raw.length > 0) {
+          setTvAds(raw as TVAd[])
+          try { localStorage.setItem(tvAdsKey, JSON.stringify(raw)) } catch {}
+        }
+      } catch {}
+    }
+    void loadTvAds()
+  }, [currentClinicId, tvAdsKey])
   const [showAdModal, setShowAdModal] = useState(false)
   const [editingAd, setEditingAd] = useState<TVAd | null>(null)
   const [adForm, setAdForm] = useState<{ type: 'text'; url: string; text: string; duration: number }>({ type: 'text', url: '', text: '', duration: 10 })

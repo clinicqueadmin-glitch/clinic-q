@@ -178,11 +178,9 @@ export default function BranchRoomSettings() {
     if (!branchForm.name.trim()) { showToast('กรุณากรอกชื่อสาขา', 'error'); return }
     if (editingBranch) {
       setData(prev => ({ ...prev, branches: prev.branches.map(b => b.id === editingBranch.id ? { ...b, name: branchForm.name } : b) }))
-      showToast('แก้ไขสาขาสำเร็จ!')
     } else {
       const newBranch: Branch = { id: `branch-${Date.now()}`, name: branchForm.name, category: currentClinic || 'dental', procedures: [], active: true }
       setData(prev => ({ ...prev, branches: [...prev.branches, newBranch] }))
-      showToast('เพิ่มสาขาสำเร็จ!')
     }
     setShowBranchModal(false)
     scheduleSave()
@@ -200,14 +198,14 @@ export default function BranchRoomSettings() {
           : b
         ),
       }))
-      showToast('แก้ไขหัตถการสำเร็จ!')
+
     } else {
       const newProc: Procedure = { id: `proc-${Date.now()}`, name: procForm.name, estimatedDuration: procForm.estimatedDuration, active: true }
       setData(prev => ({
         ...prev,
         branches: prev.branches.map(b => b.id === branchId ? { ...b, procedures: [...b.procedures, newProc] } : b),
       }))
-      showToast('เพิ่มหัตถการสำเร็จ!')
+
     }
     setShowProcedureModal(false)
     scheduleSave()
