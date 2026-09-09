@@ -116,13 +116,55 @@ export default function TVDisplay() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [currentTime, setCurrentTime] = useState(new Date())
 
+  // TV display options (persisted together with ads as a single tv_ads object)
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark')
+  const [fontSize, setFontSize] = useState<'normal' | 'large' | 'xlarge'>('large')
+  const [maxDisplay, setMaxDisplay] = useState(10)
+  const [showWaiting, setShowWaiting] = useState(true)
+  const [showServing, setShowServing] = useState(true)
+  const [showCompleted, setShowCompleted] = useState(false)
+
   // Ad rotation state
   const [currentAdIndex, setCurrentAdIndex] = useState(0)
 
-  // Load ads from Supabase clinic_settings or localStorage
+  // Normalize one ad entry — supports the legacy array shape ({text,type,
+  // enabled,duration}) and the current TVAd shape.
+  const normalizeAd = (a: any, i: number): TVAd => ({
+    id: String(a.id ?? i),
+    type: a.type || 'text',
+    url: a.url || '',
+    text: a.text || '',
+    duration: a.duration ?? 15,
+    active: a.active ?? a.enabled ?? true,
+  })
+
+  // Load ads + display options from Supabase clinic_settings or localStorage.
   const [ads, setAds] = useState<TVAd[]>([
     { id: '1', type: 'text', url: '', text: '🦷 โปรโมชั่นพิเศษ! ขูดหินปูน + ตรวจสุขภาพฟัน เพียง 599 บาท', duration: 15, active: true },
   ])
+
+  const applyTvSettings = useCallback((raw: any) => {
+    if (!raw) return false
+    // Legacy shape: plain array of ads.
+    if (Array.isArray(raw)) {
+      if (raw.length === 0) return false
+      setAds(raw.map(normalizeAd))
+      return true
+    }
+    // Current shape: { ads, theme, fontSize, maxDisplay, showServing,
+    //   showWaiting, soundEnabled, showCompleted }
+    if (Array.isArray(raw?.ads) && raw.ads.length > 0) {
+      setAds(raw.ads.map(normalizeAd))
+    }
+    if (raw.theme === 'dark' || raw.theme === 'light') setTheme(raw.theme)
+    if (['normal', 'large', 'xlarge'].includes(raw.fontSize)) setFontSize(raw.fontSize)
+    if (typeof raw.maxDisplay === 'number') setMaxDisplay(raw.maxDisplay)
+    if (typeof raw.showWaiting === 'boolean') setShowWaiting(raw.showWaiting)
+    if (typeof raw.showServing === 'boolean') setShowServing(raw.showServing)
+    if (typeof raw.showCompleted === 'boolean') setShowCompleted(raw.showCompleted)
+    if (typeof raw.soundEnabled === 'boolean') setSoundEnabled(raw.soundEnabled)
+    return true
+  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined' || !resolvedClinicId) return
@@ -137,8 +179,7 @@ export default function TVDisplay() {
           })
           if (res.ok) {
             const rows = await res.json()
-            if (rows?.[0]?.setting_value && Array.isArray(rows[0].setting_value) && rows[0].setting_value.length > 0) {
-              setAds(rows[0].setting_value)
+            if (rows?.[0]?.setting_value && applyTvSettings(rows[0].setting_value)) {
               return
             }
           }
@@ -149,15 +190,12 @@ export default function TVDisplay() {
         const saved = localStorage.getItem(`clinicq-tv-ads-${resolvedClinicId}`)
         if (saved) {
           const parsed = JSON.parse(saved)
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setAds(parsed)
-            return
-          }
+          if (applyTvSettings(parsed)) return
         }
       } catch {}
     }
     loadAds()
-  }, [resolvedClinicId])
+  }, [resolvedClinicId, applyTvSettings])
 
   // Rotate ads
   useEffect(() => {
@@ -345,8 +383,12 @@ export default function TVDisplay() {
   const activeAds = ads.filter(a => a.active)
   const currentAd = activeAds[currentAdIndex % activeAds.length]
 
+  const fontSizeClass = fontSize === 'normal' ? 'text-5xl' : fontSize === 'xlarge' ? 'text-7xl' : 'text-6xl'
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white overflow-hidden relative">
+    <div className={clsx('min-h-screen overflow-hidden relative', theme === 'light'
+      ? 'bg-gradient-to-br from-slate-100 via-white to-slate-100 text-slate-900'
+      : 'bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white')}>
       {/* Called Alert */}
       {showAlert && lastCalled && (
         <TVCalledAlert queue={lastCalled} clinic={config ? { name: settings?.clinicName || config.name, nameEn: config.nameEn || config.name, color: config.color, bg: config.bg, icon: config.prefix, prefix: config.prefix } : { name: 'Clinic', nameEn: 'Clinic', color: '#93C5FD', bg: '#EFF6FF', icon: 'Q', prefix: 'Q' }} onDismiss={() => setShowAlert(false)} />
@@ -459,7 +501,7 @@ export default function TVDisplay() {
             {nextQueue && (
               <div className="p-5 border-b border-white/10 bg-emerald-500/10">
                 <p className="text-[10px] text-emerald-400 font-medium uppercase tracking-wider mb-1">⏭ คิวถัดไป</p>
-                <div className="text-6xl font-mono font-black text-emerald-400 tabular-nums mb-3">{nextQueue.number}</div>
+                <div className={`${fontSizeClass} font-mono font-black text-emerald-400 tabular-nums mb-3`}>{nextQueue.number}</div>
                 <p className="text-lg font-bold text-emerald-300 mb-2">คุณ{nextQueue.firstName || nextQueue.patientName}</p>
                 <p className="text-sm text-emerald-400/60 mb-3">เชิญเข้าห้อง {nextQueue.assignedRoom}</p>
                 <button onClick={callNextQueue} className="w-full px-4 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-bold text-sm transition-colors shadow-lg shadow-emerald-500/30">
@@ -469,48 +511,58 @@ export default function TVDisplay() {
             )}
 
             {/* Waiting Queue */}
-            <div className="px-4 pt-4 pb-2 border-b border-white/10">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold text-gray-200 text-sm">คิวที่กำลังรอ</h3>
-                  <p className="text-[10px] text-gray-500">มาถึงแล้ว</p>
-                </div>
-                <span className="text-3xl font-black text-yellow-400 tabular-nums">{stats.waiting}</span>
-              </div>
-            </div>
-            <div className="flex-1 overflow-y-auto p-3 space-y-2">
-              {queue.filter(q => q.status === 'waiting' && q.arrived).map((item) => (
-                <div key={item.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5 border border-white/5">
-                  <div className="w-12 h-12 rounded-xl flex items-center justify-center font-bold text-base flex-shrink-0" style={{ backgroundColor: accentColor + '20', color: accentColor }}>
-                    {item.number}
+            {showWaiting && (
+              <>
+                <div className="px-4 pt-4 pb-2 border-b border-white/10">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-semibold text-gray-200 text-sm">คิวที่กำลังรอ</h3>
+                      <p className="text-[10px] text-gray-500">มาถึงแล้ว</p>
+                    </div>
+                    <span className="text-3xl font-black text-yellow-400 tabular-nums">{stats.waiting}</span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-gray-500">ห้อง {item.assignedRoom}</p>
-                  </div>
-                  <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse flex-shrink-0" />
                 </div>
-              ))}
-              {stats.waiting === 0 && (
-                <div className="text-center py-8">
-                  <p className="text-gray-500 text-xs">ไม่มีคิวรอ</p>
+                <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                  {queue.filter(q => q.status === 'waiting' && q.arrived).slice(0, maxDisplay).map((item) => (
+                    <div key={item.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5 border border-white/5">
+                      <div className="w-12 h-12 rounded-xl flex items-center justify-center font-bold text-base flex-shrink-0" style={{ backgroundColor: accentColor + '20', color: accentColor }}>
+                        {item.number}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-gray-500">ห้อง {item.assignedRoom}</p>
+                      </div>
+                      <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse flex-shrink-0" />
+                    </div>
+                  ))}
+                  {stats.waiting === 0 && (
+                    <div className="text-center py-8">
+                      <p className="text-gray-500 text-xs">ไม่มีคิวรอ</p>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </>
+            )}
 
             {/* Stats Footer */}
-            <div className="p-3 border-t border-white/10 grid grid-cols-3 gap-2 relative">
-              <div className="text-center p-2 rounded-xl bg-green-500/10">
-                <p className="text-xl font-bold text-green-400 tabular-nums">{stats.serving}</p>
-                <p className="text-[9px] text-gray-500">กำลังทำ</p>
-              </div>
-              <div className="text-center p-2 rounded-xl bg-yellow-500/10">
-                <p className="text-xl font-bold text-yellow-400 tabular-nums">{stats.waiting}</p>
-                <p className="text-[9px] text-gray-500">รอเรียก</p>
-              </div>
-              <div className="text-center p-2 rounded-xl bg-gray-500/10">
-                <p className="text-xl font-bold text-gray-400 tabular-nums">{stats.completed}</p>
-                <p className="text-[9px] text-gray-500">เสร็จแล้ว</p>
-              </div>
+            <div className="p-3 border-t border-white/10 grid gap-2 relative" style={{ gridTemplateColumns: [showServing, showWaiting, showCompleted].filter(Boolean).length > 0 ? `repeat(${[showServing, showWaiting, showCompleted].filter(Boolean).length}, 1fr)` : '1fr' }}>
+              {showServing && (
+                <div className="text-center p-2 rounded-xl bg-green-500/10">
+                  <p className="text-xl font-bold text-green-400 tabular-nums">{stats.serving}</p>
+                  <p className="text-[9px] text-gray-500">กำลังทำ</p>
+                </div>
+              )}
+              {showWaiting && (
+                <div className="text-center p-2 rounded-xl bg-yellow-500/10">
+                  <p className="text-xl font-bold text-yellow-400 tabular-nums">{stats.waiting}</p>
+                  <p className="text-[9px] text-gray-500">รอเรียก</p>
+                </div>
+              )}
+              {showCompleted && (
+                <div className="text-center p-2 rounded-xl bg-gray-500/10">
+                  <p className="text-xl font-bold text-gray-400 tabular-nums">{stats.completed}</p>
+                  <p className="text-[9px] text-gray-500">เสร็จแล้ว</p>
+                </div>
+              )}
             </div>
           </div>
         </div>

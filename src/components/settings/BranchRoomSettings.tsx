@@ -16,6 +16,7 @@ import {
 import Toast from '@/components/ui/Toast'
 import SaveResultModal from '@/components/ui/SaveResultModal'
 import { isSupabaseReady, getSupabase } from '@/lib/supabase'
+import { getClinicSetting } from '@/lib/clinic-data'
 
 export default function BranchRoomSettings() {
   const { config, currentClinic } = useClinic()
@@ -122,8 +123,10 @@ export default function BranchRoomSettings() {
 
   const debounceSave = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Atomic upsert to Supabase (single writer — no check-then-insert race).
-  // Resolves true only when the DB write succeeded.
+  // Atomic upsert to Supabase — resolves true only when the DB write succeeded.
+  // This component owns the `branches` field; it MERGES with the current DB
+  // row instead of overwriting it so concurrent practitioners/rooms writes
+  // (practitioner-context) are never clobbered by a stale local snapshot.
   const commitData = useCallback(async (): Promise<boolean> => {
     const latest = dataRef.current
     let ok = true
@@ -134,10 +137,26 @@ export default function BranchRoomSettings() {
       if (currentClinicId && isSupabaseReady()) {
         const sb = getSupabase()
         if (sb) {
+          // Read the current row first so we only touch branches/procedures.
+          let merged: any = latest
+          try {
+            const existing = await getClinicSetting(currentClinicId, 'branch_data') as any
+            const dbData = (existing && typeof existing === 'object' && Array.isArray(existing.branches))
+              ? existing
+              : null
+            if (dbData) {
+              merged = {
+                ...dbData,
+                branches: latest.branches,
+              }
+            }
+          } catch {
+            // Read failed — fall back to writing our full snapshot.
+          }
           // Write the object directly so jsonb stores it as JSON (not a
           // double-encoded string like legacy rows). Reads handle both forms.
           const { error } = await sb.from('clinic_settings').upsert(
-            { clinic_id: currentClinicId, setting_key: 'branch_data', setting_value: latest as any },
+            { clinic_id: currentClinicId, setting_key: 'branch_data', setting_value: merged },
             { onConflict: 'clinic_id,setting_key' }
           )
           ok = !error

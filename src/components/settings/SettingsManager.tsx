@@ -198,7 +198,10 @@ export default function SettingsManager() {
       { id: '1', type: 'text' as const, url: '', text: '🦷 โปรโมชั่นพิเศษ! จองคิวออนไลน์วันนี้', duration: 15, active: true },
     ]
   })
-  // Sync TV Ads from Supabase on mount — Supabase is the source of truth.
+  // Sync TV Ads + display options from Supabase on mount — Supabase is the
+  // source of truth. Accepts both the current object shape
+  // { ads, theme, fontSize, maxDisplay, showServing, showWaiting, soundEnabled,
+  //   showCompleted } and the legacy plain-array shape.
   useEffect(() => {
     if (!currentClinicId) return
     const loadTvAds = async () => {
@@ -213,9 +216,33 @@ export default function SettingsManager() {
           .eq('setting_key', 'tv_ads')
           .maybeSingle()
         const raw = row?.setting_value
-        if (raw && Array.isArray(raw) && raw.length > 0) {
-          setTvAds(raw as TVAd[])
-          try { localStorage.setItem(tvAdsKey, JSON.stringify(raw)) } catch {}
+        if (!raw) return
+        if (Array.isArray(raw)) {
+          if (raw.length > 0) {
+            setTvAds(raw as TVAd[])
+            try { localStorage.setItem(tvAdsKey, JSON.stringify(raw)) } catch {}
+          }
+          return
+        }
+        const obj = raw as any
+        if (Array.isArray(obj?.ads) && obj.ads.length > 0) {
+          // Normalize legacy ad entries ({text,type,enabled,duration} → TVAd)
+          setTvAds(obj.ads.map((a: any, i: number): TVAd => ({
+            id: String(a.id ?? i),
+            type: a.type || 'text',
+            url: a.url || '',
+            text: a.text || '',
+            duration: a.duration ?? 15,
+            active: a.active ?? a.enabled ?? true,
+          })))
+          if (obj.theme === 'light' || obj.theme === 'dark') setTvTheme(obj.theme)
+          if (['normal', 'large', 'xlarge'].includes(obj.fontSize)) setTvFontSize(obj.fontSize)
+          if (typeof obj.maxDisplay === 'number') setTvMaxQueue(obj.maxDisplay)
+          if (typeof obj.showServing === 'boolean') setTvShowServing(obj.showServing)
+          if (typeof obj.showWaiting === 'boolean') setTvShowWaiting(obj.showWaiting)
+          if (typeof obj.soundEnabled === 'boolean') setTvSound(obj.soundEnabled)
+          if (typeof obj.showCompleted === 'boolean') setTvShowCompleted(obj.showCompleted)
+          try { localStorage.setItem(tvAdsKey, JSON.stringify(obj)) } catch {}
         }
       } catch {}
     }
@@ -262,6 +289,35 @@ export default function SettingsManager() {
     }
     return false
   })
+  // Sync LINE OA settings from Supabase on mount — Supabase is the source of
+  // truth, localStorage is only a cache. Without this a fresh device showed
+  // empty credentials even though line_settings was saved in the DB.
+  useEffect(() => {
+    if (!currentClinicId) return
+    const loadLineSettings = async () => {
+      if (!isSupabaseReady()) return
+      const sb = getSupabase()
+      if (!sb) return
+      try {
+        const { data: row } = await sb
+          .from('clinic_settings')
+          .select('setting_value')
+          .eq('clinic_id', currentClinicId)
+          .eq('setting_key', 'line_settings')
+          .maybeSingle()
+        const raw = row?.setting_value
+        if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+          const s = raw as { channelSecret?: string; channelToken?: string; enabled?: boolean }
+          if (typeof s.channelSecret === 'string') setLineChannelSecret(s.channelSecret)
+          if (typeof s.channelToken === 'string') setLineChannelToken(s.channelToken)
+          if (typeof s.enabled === 'boolean') setLineEnabled(s.enabled)
+          try { localStorage.setItem(lineSettingsKey, JSON.stringify(raw)) } catch {}
+        }
+      } catch {}
+    }
+    void loadLineSettings()
+  }, [currentClinicId, lineSettingsKey])
+
   const [testLineStatus, setTestLineStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [copiedWebhook, setCopiedWebhook] = useState(false)
 
@@ -367,13 +423,26 @@ export default function SettingsManager() {
   }
 
   /* ───── TV Save ───── */
+  // Persists BOTH the ads list and the display options in one object so a
+  // save never wipes the theme/fontSize/show* options (legacy code wrote only
+  // the array, silently discarding the options stored by older versions).
   const handleSaveTv = async () => {
+    const tvSettings = {
+      ads: tvAds,
+      theme: tvTheme,
+      fontSize: tvFontSize,
+      maxDisplay: tvMaxQueue,
+      showServing: tvShowServing,
+      showWaiting: tvShowWaiting,
+      soundEnabled: tvSound,
+      showCompleted: tvShowCompleted,
+    }
     let ok = true
     try {
-      localStorage.setItem(tvAdsKey, JSON.stringify(tvAds))
+      localStorage.setItem(tvAdsKey, JSON.stringify(tvSettings))
       if (currentClinicId) {
         const { setClinicSetting } = await import('@/lib/clinic-data')
-        ok = await setClinicSetting(currentClinicId, 'tv_ads', tvAds)
+        ok = await setClinicSetting(currentClinicId, 'tv_ads', tvSettings)
       }
     } catch {
       ok = false
@@ -508,13 +577,14 @@ export default function SettingsManager() {
               <button onClick={() => { setShowAdModal(false); setEditingAd(null) }} className="btn-secondary">ยกเลิก</button>
               <button onClick={() => {
                 if (adForm.type === 'text' && !adForm.text.trim()) { showToastMsg('กรุณากรอกข้อความ', 'error'); return }
+                // State-only edit — persistence happens on the main
+                // "บันทึกการตั้งค่า" button, whose SaveResultModal is the single
+                // authoritative success signal (never before the DB confirms).
                 if (editingAd) {
                   setTvAds(prev => prev.map(a => a.id === editingAd.id ? { ...a, ...adForm } : a))
-                  showToastMsg('แก้ไขโฆษณาสำเร็จ!')
                 } else {
                   const newAd: TVAd = { id: String(Date.now()), ...adForm, active: true }
                   setTvAds(prev => [...prev, newAd])
-                  showToastMsg('เพิ่มโฆษณาสำเร็จ!')
                 }
                 setShowAdModal(false); setEditingAd(null)
               }} className="px-5 py-2.5 rounded-lg text-white font-medium text-sm" style={{ backgroundColor: config.color }}>
@@ -1331,21 +1401,25 @@ export default function SettingsManager() {
               </div>
             )}
 
-            {/* Action Buttons */}
-            <div className="mt-6 pt-6 border-t border-gray-100 flex items-center gap-3">
-              <button
-                onClick={() => {
-                  if (activeTab === 'clinic') void handleSaveClinic()
-                  else if (activeTab === 'users') showToastMsg('บันทึกข้อมูลผู้ใช้สำเร็จ!', 'success')
-                  else if (activeTab === 'qr') showToastMsg('บันทึกการตั้งค่า QR สำเร็จ!', 'success')
-                  else if (activeTab === 'tv') void handleSaveTv()
-                  else if (activeTab === 'line') void handleSaveLineSettings()
-                }}
-                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
-              >
-                <Save className="w-5 h-5" /> บันทึกการตั้งค่า
-              </button>
-            </div>
+            {/* Action Buttons — only rendered on tabs whose main save is this
+                button (clinic / tv / line). Branch, rooms, users and QR tabs
+                have their own save actions, so a global button there would be
+                a fake no-op (it previously showed a success toast without
+                persisting anything). */}
+            {(activeTab === 'clinic' || activeTab === 'tv' || activeTab === 'line') && (
+              <div className="mt-6 pt-6 border-t border-gray-100 flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    if (activeTab === 'clinic') void handleSaveClinic()
+                    else if (activeTab === 'tv') void handleSaveTv()
+                    else if (activeTab === 'line') void handleSaveLineSettings()
+                  }}
+                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+                >
+                  <Save className="w-5 h-5" /> บันทึกการตั้งค่า
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
