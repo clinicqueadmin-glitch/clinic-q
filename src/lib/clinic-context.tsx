@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { type ClinicType, clinicConfig } from './queue-data'
 import { getClinicSetting, setClinicSetting } from './clinic-data'
 
@@ -54,7 +54,8 @@ interface ClinicContextType {
   config: typeof clinicConfig[ClinicType] | null
   isConfigured: boolean
   settings: ClinicSettings
-  updateSettings: (settings: Partial<ClinicSettings>) => void
+  /** Persist settings to Supabase (source of truth). Resolves true only when the DB write succeeded. */
+  updateSettings: (settings: Partial<ClinicSettings>) => Promise<boolean>
 }
 
 const ClinicContext = createContext<ClinicContextType>({
@@ -64,7 +65,7 @@ const ClinicContext = createContext<ClinicContextType>({
   config: null,
   isConfigured: false,
   settings: { operatingDays: ['mon', 'tue', 'wed', 'thu', 'fri'] },
-  updateSettings: () => {},
+  updateSettings: async () => true,
 })
 
 const defaultSettings: ClinicSettings = {
@@ -75,6 +76,8 @@ export function ClinicProvider({ children, clinicId }: { children: ReactNode; cl
   const [currentClinic, setCurrentClinic] = useState<ClinicType | null>(null)
   const [isLoaded, setIsLoaded] = useState(false)
   const [settings, setSettings] = useState<ClinicSettings>(defaultSettings)
+  const settingsRef = useRef<ClinicSettings>(defaultSettings)
+  useEffect(() => { settingsRef.current = settings }, [settings])
   
   // Clinic-specific settings key
   const settingsKey = clinicId ? `clinic-q-settings-${clinicId}` : 'clinic-q-settings'
@@ -122,17 +125,25 @@ export function ClinicProvider({ children, clinicId }: { children: ReactNode; cl
     localStorage.removeItem('clinic-q-type')
   }, [])
 
-  const updateSettings = useCallback((newSettings: Partial<ClinicSettings>) => {
-    setSettings(prev => {
-      const updated = { ...prev, ...newSettings }
-      // Save to localStorage immediately for fast reads
+  const updateSettings = useCallback(async (newSettings: Partial<ClinicSettings>): Promise<boolean> => {
+    const updated = { ...settingsRef.current, ...newSettings }
+    settingsRef.current = updated
+    setSettings(updated)
+
+    // Cache to localStorage (best-effort; quota errors must not block the DB write)
+    try {
       localStorage.setItem(settingsKey, JSON.stringify(updated))
-      // Also save to Supabase in background
-      if (clinicId) {
-        setClinicSetting(clinicId, 'general', updated).catch(() => {})
-      }
-      return updated
-    })
+    } catch {
+      // Quota exceeded — localStorage cache is optional, Supabase is the source of truth
+    }
+
+    // Persist to Supabase — success is reported back so the UI can show a real result
+    if (!clinicId) return true
+    try {
+      return await setClinicSetting(clinicId, 'general', updated)
+    } catch {
+      return false
+    }
   }, [settingsKey, clinicId])
 
   const config = currentClinic ? clinicConfig[currentClinic] : null

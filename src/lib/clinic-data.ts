@@ -68,41 +68,24 @@ export async function setClinicSetting<T = any>(
 ): Promise<boolean> {
   let success = false
 
-  // 1. Write to Supabase (check-then-insert/update)
+  // 1. Write to Supabase (atomic upsert — no check-then-insert race)
   const sb = getSB()
   if (sb) {
     try {
-      // Check if setting already exists
-      const { data: existing } = await sb
-        .from('clinic_settings')
-        .select('id')
-        .eq('clinic_id', clinicId)
-        .eq('setting_key', key)
-        .limit(1)
-
       const now = new Date().toISOString()
-
-      if (existing && existing.length > 0) {
-        // Update existing
-        const { error } = await sb
-          .from('clinic_settings')
-          .update({ setting_value: value, updated_at: now })
-          .eq('clinic_id', clinicId)
-          .eq('setting_key', key)
-        if (!error) success = true
-      } else {
-        // Insert new
-        const { error } = await sb
-          .from('clinic_settings')
-          .insert({
+      const { error } = await sb
+        .from('clinic_settings')
+        .upsert(
+          {
             clinic_id: clinicId,
             setting_key: key,
             setting_value: value,
             created_at: now,
             updated_at: now,
-          })
-        if (!error) success = true
-      }
+          },
+          { onConflict: 'clinic_id,setting_key' }
+        )
+      if (!error) success = true
     } catch {}
   }
 

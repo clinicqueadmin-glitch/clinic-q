@@ -14,6 +14,7 @@ import { useAuth } from '@/lib/auth-context'
 import { getSupabase, isSupabaseReady } from '@/lib/supabase'
 import UserManagement from '@/components/auth/UserManagement'
 import Toast from '@/components/ui/Toast'
+import SaveResultModal from '@/components/ui/SaveResultModal'
 import PhoneInput from '@/components/ui/PhoneInput'
 import BranchRoomSettings from './BranchRoomSettings'
 import RoomSettings from './RoomSettings'
@@ -78,6 +79,13 @@ export default function SettingsManager() {
   const [clinicPhone, setClinicPhone] = useState('02-123-4567')
   const [clinicAddress, setClinicAddress] = useState('123 ถนนสุขุมวิท แขวงคลองเตย เขตคลองเตย กรุงเทพมหานคร 10110')
   const [clinicLogo, setClinicLogo] = useState('')
+  // Pending logo file picked by the user — uploaded to Supabase Storage only on save.
+  // clinicLogo holds the DISPLAY value (data-URL preview while pending, otherwise the
+  // public Storage URL loaded from Supabase). Base64 is never persisted anywhere.
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [logoUploading, setLogoUploading] = useState(false)
+  // Save-result popup — shown only after the DB write confirms success/failure
+  const [saveResult, setSaveResult] = useState<{ success: boolean; retry?: () => void } | null>(null)
   // Weekly schedule state
   const [weeklySchedule, setWeeklySchedule] = useState<Record<string, { enabled: boolean; openTime: string; closeTime: string }>>({
     mon: { enabled: true, openTime: '08:00', closeTime: '20:00' },
@@ -104,6 +112,16 @@ export default function SettingsManager() {
       })
     }
   }, [settings.weeklySchedule])
+
+  // Sync logo + custom clinic name from context settings (Supabase is source of truth).
+  // This is what makes the logo survive a refresh on a fresh device — the old code
+  // only ever re-read localStorage, never the DB value.
+  useEffect(() => {
+    if (settings.logo !== undefined) setClinicLogo(settings.logo)
+  }, [settings.logo])
+  useEffect(() => {
+    if (settings.clinicName) setClinicName(settings.clinicName)
+  }, [settings.clinicName])
 
   // Clinic-specific settings key
   const settingsKey = currentClinicId ? `clinic-q-settings-${currentClinicId}` : 'clinic-q-settings'
@@ -341,14 +359,19 @@ export default function SettingsManager() {
       channelToken: lineChannelToken,
       enabled: lineEnabled,
     }
-    // Save to localStorage immediately
-    localStorage.setItem(lineSettingsKey, JSON.stringify(settings))
-    // Also save to Supabase
-    if (currentClinicId) {
-      const { setClinicSetting } = await import('@/lib/clinic-data')
-      await setClinicSetting(currentClinicId, 'line_settings', settings)
+    let ok = true
+    try {
+      // Save to localStorage immediately (cache)
+      localStorage.setItem(lineSettingsKey, JSON.stringify(settings))
+      // Also save to Supabase — popup reflects the real DB result
+      if (currentClinicId) {
+        const { setClinicSetting } = await import('@/lib/clinic-data')
+        ok = await setClinicSetting(currentClinicId, 'line_settings', settings)
+      }
+    } catch {
+      ok = false
     }
-    showToastMsg('บันทึกการตั้งค่า LINE OA สำเร็จ!', 'success')
+    setSaveResult(ok ? { success: true } : { success: false, retry: () => { void handleSaveLineSettings() } })
   }
 
   const handleTestLineConnection = async () => {
@@ -373,36 +396,93 @@ export default function SettingsManager() {
   }
 
   /* ───── Clinic Save ───── */
-  const handleSaveClinic = () => {
+  const handleSaveClinic = async () => {
     // Derive legacy fields from weeklySchedule for backward compat
     const activeDays = Object.entries(weeklySchedule).filter(([, v]) => v.enabled).map(([k]) => k)
     const firstActive = Object.values(weeklySchedule).find(v => v.enabled)
-    updateSettings({
-      clinicName, logo: clinicLogo,
-      operatingDays: activeDays,
-      openTime: firstActive?.openTime || '08:00',
-      closeTime: firstActive?.closeTime || '20:00',
-      weeklySchedule,
-    })
-    showToastMsg('บันทึกข้อมูลคลินิกสำเร็จ!', 'success')
+    let ok = true
+    let logoValue = clinicLogo
+    // If a new logo was picked, upload it to Storage FIRST — the DB row must
+    // only store the public URL, and success requires BOTH operations to pass.
+    if (logoFile && currentClinicId) {
+      setLogoUploading(true)
+      const url = await uploadLogoToStorage(currentClinicId, logoFile)
+      setLogoUploading(false)
+      if (!url) {
+        // Upload failed — do NOT touch the DB and do NOT show success.
+        setSaveResult({ success: false, retry: () => { void handleSaveClinic() } })
+        return
+      }
+      logoValue = url
+      setClinicLogo(url)
+      setLogoFile(null)
+    }
+    try {
+      ok = await updateSettings({
+        clinicName, logo: logoValue,
+        operatingDays: activeDays,
+        openTime: firstActive?.openTime || '08:00',
+        closeTime: firstActive?.closeTime || '20:00',
+        weeklySchedule,
+      })
+    } catch {
+      ok = false
+    }
+    setSaveResult(ok ? { success: true } : { success: false, retry: () => { void handleSaveClinic() } })
+  }
+
+  /* ───── TV Save ───── */
+  const handleSaveTv = async () => {
+    let ok = true
+    try {
+      localStorage.setItem(tvAdsKey, JSON.stringify(tvAds))
+      if (currentClinicId) {
+        const { setClinicSetting } = await import('@/lib/clinic-data')
+        ok = await setClinicSetting(currentClinicId, 'tv_ads', tvAds)
+      }
+    } catch {
+      ok = false
+    }
+    setSaveResult(ok ? { success: true } : { success: false, retry: () => { void handleSaveTv() } })
   }
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    if (!file.type.startsWith('image/')) {
-      showToastMsg('กรุณาเลือกไฟล์รูปภาพ', 'error')
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      showToastMsg('รองรับเฉพาะไฟล์ PNG, JPEG หรือ WebP', 'error')
       return
     }
     if (file.size > 2 * 1024 * 1024) {
       showToastMsg('ขนาดไฟล์ต้องไม่เกิน 2 MB', 'error')
       return
     }
+    // Keep the file for the save-time upload; show an immediate preview only.
+    setLogoFile(file)
     const reader = new FileReader()
     reader.onload = (ev) => {
       setClinicLogo(ev.target?.result as string)
     }
     reader.readAsDataURL(file)
+  }
+
+  // Upload the pending logo to Supabase Storage via the server route.
+  // Returns the public URL, or null on failure (caller shows the failed popup).
+  const uploadLogoToStorage = async (clinicId: string, file: File): Promise<string | null> => {
+    const fd = new FormData()
+    fd.append('file', file)
+    try {
+      const res = await fetch(`/api/clinics/${encodeURIComponent(clinicId)}/logo`, { method: 'POST', body: fd })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        showToastMsg(data.error || 'ไม่สามารถอัปโหลดรูปภาพได้', 'error')
+        return null
+      }
+      return data.url || null
+    } catch {
+      showToastMsg('ไม่สามารถอัปโหลดรูปภาพได้ กรุณาลองอีกครั้ง', 'error')
+      return null
+    }
   }
 
 
@@ -456,6 +536,13 @@ export default function SettingsManager() {
   return (
     <div className="space-y-6">
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+      {saveResult && (
+        <SaveResultModal
+          success={saveResult.success}
+          onClose={() => setSaveResult(null)}
+          onRetry={saveResult.retry}
+        />
+      )}
 
       {/* Staff Modal */}
       {showStaffModal && (
@@ -699,7 +786,7 @@ export default function SettingsManager() {
                       {clinicLogo ? (
                         <div className="relative">
                           <img src={clinicLogo} alt="Logo" className="w-20 h-20 rounded-xl object-cover border-2 border-gray-200" />
-                          <button onClick={() => setClinicLogo('')} className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600">×</button>
+                          <button onClick={() => { setClinicLogo(''); setLogoFile(null) }} className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600">×</button>
                         </div>
                       ) : (
                         <label className="w-20 h-20 rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 hover:bg-gray-50 transition-colors">
@@ -707,11 +794,11 @@ export default function SettingsManager() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
                           <span className="text-[9px] text-gray-400 mt-1">เลือกรูป</span>
-                          <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={handleLogoUpload} />
+                          <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleLogoUpload} />
                         </label>
                       )}
                       <div className="flex-1 text-xs text-gray-500">
-                        <p>รองรับ PNG หรือ JPEG</p>
+                        <p>รองรับ PNG, JPEG หรือ WebP</p>
                         <p>ขนาดไม่เกิน 2 MB</p>
                         <p className="text-gray-400 mt-1">แสดงใน Sidebar และหน้าจอ TV</p>
                       </div>
@@ -1413,20 +1500,11 @@ export default function SettingsManager() {
             <div className="mt-6 pt-6 border-t border-gray-100 flex items-center gap-3">
               <button
                 onClick={() => {
-                  if (activeTab === 'clinic') handleSaveClinic()
+                  if (activeTab === 'clinic') void handleSaveClinic()
                   else if (activeTab === 'users') showToastMsg('บันทึกข้อมูลผู้ใช้สำเร็จ!', 'success')
                   else if (activeTab === 'qr') showToastMsg('บันทึกการตั้งค่า QR สำเร็จ!', 'success')
-                  else if (activeTab === 'tv') {
-                    localStorage.setItem(tvAdsKey, JSON.stringify(tvAds))
-                    // Also save to Supabase
-                    if (currentClinicId) {
-                      import('@/lib/clinic-data').then(({ setClinicSetting }) => {
-                        setClinicSetting(currentClinicId, 'tv_ads', tvAds)
-                      })
-                    }
-                    showToastMsg('บันทึกการตั้งค่าจอ TV สำเร็จ!', 'success')
-                  }
-                  else if (activeTab === 'line') handleSaveLineSettings()
+                  else if (activeTab === 'tv') void handleSaveTv()
+                  else if (activeTab === 'line') void handleSaveLineSettings()
                 }}
                 className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
               >

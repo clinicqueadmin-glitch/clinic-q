@@ -14,6 +14,7 @@ import {
   getDefaultBranchData,
 } from '@/lib/branch-data'
 import Toast from '@/components/ui/Toast'
+import SaveResultModal from '@/components/ui/SaveResultModal'
 import { isSupabaseReady, getSupabase } from '@/lib/supabase'
 
 export default function BranchRoomSettings() {
@@ -23,60 +24,88 @@ export default function BranchRoomSettings() {
   // Use clinic-specific storage key
   const storageKey = currentClinicId ? `clinic-branch-data-${currentClinicId}` : 'clinic-branch-data'
   const [data, setData] = useState<ClinicBranchData>(() => getDefaultBranchData(currentClinic || 'dental'))
-  const [supabaseLoaded, setSupabaseLoaded] = useState(false)
-  
-  // Load from clinic-specific storage on mount, then refresh from Supabase if reachable.
+  // Always-current data for the debounced writer — setData is async, so a
+  // closure captured at schedule-time may hold pre-update data.
+  const dataRef = useRef(data)
+  useEffect(() => { dataRef.current = data }, [data])
+  // Becomes true once the initial load (Supabase → localStorage → defaults) finished.
+  // Persistence is gated on this so defaults never clobber real DB data on mount.
+  const [hydrated, setHydrated] = useState(false)
+  const hydratedRef = useRef(false)
+  // Save-result popup — shown only after the DB write confirms success/failure
+  const [saveResult, setSaveResult] = useState<{ success: boolean; retry?: () => void } | null>(null)
+
+  // Load branch_data with Supabase as the SOURCE OF TRUTH, then localStorage as
+  // fallback, and only then defaults (which are display-only and never persisted
+  // automatically). Persistence happens exclusively through commitData() after a
+  // user action — defaults can never overwrite real DB data on a fresh device.
   useEffect(() => {
-    const saved = localStorage.getItem(storageKey)
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved)
-        if (parsed && parsed.branches && parsed.branches.length > 0) {
-          setData(parsed)
-        }
-      } catch {}
-    }
-    // If no saved data for this clinic, use defaults
-    if (!saved || !JSON.parse(saved)?.branches?.length) {
-      setData(getDefaultBranchData(currentClinic || 'dental'))
-    }
-    if (currentClinicId && supabaseLoaded && isSupabaseReady()) {
-      const sb = getSupabase()
-      if (sb) {
-        sb.from('clinic_settings').select('setting_value').eq('clinic_id', currentClinicId).eq('setting_key', 'branch_data').single()
-            .then(({ data: { data: remote } }: { data: { data: { setting_value: string | null } | null } }) => {
-            if (remote?.setting_value) {
-              try {
-                const parsed = JSON.parse(remote.setting_value)
-                if (parsed?.branches?.length) {
-                  setData(parsed)
-                }
-              } catch {}
+    let cancelled = false
+    const load = async () => {
+      if (cancelled) return
+      // 1. Supabase first
+      if (currentClinicId && isSupabaseReady()) {
+        try {
+          const sb = getSupabase()
+          if (sb) {
+            const { data: row } = await sb
+              .from('clinic_settings')
+              .select('setting_value')
+              .eq('clinic_id', currentClinicId)
+              .eq('setting_key', 'branch_data')
+              .maybeSingle()
+            if (cancelled) return
+            // setting_value may come back as a parsed object (jsonb written as an
+            // object) OR as a string (legacy rows written with JSON.stringify).
+            const raw = row?.setting_value
+            let remote: ClinicBranchData | null = null
+            if (typeof raw === 'string') {
+              try { remote = JSON.parse(raw) } catch {}
+            } else if (raw && (raw as any)?.branches?.length) {
+              remote = raw as unknown as ClinicBranchData
             }
-          }).catch(() => {})
+            if (remote && remote.branches?.length) {
+              setData(remote)
+              hydratedRef.current = true
+              setHydrated(true)
+              return
+            }
+          }
+        } catch {}
       }
+      if (cancelled) return
+      // 2. localStorage fallback
+      const saved = localStorage.getItem(storageKey)
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved)
+          if (parsed && parsed.branches && parsed.branches.length > 0) {
+            setData(parsed)
+            hydratedRef.current = true
+            setHydrated(true)
+            return
+          }
+        } catch {}
+      }
+      // 3. Defaults — display only, never auto-persisted
+      if (cancelled) return
+      setData(getDefaultBranchData(currentClinic || 'dental'))
+      hydratedRef.current = true
+      setHydrated(true)
     }
-    setSupabaseLoaded(true)
+    load()
+    return () => { cancelled = true }
   }, [storageKey, currentClinic, currentClinicId, isSupabaseReady])
-  
-  // Save to clinic-specific storage + Supabase
-  // NOTE: branch_data is a legacy snapshot stored in clinic_settings.branch_data.
-  // In a later phase these branches/practitioners/procedures will be normalized into
-  // public.branches / public.practitioners / public.procedures and this key retired.
+
+  // localStorage cache only (fast reads). Supabase persistence happens exclusively
+  // through commitData() below, triggered by explicit user actions — so a fresh
+  // device can never overwrite the DB with defaults.
   useEffect(() => {
-    localStorage.setItem(storageKey, JSON.stringify(data))
-    if (currentClinicId && supabaseLoaded && isSupabaseReady()) {
-      const sb = getSupabase()
-      if (sb) {
-        sb.from('clinic_settings').upsert(
-          { clinic_id: currentClinicId, setting_key: 'branch_data', setting_value: JSON.stringify(data) },
-          { onConflict: 'clinic_id,setting_key' }
-        ).then(() => {
-          // Background write only; ignore errors to avoid disrupting the UI.
-        }).catch(() => {})
-      }
-    }
-  }, [data, storageKey, currentClinicId, supabaseLoaded, isSupabaseReady])
+    if (!hydrated) return
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(data))
+    } catch {}
+  }, [data, storageKey, hydrated])
   const [expandedBranch, setExpandedBranch] = useState<string | null>(data.branches[0]?.id || null)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
 
@@ -92,19 +121,51 @@ export default function BranchRoomSettings() {
   const [confirmDelete, setConfirmDelete] = useState<{ type: 'branch' | 'procedure'; id: string; branchId?: string } | null>(null)
 
   const debounceSave = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const commitData = useCallback(() => {
-    // Keep legacy local storage + Supabase branch_data snapshot in sync with the in-memory state.
-    localStorage.setItem(storageKey, JSON.stringify(data))
-    if (currentClinicId && supabaseLoaded && isSupabaseReady()) {
-      const sb = getSupabase()
-      if (sb) {
-        sb.from('clinic_settings').upsert(
-          { clinic_id: currentClinicId, setting_key: 'branch_data', setting_value: JSON.stringify(data) },
-          { onConflict: 'clinic_id,setting_key' }
-        ).catch(() => {})
+
+  // Atomic upsert to Supabase (single writer — no check-then-insert race).
+  // Resolves true only when the DB write succeeded.
+  const commitData = useCallback(async (): Promise<boolean> => {
+    const latest = dataRef.current
+    let ok = true
+    try {
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(latest))
+      } catch {}
+      if (currentClinicId && isSupabaseReady()) {
+        const sb = getSupabase()
+        if (sb) {
+          // Write the object directly so jsonb stores it as JSON (not a
+          // double-encoded string like legacy rows). Reads handle both forms.
+          const { error } = await sb.from('clinic_settings').upsert(
+            { clinic_id: currentClinicId, setting_key: 'branch_data', setting_value: latest as any },
+            { onConflict: 'clinic_id,setting_key' }
+          )
+          ok = !error
+        }
       }
+    } catch {
+      ok = false
     }
-  }, [data, storageKey, currentClinicId, supabaseLoaded, isSupabaseReady])
+    return ok
+  }, [storageKey, currentClinicId, isSupabaseReady])
+
+  // Debounced save after a user action — popup appears only after the DB answers.
+  const showSaveResult = useCallback((ok: boolean) => {
+    setSaveResult(ok
+      ? { success: true }
+      : { success: false, retry: () => { void commitData().then(showSaveResult) } })
+  }, [commitData])
+  const scheduleSave = useCallback(() => {
+    if (debounceSave.current) clearTimeout(debounceSave.current)
+    debounceSave.current = setTimeout(async () => {
+      if (!hydratedRef.current) {
+        // Initial load still in flight — retry shortly (avoids writing defaults)
+        scheduleSave()
+        return
+      }
+      showSaveResult(await commitData())
+    }, 250)
+  }, [commitData, showSaveResult])
 
   const showToast = (msg: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ message: msg, type })
@@ -124,8 +185,7 @@ export default function BranchRoomSettings() {
       showToast('เพิ่มสาขาสำเร็จ!')
     }
     setShowBranchModal(false)
-    if (debounceSave.current) clearTimeout(debounceSave.current)
-    debounceSave.current = setTimeout(commitData, 250)
+    scheduleSave()
   }
 
   /* ───── Procedure CRUD ───── */
@@ -150,8 +210,7 @@ export default function BranchRoomSettings() {
       showToast('เพิ่มหัตถการสำเร็จ!')
     }
     setShowProcedureModal(false)
-    if (debounceSave.current) clearTimeout(debounceSave.current)
-    debounceSave.current = setTimeout(commitData, 250)
+    scheduleSave()
   }
 
   const toggleProcedure = (branchId: string, procId: string) => {
@@ -162,8 +221,7 @@ export default function BranchRoomSettings() {
         : b
       ),
     }))
-    if (debounceSave.current) clearTimeout(debounceSave.current)
-    debounceSave.current = setTimeout(commitData, 250)
+    scheduleSave()
   }
 
   const handleDelete = () => {
@@ -180,8 +238,7 @@ export default function BranchRoomSettings() {
       showToast('ลบหัตถการแล้ว', 'info')
     }
     setConfirmDelete(null)
-    if (debounceSave.current) clearTimeout(debounceSave.current)
-    debounceSave.current = setTimeout(commitData, 250)
+    scheduleSave()
   }
 
   if (!config) return null
@@ -189,6 +246,13 @@ export default function BranchRoomSettings() {
   return (
     <div className="space-y-6">
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+      {saveResult && (
+        <SaveResultModal
+          success={saveResult.success}
+          onClose={() => setSaveResult(null)}
+          onRetry={saveResult.retry}
+        />
+      )}
 
       {/* ─── Branch Modal ─── */}
       {showBranchModal && (
