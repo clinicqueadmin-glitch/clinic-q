@@ -16,7 +16,7 @@ import { getDefaultBranchData } from '@/lib/branch-data'
 import PhoneInput from '@/components/ui/PhoneInput'
 import { useClinic } from '@/lib/clinic-context'
 
-import { UserPlus, Edit, Trash2, Shield, Users, Award, Plus, X, UserMinus, Lock, CheckCircle2, Copy, Clipboard } from 'lucide-react'
+import { UserPlus, Edit, Trash2, Shield, Users, Award, Plus, X, UserMinus, Lock, CheckCircle2, Copy, Clipboard, AlertTriangle } from 'lucide-react'
 
 interface UserWithRoles {
   id: string
@@ -50,6 +50,9 @@ export default function UserManagement({ canManageUsers = false, currentRole }: 
   // member list — localStorage is never used to store users/roles.
   const [users, setUsers] = useState<UserWithRoles[]>([])
   const [loadingUsers, setLoadingUsers] = useState(true)
+  // Distinguish a genuine empty clinic from a failed/unpermitted load.
+  // status 0 = network error, 401 = session expired, 403 = no access, else server error.
+  const [loadError, setLoadError] = useState<{ status: number; message: string } | null>(null)
   const [saving, setSaving] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingUser, setEditingUser] = useState<UserWithRoles | null>(null)
@@ -81,16 +84,30 @@ export default function UserManagement({ canManageUsers = false, currentRole }: 
   const loadUsers = useCallback(async () => {
     if (!currentClinicId) {
       setUsers([])
+      setLoadError(null)
       setLoadingUsers(false)
       return
     }
+    setLoadingUsers(true)
     try {
       const res = await fetch(`/api/clinics/${encodeURIComponent(currentClinicId)}/users`)
-      if (!res.ok) throw new Error('failed to load users')
+      if (!res.ok) {
+        setUsers([])
+        if (res.status === 401) {
+          setLoadError({ status: 401, message: 'เซสชันหมดอายุหรือยังไม่ได้เข้าสู่ระบบ กรุณาเข้าสู่ระบบใหม่อีกครั้ง' })
+        } else if (res.status === 403) {
+          setLoadError({ status: 403, message: 'คุณไม่มีสิทธิ์เข้าถึงคลินิกนี้ กรุณาติดต่อผู้ดูแลระบบ' })
+        } else {
+          setLoadError({ status: res.status, message: `ไม่สามารถโหลดรายชื่อผู้ใช้ได้ (HTTP ${res.status}) กรุณาลองใหม่อีกครั้ง` })
+        }
+        return
+      }
       const data = await res.json()
       setUsers(Array.isArray(data.users) ? data.users : [])
+      setLoadError(null)
     } catch {
       setUsers([])
+      setLoadError({ status: 0, message: 'ไม่สามารถโหลดรายชื่อผู้ใช้ได้ เกิดข้อผิดพลาดของเครือข่าย กรุณาลองใหม่อีกครั้ง' })
     } finally {
       setLoadingUsers(false)
     }
@@ -506,6 +523,19 @@ export default function UserManagement({ canManageUsers = false, currentRole }: 
                 <td colSpan={5} className="px-4 py-12 text-center text-gray-400">
                   <div className="mx-auto w-8 h-8 rounded-full border-2 border-indigo-200 border-t-indigo-500 animate-spin mb-3" />
                   <p className="font-medium">กำลังโหลดรายชื่อผู้ใช้...</p>
+                </td>
+              </tr>
+            ) : loadError ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-12 text-center">
+                  <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-red-400" />
+                  <p className="font-medium text-red-600">{loadError.message}</p>
+                  <button
+                    onClick={() => void loadUsers()}
+                    className="mt-3 px-4 py-2 rounded-xl bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-600 transition-colors"
+                  >
+                    ลองใหม่อีกครั้ง
+                  </button>
                 </td>
               </tr>
             ) : clinicUsers.length === 0 ? (
