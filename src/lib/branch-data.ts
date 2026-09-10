@@ -361,72 +361,124 @@ function minutesToHHMM(m: number): string {
 }
 
 /**
- * Queue-aware estimated service time for online booking.
+ * Minimum fields the appointment estimator needs from a queue item.
+ */
+export interface AppointmentQueueItem {
+  id?: string
+  status: string
+  branchId?: string
+  procedureId?: string
+  queueDate?: string
+  bookedAt?: string
+  servingAt?: number
+}
+
+export interface AppointmentEstimateOptions {
+  /** Branch the patient chose (queue filter — other branches are never mixed in) */
+  branchId: string
+  /** Procedure the patient chose (used for its duration where relevant) */
+  procedureId: string
+  /** Service date "YYYY-MM-DD" (ICT) the patient is booking for */
+  queueDate: string
+  /** Clinic opening time "HH:MM" — the base for a future date with no queue */
+  preferredTimeHHMM?: string
+  /** Override "now" (ms) — mainly for tests */
+  now?: number
+}
+
+/** Standard online-booking buffer added after the last relevant patient finishes. */
+const ONLINE_BOOKING_BUFFER_MINUTES = 30
+
+/** Queue statuses that still affect future wait time. completed/cancelled/no_show never do. */
+const ACTIVE_QUEUE_STATUSES = new Set(['waiting', 'called', 'serving'])
+
+/** Today's date in ICT (Asia/Bangkok = UTC+7) as YYYY-MM-DD */
+function getTodayICTString(nowMs: number = Date.now()): string {
+  return new Date(nowMs + 7 * 60 * 60 * 1000).toISOString().split('T')[0]
+}
+
+/** Current wall-clock minutes-of-day in ICT */
+function getNowICTMinutes(nowMs: number = Date.now()): number {
+  const ict = new Date(nowMs + 7 * 60 * 60 * 1000)
+  return ict.getUTCHours() * 60 + ict.getUTCMinutes()
+}
+
+/**
+ * Queue-aware estimated appointment time for online booking.
  *
- * Calculates when a new booking can expect to be served, based on:
- * - Remaining time of currently serving patients (configured_duration - elapsed)
- * - Full duration of arrived waiting patients ahead in queue
- * - Duration of the new booking's procedure
- *
- * If no queue exists, returns preferredTime + 30 minutes (default).
+ * Rules (per product spec):
+ * - Only queues of the SAME branch on the SAME service date are considered.
+ *   In the current data model procedures belong to a branch, and the branch's
+ *   rooms/practitioners are its shared resource pool (queues only get an
+ *   assigned room/doctor when a patient is called), so branch-level filtering
+ *   is the real relationship. Queues from other branches are never mixed in.
+ * - Only still-active statuses count (waiting / called / serving);
+ *   completed / cancelled / no_show never push the appointment later.
+ * - No relevant queue → base (press time today, or clinic opening time for a
+ *   future date) + 30 minutes.
+ * - With relevant queues → the new appointment continues from when the last
+ *   relevant patient is expected to finish (serving patients finish at
+ *   servingAt + duration and run in parallel per room; waiting/called patients
+ *   chain their full durations in queue order), then + 30 minutes buffer.
  *
  * @param data - Clinic branch data (contains procedure durations)
- * @param queue - Current queue items for the clinic/day
- * @param preferredTimeHHMM - Patient's preferred time as "HH:MM"
- * @param procedureName - Name of the procedure to look up duration
- * @returns Estimated service time as "HH:MM"
+ * @param queue - Queue items for the clinic (usually already filtered by date)
+ * @param opts - Branch / procedure / date context for the booking
+ * @returns Estimated appointment time as "HH:MM"
  */
 export function estimateNextServiceTime(
   data: ClinicBranchData,
-  queue: { id: string; status: string; arrived: boolean; procedure: string; procedureId: string; servingAt?: number }[],
-  preferredTimeHHMM: string,
-  procedureName: string
+  queue: AppointmentQueueItem[],
+  opts: AppointmentEstimateOptions
 ): string {
-  // Look up target procedure duration by name
-  let targetDuration = 30 // default
-  for (const branch of data.branches) {
-    const proc = branch.procedures.find(p => p.name === procedureName)
-    if (proc) { targetDuration = proc.estimatedDuration; break }
+  const nowMs = opts.now ?? Date.now()
+  const today = getTodayICTString(nowMs)
+  const isToday = opts.queueDate === today
+
+  // Base: press time for same-day bookings, otherwise clinic opening time.
+  // Never schedule before the clinic opens.
+  const openingMinutes = hhmmToMinutes(opts.preferredTimeHHMM || '09:00')
+  const pressMinutes = getNowICTMinutes(nowMs)
+  const baseMinutes = Math.max(isToday ? pressMinutes : openingMinutes, openingMinutes)
+
+  // 1. Relevant queues: same branch + same service date + still active,
+  //    ordered by queue order (booked_at / created_at).
+  const relevant = queue
+    .filter(q =>
+      q.branchId === opts.branchId &&
+      (!q.queueDate || q.queueDate === opts.queueDate) &&
+      ACTIVE_QUEUE_STATUSES.has(q.status)
+    )
+    .sort(
+      (a, b) =>
+        (a.bookedAt || '').localeCompare(b.bookedAt || '') ||
+        (a.id || '').localeCompare(b.id || '')
+    )
+
+  // 2. Serving patients run in parallel (one per room) → the appointment
+  //    continues from the LATEST expected finish among them.
+  let cursorMinutes = baseMinutes
+  for (const s of relevant) {
+    if (s.status === 'serving' && s.servingAt && s.servingAt > 0) {
+      const elapsedMinutes = Math.max(0, Math.floor((nowMs - s.servingAt) / 60000))
+      const duration = getEstimatedDuration(data, s.procedureId || '')
+      const remainingMinutes = Math.max(0, duration - elapsedMinutes)
+      const finishMinutes = getNowICTMinutes(s.servingAt) + remainingMinutes
+      cursorMinutes = Math.max(cursorMinutes, finishMinutes)
+    }
   }
 
-  const baseMinutes = hhmmToMinutes(preferredTimeHHMM) || hhmmToMinutes('09:00')
-  const now = Date.now()
-
-  // 1. Serving items: calculate when each will finish
-  const servingItems = queue.filter(q => q.status === 'serving' && q.servingAt && q.servingAt > 0)
-  let servingEndMinutes = baseMinutes
-  for (const s of servingItems) {
-    const startedAt = new Date(s.servingAt!).getTime()
-    const elapsed = Math.max(0, Math.floor((now - startedAt) / 60000))
-    // Look up this item's configured duration
-    let itemDuration = 30
-    for (const branch of data.branches) {
-      const proc = branch.procedures.find(p => p.id === s.procedureId)
-      if (proc) { itemDuration = proc.estimatedDuration; break }
-    }
-    const remaining = Math.max(0, itemDuration - elapsed)
-    const finishMinutes = (startedAt / 60000) % 1440 + remaining
-    if (finishMinutes > servingEndMinutes) {
-      servingEndMinutes = finishMinutes
-    }
+  // 3. Waiting / called patients chain their full durations in queue order
+  //    after the latest serving finish (a serving item without a start
+  //    timestamp is treated as pending with its full duration).
+  for (const w of relevant) {
+    if (w.status === 'serving' && w.servingAt && w.servingAt > 0) continue
+    cursorMinutes += getEstimatedDuration(data, w.procedureId || '')
   }
 
-  // 2. Arrived waiting items: add their full duration
-  const arrivedWaiting = queue.filter(
-    q => q.status === 'waiting' && q.arrived && q.id !== undefined && q.id !== ''
-  )
-  let waitingEndMinutes = servingEndMinutes
-  for (const w of arrivedWaiting) {
-    let wDuration = 30
-    for (const branch of data.branches) {
-      const proc = branch.procedures.find(p => p.id === w.procedureId)
-      if (proc) { wDuration = proc.estimatedDuration; break }
-    }
-    waitingEndMinutes += wDuration
-  }
-
-  // 3. Add the new booking's procedure duration
-  const resultMinutes = waitingEndMinutes + targetDuration
+  // 4. The new booking starts after the last relevant patient is expected to
+  //    finish, plus the standard online-booking buffer.
+  const resultMinutes = cursorMinutes + ONLINE_BOOKING_BUFFER_MINUTES
   return minutesToHHMM(resultMinutes)
 }
 

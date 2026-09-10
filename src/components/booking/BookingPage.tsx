@@ -9,7 +9,7 @@ import {
 import { clsx } from 'clsx'
 import { QRCodeSVG } from 'qrcode.react'
 import { clinicConfig, type ClinicType } from '@/lib/queue-data'
-import { getDefaultBranchData, getAllActiveProcedures, estimateNextServiceTime } from '@/lib/branch-data'
+import { getDefaultBranchData, getAllActiveProcedures, estimateNextServiceTime, type AppointmentQueueItem } from '@/lib/branch-data'
 import { getDaySchedule, type ClinicSettings } from '@/lib/clinic-context'
 import { useQueue } from '@/lib/queue-context'
 import PhoneInput from '@/components/ui/PhoneInput'
@@ -92,6 +92,8 @@ export default function BookingPage() {
   }, [clinicId, clinicType])
 
   const [submitted, setSubmitted] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submittedTime, setSubmittedTime] = useState('')
 
   // Form state
   const [name, setName] = useState('')
@@ -164,14 +166,16 @@ export default function BookingPage() {
     return queue.filter(q => q.queueDate === selectedDate)
   }, [queue, selectedDate])
 
-  // Calculate estimated service time (queue-aware, date-specific)
+  // Calculate estimated appointment time (branch + date + queue-status aware)
   const calcEstimatedTime = useMemo(() => {
     if (!selectedProcedure || !selectedBranch || !isClinicOpenOnDate) return ''
-    const procName = branchProcedures.find(p => p.id === selectedProcedure)?.name || ''
-    // Use clinic opening time as preferred time for the selected date
-    const preferredHHMM = selectedDaySchedule.openTime || '09:00'
-    return estimateNextServiceTime(branchData, queueForDate, preferredHHMM, procName)
-  }, [selectedProcedure, selectedBranch, branchProcedures, queueForDate, branchData, isClinicOpenOnDate, selectedDaySchedule])
+    return estimateNextServiceTime(branchData, queueForDate, {
+      branchId: selectedBranch,
+      procedureId: selectedProcedure,
+      queueDate: selectedDate,
+      preferredTimeHHMM: selectedDaySchedule.openTime || '09:00',
+    })
+  }, [selectedProcedure, selectedBranch, queueForDate, branchData, isClinicOpenOnDate, selectedDaySchedule, selectedDate])
 
   // Update displayed estimate when selection changes
   useEffect(() => {
@@ -185,33 +189,85 @@ export default function BookingPage() {
     return new Date(ictMs).toISOString().split('T')[0]
   }, [])
 
+  // Fetch the LATEST queue state from Supabase for the selected date at booking
+  // time, so the appointment continues from the most recent relevant queues
+  // (and two people booking in a row never land on the same slot).
+  const fetchLatestQueueForDate = async (date: string): Promise<AppointmentQueueItem[] | null> => {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+    if (!supabaseUrl || !supabaseKey || !clinicId) return null
+    try {
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/queues?clinic_id=eq.${clinicId}&queue_date=eq.${date}&order=created_at.asc`,
+        { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
+      )
+      if (!res.ok) return null
+      const rows = await res.json()
+      return (Array.isArray(rows) ? rows : []).map((r: any) => ({
+        id: r.id,
+        status: r.status || 'waiting',
+        branchId: r.branch_id || '',
+        procedureId: r.procedure_id || '',
+        queueDate: r.queue_date || undefined,
+        bookedAt: r.booked_at || r.created_at || '',
+        servingAt: r.serving_at ? new Date(r.serving_at).getTime() : undefined,
+      }))
+    } catch {
+      return null
+    }
+  }
+
   // Submit booking via Queue Engine (addQueueItem → RPC)
   const handleSubmit = async () => {
+    if (isSubmitting || submittedNumber) return
     if (!name.trim() || phone.length !== 10 || !selectedProcedure || !isClinicOpenOnDate) return
 
-    const procName = branchProcedures.find(p => p.id === selectedProcedure)?.name || ''
+    setIsSubmitting(true)
+    try {
+      const procName = branchProcedures.find(p => p.id === selectedProcedure)?.name || ''
 
-    const result = await addQueueItem({
-      patientName: name.trim(),
-      phone: phone.trim(),
-      procedure: procName,
-      procedureId: selectedProcedure,
-      branchId: selectedBranch,
-      bookingMode: 'remote' as const,
-      assignedRoom: 0,
-      assignedDoctor: '',
-      status: 'waiting' as const,
-      time: estimatedTime,
-      bookedAt: new Date().toISOString(),
-      arrivalTime: '',
-      arrived: false,
-      arrivedAt: undefined,
-      queueDate: selectedDate,
-      bookedTimeSlot: estimatedTime,
-    })
+      // Re-read the queue from the DB right before booking (fall back to the
+      // live-polled state if the fresh fetch fails).
+      let estimateQueue: AppointmentQueueItem[] = queueForDate
+      const freshQueue = await fetchLatestQueueForDate(selectedDate)
+      if (freshQueue) estimateQueue = freshQueue
 
-    setSubmittedNumber(result.number)
-    setSubmitted(true)
+      const finalTime = estimateNextServiceTime(branchData, estimateQueue, {
+        branchId: selectedBranch,
+        procedureId: selectedProcedure,
+        queueDate: selectedDate,
+        preferredTimeHHMM: selectedDaySchedule.openTime || '09:00',
+      })
+      setEstimatedTime(finalTime)
+      // Freeze the confirmed appointment time: the live estimate re-computes
+      // after the new booking lands in the queue (which would otherwise push
+      // the displayed time by its own duration + buffer).
+      setSubmittedTime(finalTime)
+
+      const result = await addQueueItem({
+        patientName: name.trim(),
+        phone: phone.trim(),
+        procedure: procName,
+        procedureId: selectedProcedure,
+        branchId: selectedBranch,
+        bookingMode: 'remote' as const,
+        assignedRoom: 0,
+        assignedDoctor: '',
+        status: 'waiting' as const,
+        time: finalTime,
+        bookedAt: new Date().toISOString(),
+        arrivalTime: '',
+        arrived: false,
+        arrivedAt: undefined,
+        queueDate: selectedDate,
+        bookedTimeSlot: finalTime,
+      })
+
+      setSubmittedNumber(result.number)
+      setSubmitted(true)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const accentColor = clinicCfg.color
@@ -231,7 +287,7 @@ export default function BookingPage() {
           {/* Booking Time Highlight */}
           <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-4">
             <p className="text-sm text-blue-700 font-medium">เวลานัดโดยประมาณ</p>
-            <p className="text-4xl font-black mt-1" style={{ color: accentColor }}>{estimatedTime} น.</p>
+            <p className="text-4xl font-black mt-1" style={{ color: accentColor }}>{submittedTime || estimatedTime} น.</p>
             <p className="text-[11px] text-blue-500 mt-2 leading-relaxed">
               ※ เวลานัดเป็นเวลาโดยประมาณ ระบบคำนวณจากคิวที่มีอยู่และระยะเวลาให้บริการของหัตถการ
             </p>
@@ -284,13 +340,14 @@ export default function BookingPage() {
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">เวลานัดโดยประมาณ</span>
-              <span className="font-bold" style={{ color: accentColor }}>{estimatedTime} น.</span>
+              <span className="font-bold" style={{ color: accentColor }}>{submittedTime || estimatedTime} น.</span>
             </div>
           </div>
 
           <button
             onClick={() => {
               setSubmitted(false)
+              setSubmittedTime('')
               setName('')
               setPhone('')
               setSelectedBranch('')
@@ -466,16 +523,16 @@ export default function BookingPage() {
           {/* Submit */}
           <button
             onClick={handleSubmit}
-            disabled={!name.trim() || phone.length !== 10 || !selectedProcedure || !isClinicOpenOnDate}
+            disabled={isSubmitting || !name.trim() || phone.length !== 10 || !selectedProcedure || !isClinicOpenOnDate}
             className={clsx(
               'w-full py-3.5 rounded-2xl font-bold text-sm transition-all',
-              name.trim() && phone.length === 10 && selectedProcedure && isClinicOpenOnDate
+              !isSubmitting && name.trim() && phone.length === 10 && selectedProcedure && isClinicOpenOnDate
                 ? 'text-white shadow-lg hover:shadow-xl active:scale-[0.98]'
                 : 'bg-gray-100 text-gray-400 cursor-not-allowed'
             )}
-            style={name.trim() && phone.length === 10 && selectedProcedure && isClinicOpenOnDate ? { backgroundColor: accentColor } : {}}
+            style={!isSubmitting && name.trim() && phone.length === 10 && selectedProcedure && isClinicOpenOnDate ? { backgroundColor: accentColor } : {}}
           >
-            📱 จองคิวออนไลน์
+            {isSubmitting ? '⏳ กำลังจองคิว...' : '📱 จองคิวออนไลน์'}
           </button>
         </div>
 
