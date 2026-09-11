@@ -413,8 +413,12 @@ export default function WalkinPage() {
       // Appointment-specific fields
       ...(bookingMode === 'appointment' ? {
         appointmentTime,
-        appointmentDate: now.toISOString().split('T')[0],
-        isOnTime: computedIsOnTime,
+        // ICT date (Asia/Bangkok) — toISOString() is UTC and can still be the
+        // previous day for early-morning registrations.
+        appointmentDate: new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }),
+        // addQueueItem reads `appointmentOnTime` (not `isOnTime`) — map the
+        // field name correctly so the DB records the on-time status.
+        appointmentOnTime: computedIsOnTime,
         lateMinutes: computedLateMinutes,
         originalBookedTime: appointmentTime,
       } : {}),
