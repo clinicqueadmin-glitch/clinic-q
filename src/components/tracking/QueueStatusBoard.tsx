@@ -8,6 +8,7 @@ import { useQueue, type QueueItem } from '@/lib/queue-context'
 import { useClinic } from '@/lib/clinic-context'
 import { clinicConfig, type ClinicType } from '@/lib/queue-data'
 import { getDefaultBranchData, getEstimatedDuration, type Room } from '@/lib/branch-data'
+import { useDailyRooms } from '@/lib/use-daily-rooms'
 
 // Helper: lighten a hex color for background
 function lighten(hex: string, factor = 0.85): string {
@@ -126,28 +127,27 @@ export default function QueueStatusBoard() {
     return effectiveQueue.filter(q => q.status === 'cancelled')
   }, [effectiveQueue])
 
-  // ═══ Read daily rooms from clinic-specific localStorage ═══
-  const dailyRooms = useMemo(() => {
-    if (typeof window === 'undefined') return []
-    const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
-    const matched = clinics.find((c: any) => c.type === clinicType)
-    const cid = matched?.id
-    const today = new Date().toISOString().split('T')[0]
-    const keys = cid ? [`clinic-daily-rooms-${cid}`, 'clinic-daily-rooms'] : ['clinic-daily-rooms']
-    const dateKeys = cid ? [`clinic-daily-rooms-date-${cid}`, 'clinic-daily-rooms-date'] : ['clinic-daily-rooms-date']
-    for (let i = 0; i < keys.length; i++) {
-      try {
-        const saved = localStorage.getItem(keys[i])
-        const savedDate = localStorage.getItem(dateKeys[i])
-        if (savedDate === today && saved) {
-          const rooms: Room[] = JSON.parse(saved)
-          // Only show rooms with practitioners assigned
-          return rooms.filter(r => r.active && r.practitionerId)
-        }
-      } catch {}
+  // ═══ Today's daily rooms — Supabase-first (localStorage is only a cache) ═══
+  const clinicIdForRooms = useMemo(() => {
+    if (typeof window === 'undefined') return null
+    try {
+      const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
+      return clinics.find((c: any) => c.type === clinicType)?.id || null
+    } catch {
+      return null
     }
-    return []
-  }, [clinicType, refreshTick])
+  }, [clinicType])
+  const { rooms: dailyRoomsSource, reload: reloadDailyRooms } = useDailyRooms<Room>(clinicIdForRooms)
+  // Only show rooms with practitioners assigned
+  const dailyRooms = useMemo(
+    () => dailyRoomsSource.filter(r => r.active && r.practitionerId),
+    [dailyRoomsSource]
+  )
+  // Manual refresh re-reads the source of truth
+  useEffect(() => {
+    if (refreshTick === 0) return
+    reloadDailyRooms()
+  }, [refreshTick, reloadDailyRooms])
 
   // ═══ Per-room status ═══
   const roomStatuses = useMemo(() => {

@@ -16,9 +16,10 @@ import Toast from '@/components/ui/Toast'
 import {
   getDefaultBranchData, getAllActiveProcedures, type Practitioner, type ClinicBranchData,
   findRoomForProcedure, getPractitionerName,
-  type Branch,
+  type Branch, type Room,
 } from '@/lib/branch-data'
 import { checkDistance, CLINIC_LOCATION } from '@/lib/booking-data'
+import { useDailyRooms } from '@/lib/use-daily-rooms'
 
 type BookingStep = 'location' | 'select-doctor' | 'fill-info' | 'done'
 type LocationStatus = 'checking' | 'near' | 'far' | 'error' | 'denied'
@@ -106,9 +107,6 @@ export default function PatientBooking() {
   }, [currentClinic])
   const clinicId = currentClinicObj?.id
   
-  // Clinic-specific keys
-  const dailyRoomKey = clinicId ? `clinic-daily-rooms-${clinicId}` : 'clinic-daily-rooms'
-  const dailyDateKey = clinicId ? `clinic-daily-rooms-date-${clinicId}` : 'clinic-daily-rooms-date'
 
   // Load practitioners from localStorage (filtered by current clinic)
   const clinicPractitioners = useMemo(() => {
@@ -182,18 +180,12 @@ export default function PatientBooking() {
     return []
   }, [clinicId])
 
-  // Get today's daily rooms from localStorage
-  const dailyRooms = useMemo(() => {
-    if (typeof window === 'undefined') return []
-    const saved = localStorage.getItem(dailyRoomKey)
-    const savedDate = localStorage.getItem(dailyDateKey)
-    const today = new Date().toISOString().split('T')[0]
-    if (savedDate !== today || !saved) return []
-    try {
-      const parsed = JSON.parse(saved)
-      return Array.isArray(parsed) ? parsed.filter((r: any) => r.active) : []
-    } catch { return [] }
-  }, [dailyRoomKey, dailyDateKey])
+  // Today's daily rooms — Supabase-first (localStorage is only a cache)
+  const { rooms: dailyRoomsSource } = useDailyRooms<Room>(clinicId)
+  const dailyRooms = useMemo(
+    () => dailyRoomsSource.filter((r) => r.active),
+    [dailyRoomsSource]
+  )
 
   // Active branches = branches that have at least one daily room today
   const activeBranches = useMemo(() => {

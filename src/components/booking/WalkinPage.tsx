@@ -10,8 +10,9 @@ import PhoneInput from '@/components/ui/PhoneInput'
 import { clsx } from 'clsx'
 import { QRCodeSVG } from 'qrcode.react'
 import { clinicConfig, type ClinicType } from '@/lib/queue-data'
-import { getDefaultBranchData, type ClinicBranchData, type Practitioner } from '@/lib/branch-data'
+import { getDefaultBranchData, type ClinicBranchData, type Practitioner, type Room } from '@/lib/branch-data'
 import { useQueue } from '@/lib/queue-context'
+import { useDailyRooms } from '@/lib/use-daily-rooms'
 
 interface SelectedProc {
   procedureId: string
@@ -79,9 +80,6 @@ export default function WalkinPage() {
     return clinicCfg.name
   }, [clinicId, clinicCfg])
   
-  // Clinic-specific storage keys
-  const dailyRoomKey = clinicId ? `clinic-daily-rooms-${clinicId}` : 'clinic-daily-rooms'
-  const dailyDateKey = clinicId ? `clinic-daily-rooms-date-${clinicId}` : 'clinic-daily-rooms-date'
   
   // Load branch data from Supabase → localStorage → defaults
   const [branchData, setBranchData] = useState<ClinicBranchData>(() => getDefaultBranchData(clinicType || 'dental'))
@@ -155,18 +153,12 @@ export default function WalkinPage() {
   const [lateMinutes, setLateMinutes] = useState(0)
   const [practitionerName, setPractitionerName] = useState('')
 
-  // Get today's daily rooms from localStorage
-  const dailyRooms = useMemo(() => {
-    if (typeof window === 'undefined') return []
-    const saved = localStorage.getItem(dailyRoomKey)
-    const savedDate = localStorage.getItem(dailyDateKey)
-    const today = new Date().toISOString().split('T')[0]
-    if (savedDate !== today || !saved) return []
-    try {
-      const parsed = JSON.parse(saved)
-      return Array.isArray(parsed) ? parsed.filter((r: any) => r.active) : []
-    } catch { return [] }
-  }, [dailyRoomKey, dailyDateKey])
+  // Today's daily rooms — Supabase-first (localStorage is only a cache)
+  const { rooms: dailyRoomsSource } = useDailyRooms<Room>(clinicId)
+  const dailyRooms = useMemo(
+    () => dailyRoomsSource.filter((r) => r.active),
+    [dailyRoomsSource]
+  )
 
   // Available branches = branches that have at least one daily room today (only active branches)
   const availableBranches = useMemo(() => {

@@ -98,12 +98,67 @@ export async function setClinicSetting<T = any>(
   return success
 }
 
+// ═══ ICT (Asia/Bangkok) business date ═══
+// Room/queue dates are business dates in the clinic timezone. `toISOString()`
+// returns the UTC date, which is still "yesterday" during early-morning ICT and
+// caused off-by-one mismatches against daily_rooms.room_date.
+export function getTodayICT(): string {
+  return new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().split('T')[0]
+}
+
+// ═══ Daily rooms storage keys ═══
+// Clinic-specific key first, then the legacy shared key (some surfaces resolve
+// the clinic id lazily and fall back to it).
+export function dailyRoomsStorageKeys(clinicId?: string | null) {
+  return {
+    dataKeys: clinicId ? [`clinic-daily-rooms-${clinicId}`, 'clinic-daily-rooms'] : ['clinic-daily-rooms'],
+    dateKeys: clinicId ? [`clinic-daily-rooms-date-${clinicId}`, 'clinic-daily-rooms-date'] : ['clinic-daily-rooms-date'],
+  }
+}
+
+function primaryDailyRoomsKeys(clinicId?: string | null) {
+  return clinicId
+    ? { dataKey: `clinic-daily-rooms-${clinicId}`, dateKey: `clinic-daily-rooms-date-${clinicId}` }
+    : { dataKey: 'clinic-daily-rooms', dateKey: 'clinic-daily-rooms-date' }
+}
+
+// ═══ Local cache read (synchronous, cache only — never Supabase) ═══
+export function readDailyRoomsCache(clinicId?: string | null, date?: string): any[] | null {
+  if (typeof window === 'undefined') return null
+  const targetDate = date || getTodayICT()
+  const { dataKeys, dateKeys } = dailyRoomsStorageKeys(clinicId)
+  for (let i = 0; i < dataKeys.length; i++) {
+    try {
+      const saved = localStorage.getItem(dataKeys[i])
+      const savedDate = localStorage.getItem(dateKeys[i])
+      if (saved && savedDate === targetDate) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed)) return parsed
+      }
+    } catch {}
+  }
+  return null
+}
+
+// ═══ Local cache write (cache only — never Supabase) ═══
+// Used to mirror successful saves and to hydrate the cache from Supabase so
+// legacy localStorage readers see the same set as the database.
+export function writeDailyRoomsCache(clinicId: string | null | undefined, rooms: any[], date?: string): void {
+  if (typeof window === 'undefined') return
+  const targetDate = date || getTodayICT()
+  const { dataKey, dateKey } = primaryDailyRoomsKeys(clinicId)
+  try {
+    localStorage.setItem(dateKey, targetDate)
+    localStorage.setItem(dataKey, JSON.stringify(rooms))
+  } catch {}
+}
+
 // ═══ Read daily rooms: Supabase first, then localStorage fallback ═══
 export async function getDailyRooms(
   clinicId: string,
   date?: string
 ): Promise<any[] | null> {
-  const targetDate = date || new Date().toISOString().split('T')[0]
+  const targetDate = date || getTodayICT()
 
   // 1. Try Supabase
   const sb = getSB()
@@ -114,27 +169,21 @@ export async function getDailyRooms(
         .select('room_data')
         .eq('clinic_id', clinicId)
         .eq('room_date', targetDate)
-        .single()
+        .limit(1)
 
-      if (!error && data?.room_data) {
-        return Array.isArray(data.room_data) ? data.room_data : []
+      const row = Array.isArray(data) ? data[0] : data
+      if (!error && row?.room_data) {
+        const rooms = Array.isArray(row.room_data) ? row.room_data : []
+        // Hydrate the local cache so localStorage readers agree with Supabase
+        // (the source of truth) instead of drifting from it.
+        writeDailyRoomsCache(clinicId, rooms, targetDate)
+        return rooms
       }
     } catch {}
   }
 
-  // 2. Fallback: localStorage
-  try {
-    const dateKey = `clinic-daily-rooms-date-${clinicId}`
-    const dataKey = `clinic-daily-rooms-${clinicId}`
-    const savedDate = localStorage.getItem(dateKey)
-    const saved = localStorage.getItem(dataKey)
-    if (savedDate === targetDate && saved) {
-      const parsed = JSON.parse(saved)
-      return Array.isArray(parsed) ? parsed : []
-    }
-  } catch {}
-
-  return null
+  // 2. Fallback: local cache only (Supabase remains the source of truth)
+  return readDailyRoomsCache(clinicId, targetDate)
 }
 
 // ═══ Write daily rooms: Supabase + localStorage ═══
@@ -143,7 +192,7 @@ export async function setDailyRooms(
   rooms: any[],
   date?: string
 ): Promise<boolean> {
-  const targetDate = date || new Date().toISOString().split('T')[0]
+  const targetDate = date || getTodayICT()
   let success = false
 
   // 1. Write to Supabase (upsert)
@@ -166,11 +215,8 @@ export async function setDailyRooms(
     } catch {}
   }
 
-  // 2. Also write to localStorage
-  try {
-    localStorage.setItem(`clinic-daily-rooms-date-${clinicId}`, targetDate)
-    localStorage.setItem(`clinic-daily-rooms-${clinicId}`, JSON.stringify(rooms))
-  } catch {}
+  // 2. Mirror into the local cache so readers agree with Supabase
+  writeDailyRoomsCache(clinicId, rooms, targetDate)
 
   return success
 }

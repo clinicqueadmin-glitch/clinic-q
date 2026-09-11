@@ -12,6 +12,8 @@ import { useQueue, type BookingMode, type DifficultyLevel, type CompletedProcedu
 import { useNotification } from '@/lib/use-notification'
 import Toast from '@/components/ui/Toast'
 import AddRoomModal from '@/components/dashboard/AddRoomModal'
+import { useDailyRooms } from '@/lib/use-daily-rooms'
+import { getTodayICT } from '@/lib/clinic-data'
 import EditRoomModal from '@/components/dashboard/EditRoomModal'
 import {
   getDefaultBranchData, getAllActiveProcedures,
@@ -81,7 +83,6 @@ export default function TodayOps() {
   const { user, currentRole, currentClinicId } = useAuth()
   // Clinic-specific storage keys
   const roomKey = currentClinicId ? `clinic-rooms-${currentClinicId}` : 'clinic-rooms'
-  const dailyRoomKey = currentClinicId ? `clinic-daily-rooms-${currentClinicId}` : 'clinic-daily-rooms'
   const dailyDateKey = currentClinicId ? `clinic-daily-rooms-date-${currentClinicId}` : 'clinic-daily-rooms-date'
   const settingsKey = currentClinicId ? `clinic-q-settings-${currentClinicId}` : 'clinic-q-settings'
   const { practitioners } = usePractitioners()
@@ -131,24 +132,10 @@ export default function TodayOps() {
     return []
   })
   
-  // Read daily room schedule from separate localStorage (practitioner, branch, time for today)
-  const [dailyRooms, setDailyRooms] = useState<Room[]>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(dailyRoomKey)
-      const savedDate = localStorage.getItem(dailyDateKey)
-      const today = new Date().toISOString().split('T')[0]
-      // If date doesn't match today, clear daily rooms (new day — user adds rooms manually)
-      if (savedDate !== today) {
-        localStorage.removeItem(dailyRoomKey)
-        localStorage.setItem(dailyDateKey, today)
-        return []
-      }
-      if (saved) {
-        try { return JSON.parse(saved) } catch {}
-      }
-    }
-    return []
-  })
+  // Today's daily rooms (practitioner, branch, time for today).
+  // Supabase-first: the local cache is painted instantly, then reconciled with
+  // the daily_rooms row for (clinic, today ICT) which is the source of truth.
+  const { rooms: dailyRooms, reload: reloadDailyRooms, setRooms: setDailyRooms } = useDailyRooms<Room>(currentClinicId)
 
   // Reset daily rooms when clinic closes
   useEffect(() => {
@@ -158,6 +145,8 @@ export default function TodayOps() {
       try {
         const settings = JSON.parse(savedSettings)
         const now = new Date()
+        // Business date must be ICT so it matches daily_rooms.room_date
+        const today = getTodayICT()
         // Use weekly schedule if available, else fallback to legacy closeTime
         let closeTime = settings.closeTime || '20:00'
         if (settings.weeklySchedule) {
@@ -167,12 +156,8 @@ export default function TodayOps() {
             closeTime = daySchedule.closeTime || closeTime
             // If today is not enabled, treat as closed immediately
             if (!daySchedule.enabled) {
-              const savedDate = localStorage.getItem(dailyDateKey)
-              const today = now.toISOString().split('T')[0]
-              if (savedDate === today) {
-                localStorage.removeItem(dailyRoomKey)
+              if (localStorage.getItem(dailyDateKey) === today) {
                 localStorage.removeItem(`clinicq-queue-${currentClinic}-${today}`)
-                localStorage.setItem(dailyDateKey, '')
                 setDailyRooms([])
               }
               return
@@ -182,14 +167,10 @@ export default function TodayOps() {
         const [closeHour, closeMin] = closeTime.split(':').map(Number)
         const currentMinutes = now.getHours() * 60 + now.getMinutes()
         const closeMinutes = closeHour * 60 + closeMin
-        // If past closing time, clear daily rooms and queue
+        // Past closing time: clear today's local room list and queue cache
         if (currentMinutes >= closeMinutes) {
-          const savedDate = localStorage.getItem(dailyDateKey)
-          const today = now.toISOString().split('T')[0]
-          if (savedDate === today) {
-            localStorage.removeItem(dailyRoomKey)
+          if (localStorage.getItem(dailyDateKey) === today) {
             localStorage.removeItem(`clinicq-queue-${currentClinic}-${today}`)
-            localStorage.setItem(dailyDateKey, '')
             setDailyRooms([])
           }
         }
@@ -199,14 +180,11 @@ export default function TodayOps() {
     // Also check for midnight reset — detect date change
     const checkMidnight = () => {
       const savedDate = localStorage.getItem(dailyDateKey)
-      const today = new Date().toISOString().split('T')[0]
+      const today = getTodayICT()
       if (savedDate && savedDate !== today) {
-        // New day! Reset everything
-        localStorage.removeItem(dailyRoomKey)
+        // New day: drop yesterday's queue cache and local room list, then reload
         localStorage.removeItem(`clinicq-queue-${currentClinic}-${savedDate}`)
-        localStorage.setItem(dailyDateKey, today)
         setDailyRooms([])
-        // Reload page to refresh queue
         window.location.reload()
       }
     }
@@ -216,7 +194,7 @@ export default function TodayOps() {
       checkMidnight()
     }, 60000) // Check every minute
     return () => clearInterval(interval)
-  }, [currentClinic])
+  }, [currentClinic, currentClinicId, dailyDateKey, setDailyRooms])
   
   // Dashboard shows ONLY daily rooms that have been configured (with practitioner + branch)
   const allActiveRooms = useMemo(() => {
@@ -240,15 +218,10 @@ export default function TodayOps() {
           setSavedRooms(JSON.parse(e.newValue))
         } catch {}
       }
-      if (e.key === dailyRoomKey && e.newValue) {
-        try {
-          setDailyRooms(JSON.parse(e.newValue))
-        } catch {}
-      }
     }
     window.addEventListener('storage', handleStorageChange)
     return () => window.removeEventListener('storage', handleStorageChange)
-  }, [roomKey, dailyRoomKey])
+  }, [roomKey])
   const allProcedures = useMemo(() => getAllActiveProcedures(branchData), [branchData])
 
   // Provider sees only their assigned room(s)
@@ -668,39 +641,21 @@ export default function TodayOps() {
     openConfirmCall(nextQueue)
   }
 
-  // Add new room handler
+  // Add new room handler — re-read today's rooms from the source of truth
   const handleAddRoom = () => {
-    // Refresh daily rooms from localStorage
-    const saved = localStorage.getItem(dailyRoomKey)
-    if (saved) {
-      try {
-        setDailyRooms(JSON.parse(saved))
-      } catch {}
-    }
+    reloadDailyRooms()
     showToastMsg(`เพิ่มห้องตรวจวันนี้สำเร็จ!`, 'success')
   }
 
   // Edit room handler
   const handleEditRoom = (updated: Room) => {
-    // Refresh daily rooms from localStorage
-    const saved = localStorage.getItem(dailyRoomKey)
-    if (saved) {
-      try {
-        setDailyRooms(JSON.parse(saved))
-      } catch {}
-    }
+    reloadDailyRooms()
     showToastMsg(`แก้ไข ${updated.name} สำเร็จ!`, 'success')
   }
 
   // Delete room handler
-  const handleDeleteRoom = (roomId: number) => {
-    // Refresh daily rooms from localStorage
-    const saved = localStorage.getItem(dailyRoomKey)
-    if (saved) {
-      try {
-        setDailyRooms(JSON.parse(saved))
-      } catch {}
-    }
+  const handleDeleteRoom = () => {
+    reloadDailyRooms()
     showToastMsg(`ลบห้องออกจากรายการวันนี้แล้ว`, 'info')
   }
 

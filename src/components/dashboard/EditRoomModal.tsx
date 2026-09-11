@@ -6,6 +6,7 @@ import { useClinic, getDaySchedule } from '@/lib/clinic-context'
 import { useAuth } from '@/lib/auth-context'
 import { getDefaultBranchData, type ClinicBranchData, type Room } from '@/lib/branch-data'
 import { usePractitioners } from '@/lib/practitioner-context'
+import { readDailyRoomsCache } from '@/lib/clinic-data'
 
 interface EditRoomModalProps {
   open: boolean
@@ -36,7 +37,6 @@ export default function EditRoomModal({ open, room, onClose, onSave, onDelete }:
     return getDefaultBranchData(currentClinic || 'dental')
   }, [currentClinicId, currentClinic])
 
-  const dailyRoomKey = currentClinicId ? `clinic-daily-rooms-${currentClinicId}` : 'clinic-daily-rooms'
 
   // Form state
   const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
@@ -150,18 +150,17 @@ export default function EditRoomModal({ open, room, onClose, onSave, onDelete }:
     load()
   }, [currentClinicId, practitioners])
 
-  // Available practitioners (exclude those assigned to other rooms)
+  // Available practitioners (exclude those assigned to other rooms).
+  // Reads the cache, which the dashboard hydrates from Supabase (source of truth).
   const activePractitioners = useMemo(() => {
-    const saved = localStorage.getItem(dailyRoomKey)
-    let dailyRooms: Room[] = []
-    try { dailyRooms = saved ? JSON.parse(saved) : [] } catch {}
+    const dailyRooms: Room[] = (readDailyRoomsCache(currentClinicId) as Room[] | null) || []
     const assignedIds = new Set(
       dailyRooms
         .filter(r => r.active && r.practitionerId && r.id !== room?.id)
         .map(r => r.practitionerId)
     )
     return allClinicPractitioners.filter(p => p.active && !assignedIds.has(p.id))
-  }, [allClinicPractitioners, room, dailyRoomKey])
+  }, [allClinicPractitioners, room, currentClinicId])
 
   const branches = branchData.branches.filter(b => b.active)
 
@@ -177,7 +176,7 @@ export default function EditRoomModal({ open, room, onClose, onSave, onDelete }:
     return b?.name || ''
   }, [selectedBranchId, branches])
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!room) return
     const updated: Room = {
       ...room,
@@ -188,45 +187,31 @@ export default function EditRoomModal({ open, room, onClose, onSave, onDelete }:
       workingEndTime: endTime,
     }
 
-    // Update in localStorage + Supabase
-    const saved = localStorage.getItem(dailyRoomKey)
-    if (saved) {
-      try {
-        const rooms: Room[] = JSON.parse(saved)
-        const updatedRooms = rooms.map(r => r.id === room.id ? updated : r)
-        localStorage.setItem(dailyRoomKey, JSON.stringify(updatedRooms))
-        // Also save to Supabase
-        if (currentClinicId) {
-          const today = new Date().toISOString().split('T')[0]
-          import('@/lib/clinic-data').then(({ setDailyRooms: saveDailyToSB }) => {
-            saveDailyToSB(currentClinicId, updatedRooms, today)
-          })
-        }
-      } catch {}
+    // Update in Supabase (source of truth) first; the helper mirrors the same set
+    // and the same ICT business date into the local cache so the two stay in step.
+    if (currentClinicId) {
+      const { getDailyRooms, setDailyRooms: saveDailyToSB } = await import('@/lib/clinic-data')
+      const existing = await getDailyRooms(currentClinicId)
+      const rooms: Room[] = Array.isArray(existing) ? (existing as Room[]) : []
+      const updatedRooms = rooms.map(r => r.id === room.id ? updated : r)
+      await saveDailyToSB(currentClinicId, updatedRooms)
     }
 
     onSave(updated)
     onClose()
   }
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!room) return
 
-    // Remove from localStorage + Supabase
-    const saved = localStorage.getItem(dailyRoomKey)
-    if (saved) {
-      try {
-        const rooms: Room[] = JSON.parse(saved)
-        const updatedRooms = rooms.filter(r => r.id !== room.id)
-        localStorage.setItem(dailyRoomKey, JSON.stringify(updatedRooms))
-        // Also save to Supabase
-        if (currentClinicId) {
-          const today = new Date().toISOString().split('T')[0]
-          import('@/lib/clinic-data').then(({ setDailyRooms: saveDailyToSB }) => {
-            saveDailyToSB(currentClinicId, updatedRooms, today)
-          })
-        }
-      } catch {}
+    // Remove from Supabase (source of truth) first; the helper mirrors the same
+    // set and the same ICT business date into the local cache.
+    if (currentClinicId) {
+      const { getDailyRooms, setDailyRooms: saveDailyToSB } = await import('@/lib/clinic-data')
+      const existing = await getDailyRooms(currentClinicId)
+      const rooms: Room[] = Array.isArray(existing) ? (existing as Room[]) : []
+      const updatedRooms = rooms.filter(r => r.id !== room.id)
+      await saveDailyToSB(currentClinicId, updatedRooms)
     }
 
     onDelete(room.id)

@@ -6,6 +6,7 @@ import { useClinic, getDaySchedule } from '@/lib/clinic-context'
 import { useAuth } from '@/lib/auth-context'
 import { getDefaultBranchData, type ClinicBranchData, type Room } from '@/lib/branch-data'
 import { usePractitioners } from '@/lib/practitioner-context'
+import { readDailyRoomsCache } from '@/lib/clinic-data'
 
 interface AddRoomModalProps {
   open: boolean
@@ -35,7 +36,6 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
   
   // Clinic-specific keys
   const roomKey = currentClinicId ? `clinic-rooms-${currentClinicId}` : 'clinic-rooms'
-  const dailyRoomKey = currentClinicId ? `clinic-daily-rooms-${currentClinicId}` : 'clinic-daily-rooms'
 
   // Read rooms from RoomSettings (localStorage - source of truth for room info)
   const [savedRooms] = useState<Room[]>(() => {
@@ -48,16 +48,20 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
     return branchData.rooms
   })
 
-  // Read daily room schedule from separate localStorage key
-  const [dailyRooms, setDailyRooms] = useState<Room[]>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(dailyRoomKey)
-      if (saved) {
-        try { return JSON.parse(saved) } catch {}
-      }
-    }
-    return []
-  })
+  // Today's daily rooms. The cache is only a paint; Supabase is authoritative and
+  // is re-read below whenever the modal opens.
+  const [dailyRooms, setDailyRooms] = useState<Room[]>(() => (readDailyRoomsCache(currentClinicId) as Room[] | null) || [])
+
+  useEffect(() => {
+    if (!open || !currentClinicId) return
+    let cancelled = false
+    import('@/lib/clinic-data').then(({ getDailyRooms }) =>
+      getDailyRooms(currentClinicId).then((rooms) => {
+        if (!cancelled && Array.isArray(rooms)) setDailyRooms(rooms as Room[])
+      })
+    )
+    return () => { cancelled = true }
+  }, [open, currentClinicId])
 
   const [selectedRoomId, setSelectedRoomId] = useState<number | ''>('')
   const [selectedPractitionerId, setSelectedPractitionerId] = useState('')
@@ -241,7 +245,7 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
   }
 
   // Actually save after confirmation
-  const handleSave = () => {
+  const handleSave = async () => {
     if (selectedRoomId === '' || !selectedRoom) return
     
     // Create daily room entry with room info from RoomSettings + user selections
@@ -259,16 +263,19 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
       active: true,
     }
 
-    // Save to daily rooms localStorage + Supabase
-    const updatedDailyRooms = [...dailyRooms, dailyRoom]
-    setDailyRooms(updatedDailyRooms)
-    localStorage.setItem(dailyRoomKey, JSON.stringify(updatedDailyRooms))
-    // Also save to Supabase
+    // Save to daily rooms — Supabase is the source of truth, localStorage the cache.
+    // Re-read the authoritative set first so a stale local cache can never be
+    // re-saved as today's rooms; the helper then writes BOTH layers with the same
+    // ICT business date, so they cannot drift apart.
     if (currentClinicId) {
-      const today = new Date().toISOString().split('T')[0]
-      import('@/lib/clinic-data').then(({ setDailyRooms: saveDailyToSB }) => {
-        saveDailyToSB(currentClinicId, updatedDailyRooms, today)
-      })
+      const { getDailyRooms, setDailyRooms: saveDailyToSB } = await import('@/lib/clinic-data')
+      const existing = await getDailyRooms(currentClinicId)
+      const base: Room[] = Array.isArray(existing) ? (existing as Room[]) : dailyRooms
+      const updatedDailyRooms = [...base, dailyRoom]
+      setDailyRooms(updatedDailyRooms)
+      await saveDailyToSB(currentClinicId, updatedDailyRooms)
+    } else {
+      setDailyRooms([...dailyRooms, dailyRoom])
     }
 
     // Callback to refresh parent

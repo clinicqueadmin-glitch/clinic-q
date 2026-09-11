@@ -7,6 +7,7 @@ import { Volume2, VolumeX, Maximize, Minimize, RefreshCw } from 'lucide-react'
 import { useQueue, type QueueItem } from '@/lib/queue-context'
 import { useClinic } from '@/lib/clinic-context'
 import { getDefaultBranchData, getOvertimeStatus, type Room } from '@/lib/branch-data'
+import { useDailyRooms } from '@/lib/use-daily-rooms'
 import TVCalledAlert from './TVCalledAlert'
 import TVAdDisplay, { type TVAd } from './TVAdDisplay'
 
@@ -88,27 +89,14 @@ export default function TVDisplay() {
     return getDefaultBranchData(currentClinic || 'dental')
   }, [currentClinic, resolvedClinicId])
   
-  // Read daily rooms from clinic-specific localStorage (only show rooms added for today)
+  // Today's daily rooms — Supabase-first (localStorage is only a cache).
+  // Falls back to the clinic's room definitions when nothing is set for today.
+  const { rooms: dailyRoomsSource } = useDailyRooms<Room>(resolvedClinicId)
   const activeRooms = useMemo(() => {
-    if (typeof window === 'undefined') return branchData.rooms.filter(r => r.active)
-    const today = new Date().toISOString().split('T')[0]
-    // Use resolvedClinicId directly (no more find-by-type)
-    const keys = resolvedClinicId ? [`clinic-daily-rooms-${resolvedClinicId}`, 'clinic-daily-rooms'] : ['clinic-daily-rooms']
-    const dateKeys = resolvedClinicId ? [`clinic-daily-rooms-date-${resolvedClinicId}`, 'clinic-daily-rooms-date'] : ['clinic-daily-rooms-date']
-    for (let i = 0; i < keys.length; i++) {
-      const saved = localStorage.getItem(keys[i])
-      const savedDate = localStorage.getItem(dateKeys[i])
-      if (savedDate === today && saved) {
-        try {
-          const dailyRooms: Room[] = JSON.parse(saved)
-          const active = dailyRooms.filter((r) => r.active)
-          if (active.length > 0) return active
-        } catch {}
-      }
-    }
-    // Fallback: show all active rooms from branch data
+    const daily = dailyRoomsSource.filter((r) => r.active)
+    if (daily.length > 0) return daily
     return branchData.rooms.filter(r => r.active)
-  }, [branchData, resolvedClinicId])
+  }, [dailyRoomsSource, branchData])
 
   const [lastCalled, setLastCalled] = useState<QueueItem | null>(null)
   const [showAlert, setShowAlert] = useState(false)
