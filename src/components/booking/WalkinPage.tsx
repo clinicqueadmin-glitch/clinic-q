@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import {
   Loader2, Phone, User, Stethoscope, Clock,
@@ -140,6 +140,18 @@ export default function WalkinPage() {
   const [selectedProcs, setSelectedProcs] = useState<SelectedProc[]>([])
   const [submittedNumber, setSubmittedNumber] = useState('')
   const [submitResult, setSubmitResult] = useState<{ number: string; mode: BookingMode; apptTime: string; onTime: boolean; practitioner: string } | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  // Synchronous double-submit guard: `isSubmitting` (state) only commits after
+  // a re-render, so two clicks landing in the same tick could both pass it.
+  // This ref is set synchronously at the top of handleSubmit, making a second
+  // invocation impossible regardless of render timing.
+  const submittingRef = useRef(false)
+  // Success latch: never released by the submit flow itself — only by the
+  // "ลงทะเบียนใหม่" reset. Closes the theoretical window between releasing
+  // `submittingRef` and React committing `submittedNumber`, so a click landing
+  // in that window still cannot create a second queue item.
+  const submittedRef = useRef(false)
+  const [submitError, setSubmitError] = useState('')
 
   // Booking mode: walkin or appointment
   type BookingMode = 'walkin' | 'appointment'
@@ -354,8 +366,17 @@ export default function WalkinPage() {
   // Submit
   // Queue number is generated server-side by create_queue_item() RPC
   const handleSubmit = async () => {
+    // Double-submit guard: once a submit is in flight (or already succeeded),
+    // ignore further clicks so the same patient is never queued twice.
+    // `submittingRef` is checked synchronously (before any await) and is immune
+    // to stale-closure timing — even two clicks in the same tick only submit once.
+    if (submittingRef.current || submittedRef.current || isSubmitting || submittedNumber) return
     if (!name.trim() || phone.length !== 10 || selectedProcs.length === 0) return
     if (bookingMode === 'appointment' && !appointmentTime) return
+
+    submittingRef.current = true
+    setIsSubmitting(true)
+    setSubmitError('')
 
     const now = new Date()
     const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
@@ -401,18 +422,35 @@ export default function WalkinPage() {
 
     try {
       const result = await addQueueItem(newQueueItem as any)
-      // Store submission result for success screen
-      setSubmitResult({
-        number: result.number,  // Use server-generated number
-        mode: bookingMode,
-        apptTime: appointmentTime,
-        onTime: computedIsOnTime,
-        practitioner: practitionerName,
-      })
-      setSubmittedNumber(result.number)
+      // Success: only render the success state when the server actually returned
+      // a queue number. Never fabricate a number client-side.
+      if (result && result.number) {
+        // Latch success immediately so no later click can reach the RPC before
+        // React commits the state updates below.
+        submittedRef.current = true
+        setSubmitResult({
+          number: result.number,  // Use server-generated number
+          mode: bookingMode,
+          apptTime: appointmentTime,
+          onTime: computedIsOnTime,
+          practitioner: practitionerName,
+        })
+        setSubmittedNumber(result.number)
+      } else {
+        // The queue may have been persisted but no number came back — treat as
+        // an error so the user does not resubmit blindly. Keeps the form intact.
+        console.error('Queue created without a number:', result)
+        setSubmitError('ลงทะเบียนไม่สำเร็จ กรุณาลองใหม่อีกครั้ง')
+      }
     } catch (e) {
       console.error('Failed to create queue item:', e)
-      // Error handling - user should retry
+      // Real failure — keep the form and let the user retry.
+      setSubmitError('ลงทะเบียนไม่สำเร็จ เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง')
+    } finally {
+      // Release the guard so a real error can be retried. On success the
+      // `submittedNumber` guard keeps further submits blocked.
+      submittingRef.current = false
+      setIsSubmitting(false)
     }
   }
 
@@ -506,6 +544,9 @@ export default function WalkinPage() {
                 setSelectedProcedure(''); setSelectedProcs([]); setCustomProcedureName('')
                 setAppointmentTime(''); setIsOnTime(true); setLateMinutes(0)
                 setPractitionerName(''); setSubmittedNumber(''); setSubmitResult(null)
+                setIsSubmitting(false); setSubmitError('')
+                // Release the success latch so the next patient can be queued.
+                submittedRef.current = false
               }}
               className="mt-6 w-full py-3 rounded-2xl font-bold text-sm text-white transition-all"
               style={{ backgroundColor: accentColor }}
@@ -811,23 +852,37 @@ export default function WalkinPage() {
             </>
           )}
 
+          {/* Submit error */}
+          {submitError && (
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-3">
+              <p className="text-sm text-red-600 font-medium">⚠️ {submitError}</p>
+            </div>
+          )}
+
           {/* Submit */}
           <button
             onClick={handleSubmit}
-            disabled={!name.trim() || phone.length !== 10 || selectedProcs.length === 0 || (bookingMode === 'appointment' && !appointmentTime)}
+            disabled={isSubmitting || !name.trim() || phone.length !== 10 || selectedProcs.length === 0 || (bookingMode === 'appointment' && !appointmentTime)}
             className={clsx(
-              'w-full py-3.5 rounded-2xl font-bold text-sm transition-all',
-              name.trim() && phone.length === 10 && selectedProcs.length > 0 && (bookingMode === 'walkin' || appointmentTime)
-                ? 'text-white shadow-lg hover:shadow-xl active:scale-[0.98]'
-                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              'w-full py-3.5 rounded-2xl font-bold text-sm transition-all flex items-center justify-center gap-2',
+              isSubmitting || !name.trim() || phone.length !== 10 || selectedProcs.length === 0 || (bookingMode === 'appointment' && !appointmentTime)
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : 'text-white shadow-lg hover:shadow-xl active:scale-[0.98]'
             )}
             style={
-              name.trim() && phone.length === 10 && selectedProcs.length > 0 && (bookingMode === 'walkin' || appointmentTime)
+              !isSubmitting && name.trim() && phone.length === 10 && selectedProcs.length > 0 && (bookingMode === 'walkin' || appointmentTime)
                 ? { backgroundColor: bookingMode === 'walkin' ? '#22C55E' : '#F97316' }
                 : {}
             }
           >
-            {bookingMode === 'walkin' ? '🚶 ลงทะเบียน Walk-in' : '🕐 ลงทะเบียนนัด'}
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                กำลังลงทะเบียน...
+              </>
+            ) : (
+              bookingMode === 'walkin' ? '🚶 ลงทะเบียน Walk-in' : '🕐 ลงทะเบียนนัด'
+            )}
           </button>
         </div>
 
