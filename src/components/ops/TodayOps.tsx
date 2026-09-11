@@ -62,6 +62,34 @@ function formatTimeShort(raw: string | undefined): string {
   return raw
 }
 
+/**
+ * Appointment arrival status — same rule as the registration pages
+ * (late = arrived more than 10 min after the appointment time).
+ *
+ * NEVER treat a missing `appointmentOnTime` (older rows stored NULL because
+ * the flag was not persisted at registration time) as "on time". Instead
+ * derive the status from the data the system already stores:
+ *   1. stored appointmentOnTime (true/false) if present;
+ *   2. else stored lateMinutes if present;
+ *   3. else recompute registration time (item.time) vs appointmentTime.
+ */
+function getAppointmentArrival(item: QueueItem): { isLate: boolean; lateMins: number } {
+  if (item.appointmentOnTime !== undefined && item.appointmentOnTime !== null) {
+    return {
+      isLate: item.appointmentOnTime === false,
+      lateMins: Number(item.lateMinutes) || 0,
+    }
+  }
+  if (item.lateMinutes !== undefined && item.lateMinutes !== null) {
+    const mins = Number(item.lateMinutes) || 0
+    return { isLate: mins > 0, lateMins: mins }
+  }
+  const [ah, am] = (item.appointmentTime || '00:00').split(':').map(Number)
+  const [ch, cm] = (item.time || '00:00').split(':').map(Number)
+  const diff = ch * 60 + cm - (ah * 60 + am)
+  return { isLate: diff > 10, lateMins: diff > 10 ? diff : 0 }
+}
+
 /** Calculate elapsed minutes since a time string like '09:15' */
 function getElapsedMinutes(timeStr: string | undefined): number | null {
   if (!timeStr) return null
@@ -900,12 +928,18 @@ export default function TodayOps() {
                     เข้าคิวแล้ว {formatTimeShort(item.arrivedAt)}
                   </span>
                 )}
-                {/* Appointment on-time/late */}
-                {item.bookingMode === 'appointment' && item.arrived && (
-                  <span className={clsx('text-xs px-2 py-0.5 rounded-full font-medium border', item.appointmentOnTime ? 'bg-green-50 text-green-600 border-green-200' : 'bg-orange-50 text-orange-600 border-orange-200')}>
-                    {item.appointmentOnTime !== false ? '✓ มาตามนัด' : `⚠ ช้า ${item.lateMinutes || 0} น.`}
-                  </span>
-                )}
+                {/* Appointment on-time/late — uses the same arrival rule as the
+                    registration pages, and derives the status from stored data
+                    when the flag is missing (older rows) instead of defaulting
+                    to "on time". */}
+                {item.bookingMode === 'appointment' && item.arrived && (() => {
+                  const { isLate, lateMins } = getAppointmentArrival(item)
+                  return (
+                    <span className={clsx('text-xs px-2 py-0.5 rounded-full font-medium border', isLate ? 'bg-orange-50 text-orange-600 border-orange-200' : 'bg-green-50 text-green-600 border-green-200')}>
+                      {isLate ? `⚠ ช้า ${lateMins} น.` : '✓ มาตามนัด'}
+                    </span>
+                  )
+                })()}
                 {/* Online check-in status */}
                 {item.bookingMode === 'remote' && item.checkinAt && (
                   <span className={clsx('text-xs px-2 py-0.5 rounded-full font-medium border', item.isOnTime ? 'bg-green-50 text-green-600 border-green-200' : 'bg-orange-50 text-orange-600 border-orange-200')}>
