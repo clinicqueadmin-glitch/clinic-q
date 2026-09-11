@@ -1901,6 +1901,11 @@ export default function TodayOps() {
                 const ot = room.serving.servingAt ? getOvertimeStatus(branchData, room.serving.procedureId, room.serving.servingAt, now.getTime()) : null
                 return (
                   <>
+                    {/* Current patient in this room: queue number + name */}
+                    <div className="mt-2 flex items-center justify-center gap-1.5 flex-wrap">
+                      <span className="px-2 py-0.5 rounded-md text-xs font-black font-mono tabular-nums text-white" style={{ backgroundColor: room.color }}>{room.serving.number}</span>
+                      <span className="text-xs font-bold text-gray-800 truncate max-w-[7rem]">{room.serving.patientName}</span>
+                    </div>
                     {/* Procedure + elapsed timer + remaining time */}
                     <div className="mt-2 px-2 py-1 rounded-lg text-xs font-bold" style={{ backgroundColor: `${room.color}15`, color: room.color }}>
                       <span className="truncate block">{room.serving.procedure}</span>
