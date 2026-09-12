@@ -14,6 +14,13 @@ interface AddRoomModalProps {
   onSave: () => void
 }
 
+// Practitioner identity is not consistent across sources: the same person can
+// surface as a practitioners-table row (id `pract-<uuid>`) and as an auth user
+// (id `<uuid>`), so we dedupe by normalized name (trim + lowercase + collapse
+// whitespace including full-width spaces). Practitioner names are unique per
+// clinic, so a normalized name uniquely identifies the person.
+const normPractitionerName = (n: string) => (n || '').trim().toLowerCase().replace(/\s+/g, ' ')
+
 export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProps) {
   const { currentClinic, settings } = useClinic()
   const { currentClinicId } = useAuth()
@@ -86,6 +93,19 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
     const load = async () => {
       const result: { id: string; name: string; active: boolean }[] = []
       const seenIds = new Set<string>()
+      // Same practitioner can surface under different ids (practitioners row id
+      // vs auth users.id) — dedupe by normalized name as well so the dropdown
+      // never shows the same person twice, even when sources differ by
+      // whitespace/case. Practitioner names are unique per clinic.
+      const seenNames = new Set<string>()
+      const pushUnique = (id: string, name: string) => {
+        const key = normPractitionerName(name)
+        if (!seenIds.has(id) && !seenNames.has(key)) {
+          seenIds.add(id)
+          seenNames.add(key)
+          result.push({ id, name: name.trim(), active: true })
+        }
+      }
 
       // 1. Supabase practitioners table (strict clinic_id filter)
       try {
@@ -97,9 +117,7 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
           })
           if (res.ok) {
             const rows = await res.json()
-            rows.forEach((r: any) => {
-              if (!seenIds.has(r.id)) { seenIds.add(r.id); result.push({ id: r.id, name: r.name, active: true }) }
-            })
+            rows.forEach((r: any) => pushUnique(r.id, r.name))
           }
         }
       } catch {}
@@ -121,9 +139,7 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
               })
               if (usersRes.ok) {
                 const users = await usersRes.json()
-                users.forEach((u: any) => {
-                  if (!seenIds.has(u.id)) { seenIds.add(u.id); result.push({ id: u.id, name: u.name, active: true }) }
-                })
+                users.forEach((u: any) => pushUnique(u.id, u.name))
               }
             }
           }
@@ -138,18 +154,14 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
           const parsed = JSON.parse(usersSaved)
           if (Array.isArray(parsed)) {
             parsed.filter((u: any) => u.isActive !== false && (u.roles?.includes('practitioner') || u.role === 'practitioner'))
-              .forEach((u: any) => {
-                if (!seenIds.has(u.id)) { seenIds.add(u.id); result.push({ id: u.id, name: u.name, active: true }) }
-              })
+              .forEach((u: any) => pushUnique(u.id, u.name))
           }
         } catch {}
       }
 
       // 4. PractitionerContext data (already filtered by clinicId)
       practitioners.forEach(p => {
-        if (p.active && p.clinicId === currentClinicId && !seenIds.has(p.id)) {
-          seenIds.add(p.id); result.push({ id: p.id, name: p.name, active: true })
-        }
+        if (p.active && p.clinicId === currentClinicId) pushUnique(p.id, p.name)
       })
 
       setAllClinicPractitioners(result)
