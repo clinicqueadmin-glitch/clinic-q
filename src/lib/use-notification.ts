@@ -175,22 +175,64 @@ export function useNotification() {
   }, [state.permission, state.isServiceWorkerReady, playSound])
 
   // Speak announcement using TTS (Thai)
+  // - ช้าลง (rate 0.8–0.85) ให้ฟังชัด
+  // - เว้นจังหวะระหว่างหมายเลขคิวกับข้อความเชิญ
+  // - พูดซ้ำอีกครั้งหลังเว้น ~1.5 วินาที เพื่อให้คนไข้ฟังทัน
   const speakAnnouncement = useCallback((text: string) => {
     try {
-      if ('speechSynthesis' in window) {
-        // Cancel any ongoing speech
-        window.speechSynthesis.cancel()
-        const utterance = new SpeechSynthesisUtterance(text)
-        utterance.lang = 'th-TH'
-        utterance.rate = 0.9
-        utterance.pitch = 1.0
-        utterance.volume = 1.0
-        // Try to find a Thai voice
+      if (!('speechSynthesis' in window)) return
+      // Cancel any ongoing speech
+      window.speechSynthesis.cancel()
+
+      const getThaiVoice = () => {
         const voices = window.speechSynthesis.getVoices()
-        const thaiVoice = voices.find(v => v.lang.startsWith('th'))
-        if (thaiVoice) utterance.voice = thaiVoice
-        window.speechSynthesis.speak(utterance)
+        return voices.find(v => v.lang.toLowerCase().startsWith('th')) || null
       }
+
+      const speak = (t: string, rate: number): Promise<void> => {
+        return new Promise(resolve => {
+          const utterance = new SpeechSynthesisUtterance(t)
+          utterance.lang = 'th-TH'
+          utterance.rate = rate
+          utterance.pitch = 1.0
+          utterance.volume = 1.0
+          const thaiVoice = getThaiVoice()
+          if (thaiVoice) utterance.voice = thaiVoice
+          utterance.onend = () => resolve()
+          utterance.onerror = () => resolve()
+          window.speechSynthesis.speak(utterance)
+        })
+      }
+
+      // แยกหมายเลขคิวออกจากข้อความเชิญ เพื่อพูดหมายเลขชัด ๆ แล้วเว้นจังหวะ
+      const match = text.match(/คิวที่\s+([A-Za-z0-9\-]+)/)
+      let queuePart = ''
+      let rest = text
+      if (match) {
+        queuePart = match[0] // เช่น "คิวที่ A001"
+        rest = text.replace(match[0], '').trim()
+      }
+
+      const announce = async () => {
+        window.speechSynthesis.cancel()
+        if (queuePart) {
+          // หมายเลขคิว: พูดช้าลงเล็กน้อย ชัดเจน
+          await speak(queuePart, 0.8)
+          // เว้นจังหวะก่อนข้อความเชิญ
+          await new Promise(r => setTimeout(r, 500))
+        }
+        if (rest) {
+          await speak(rest, 0.84)
+        }
+      }
+
+      // พูดครั้งแรก แล้วเว้น ~1.5 วินาที แล้วพูดซ้ำอีกครั้ง
+      const run = async () => {
+        await announce()
+        await new Promise(r => setTimeout(r, 1500))
+        await announce()
+      }
+      void run()
     } catch {
       // Silent fail if TTS not available
     }
