@@ -173,7 +173,7 @@ function queueItemToDbRow(item: QueueItem, clinicId: string) {
     booked_at: item.bookedAt ? (item.bookedAt.includes('T') ? item.bookedAt : now) : now,
     arrival_time: item.arrivalTime || null,
     arrived: item.arrived,
-    arrived_at: (item.arrivedAt && !isNaN(new Date(item.arrivedAt).getTime())) ? new Date(item.arrivedAt).toISOString() : null,
+    arrived_at: item.arrivedAt ? (item.arrivedAt.includes('T') ? item.arrivedAt : `${today}T${item.arrivedAt}:00+07:00`) : null,
     serving_at: item.servingAt ? new Date(item.servingAt).toISOString() : null,
     completed_at: item.completedAt ? (item.completedAt.includes('T') ? item.completedAt : `${today}T${item.completedAt}:00+07:00`) : null,
     total_duration: item.totalDuration || null,
@@ -196,7 +196,7 @@ function queueItemToDbRow(item: QueueItem, clinicId: string) {
     // Online booking fields
     booked_time_slot: item.bookedTimeSlot || null,
     distance_from_clinic: item.distanceFromClinic || null,
-    checkin_at: item.checkinAt || null,
+    checkin_at: item.checkinAt ? (item.checkinAt.includes('T') ? item.checkinAt : `${today}T${item.checkinAt}:00+07:00`) : null,
   }
 }
 
