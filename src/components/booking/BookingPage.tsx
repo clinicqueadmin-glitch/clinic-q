@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   Phone, User, Stethoscope, Clock,
@@ -100,12 +100,13 @@ export default function BookingPage() {
   const [phone, setPhone] = useState('')
   const [selectedBranch, setSelectedBranch] = useState('')
   const [selectedProcedure, setSelectedProcedure] = useState('')
-  const [selectedDate, setSelectedDate] = useState(() => {
-    // Default to today in YYYY-MM-DD format (ICT timezone)
+  // Online booking is for TODAY only — the booking date is fixed automatically
+  // (ICT timezone), so no date picker is shown to the patient.
+  const selectedDate = useMemo(() => {
     const now = new Date()
     const ictMs = now.getTime() + 7 * 60 * 60 * 1000
     return new Date(ictMs).toISOString().split('T')[0]
-  })
+  }, [])
   const [submittedNumber, setSubmittedNumber] = useState('')
   const [estimatedTime, setEstimatedTime] = useState('')
   const [availableRoomCount, setAvailableRoomCount] = useState<number | null>(null)
@@ -181,13 +182,6 @@ export default function BookingPage() {
   useEffect(() => {
     setEstimatedTime(calcEstimatedTime)
   }, [calcEstimatedTime])
-
-  // ── Get today's date in ICT for minimum date constraint ──
-  const todayICT = useMemo(() => {
-    const now = new Date()
-    const ictMs = now.getTime() + 7 * 60 * 60 * 1000
-    return new Date(ictMs).toISOString().split('T')[0]
-  }, [])
 
   // Fetch the LATEST queue state from Supabase for the selected date at booking
   // time, so the appointment continues from the most recent relevant queues
@@ -272,6 +266,41 @@ export default function BookingPage() {
 
   const accentColor = clinicCfg.color
 
+  // Ref to the on-screen QR so we can serialise the exact same QR into an image.
+  const qrBoxRef = useRef<HTMLDivElement | null>(null)
+
+  // Save the queue QR (same tracking URL as displayed) as a PNG for the patient.
+  const handleSaveQr = async () => {
+    try {
+      const svg = qrBoxRef.current?.querySelector('svg')
+      if (!svg) return
+      const size = 600
+      const padding = 48
+      const svgData = new XMLSerializer().serializeToString(svg)
+      const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgData)}`
+      const img = document.createElement('img')
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve()
+        img.onerror = () => reject(new Error('qr render failed'))
+        img.src = svgUrl
+      })
+      const canvas = document.createElement('canvas')
+      canvas.width = size
+      canvas.height = size
+      const ctx = canvas.getContext('2d')
+      if (!ctx) throw new Error('no canvas context')
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, size, size)
+      ctx.drawImage(img, padding, padding, size - padding * 2, size - padding * 2)
+      const link = document.createElement('a')
+      link.download = `clinicq-queue-${submittedNumber || 'booking'}.png`
+      link.href = canvas.toDataURL('image/png')
+      link.click()
+    } catch {
+      alert('ไม่สามารถบันทึก QR Code ได้ กรุณาลองใหม่อีกครั้ง')
+    }
+  }
+
   // ═══ Submitted ═══
   if (submitted) {
     const trackUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/track?id=${submittedNumber}&clinic=${clinicType || 'dental'}`
@@ -315,7 +344,7 @@ export default function BookingPage() {
           </div>
 
           {/* QR for tracking */}
-          <div className="bg-white p-4 rounded-2xl border border-gray-100 mb-4 inline-block">
+          <div ref={qrBoxRef} className="bg-white p-4 rounded-2xl border border-gray-100 mb-4 inline-block">
             <QRCodeSVG value={trackUrl} size={140} level="M" />
           </div>
           <p className="text-xs text-gray-400">สแกนเพื่อติดตามสถานะคิว</p>
@@ -332,7 +361,7 @@ export default function BookingPage() {
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">วันที่</span>
-              <span className="font-medium text-gray-900">{selectedDate}</span>
+              <span className="font-medium text-gray-900">วันนี้ ({selectedDate})</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">หัตถการ</span>
@@ -345,19 +374,15 @@ export default function BookingPage() {
           </div>
 
           <button
-            onClick={() => {
-              setSubmitted(false)
-              setSubmittedTime('')
-              setName('')
-              setPhone('')
-              setSelectedBranch('')
-              setSelectedProcedure('')
-            }}
+            onClick={handleSaveQr}
             className="mt-4 w-full py-3 rounded-2xl font-bold text-sm text-white transition-all hover:shadow-lg active:scale-[0.98]"
             style={{ backgroundColor: accentColor }}
           >
-            📱 จองคิวใหม่
+            💾 บันทึก QR Code
           </button>
+          <p className="text-[11px] text-gray-400 mt-2">
+            บันทึก QR ไว้ในโทรศัพท์เพื่อติดตามสถานะคิวของคุณ
+          </p>
         </div>
       </div>
     )
@@ -389,7 +414,7 @@ export default function BookingPage() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold text-blue-700">จองคิวออนไลน์</p>
-            <p className="text-xs text-gray-500">กรอกข้อมูลด้านล่างเพื่อจองคิวล่วงหน้า เจ้าหน้าที่จะยืนยันนัดหมายทางโทรศัพท์</p>
+            <p className="text-xs text-gray-500">กรอกข้อมูลด้านล่างเพื่อจองคิวสำหรับวันนี้ เจ้าหน้าที่จะยืนยันนัดหมายทางโทรศัพท์</p>
           </div>
         </div>
 
@@ -401,7 +426,7 @@ export default function BookingPage() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold text-red-700">คลินิกปิดทำการวันนี้</p>
-              <p className="text-xs text-red-500">กรุณาเลือกวันที่เปิดทำการ</p>
+              <p className="text-xs text-red-500">ขออภัย วันนี้คลินิกปิดทำการ กรุณากลับมาใช้บริการในวันทำการถัดไป</p>
             </div>
           </div>
         )}
@@ -435,18 +460,17 @@ export default function BookingPage() {
             showIcon
           />
 
-          {/* Date */}
+          {/* Date — fixed to today (online booking is same-day only) */}
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-              <Calendar className="w-3.5 h-3.5 inline mr-1" /> วันที่ต้องการ *
+              <Calendar className="w-3.5 h-3.5 inline mr-1" /> วันที่จอง
             </label>
-            <input
-              type="date"
-              value={selectedDate}
-              min={todayICT}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="w-full px-4 py-3 rounded-2xl border border-gray-200 focus:border-gray-400 focus:outline-none text-sm bg-white transition-colors"
-            />
+            <div className="w-full px-4 py-3 rounded-2xl border border-blue-200 bg-blue-50/60 flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold text-blue-700">📅 จองสำหรับวันนี้</span>
+              <span className="text-sm font-medium text-gray-600">
+                {new Date(selectedDate + 'T12:00:00').toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long' })}
+              </span>
+            </div>
             <p className="text-[10px] text-gray-400 mt-1">
               {isClinicOpenOnDate
                 ? `เปิดทำการ ${selectedDaySchedule.openTime}–${selectedDaySchedule.closeTime}`
@@ -461,7 +485,7 @@ export default function BookingPage() {
               {availableRoomCount !== null ? (
                 availableRoomCount > 0
                   ? `ห้องตรวจที่พร้อมให้บริการ: ${availableRoomCount} ห้อง`
-                  : 'ไม่มีห้องตรวจวันนี้ — กรุณาเลือกวันอื่น'
+                  : 'ไม่มีห้องตรวจให้บริการในวันนี้'
               ) : (
                 'กำลังตรวจสอบห้องตรวจ...'
               )}
