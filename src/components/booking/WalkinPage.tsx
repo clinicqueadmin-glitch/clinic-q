@@ -490,10 +490,13 @@ export default function WalkinPage() {
     }
   }
 
-  // Auto redirect to dashboard after staff registration
+  // Auto redirect to dashboard after registration (both staff and patient mode)
   useEffect(() => {
-    if (submittedNumber && isStaffMode) {
-      const timer = setTimeout(() => router.push('/'), 2000)
+    if (submittedNumber) {
+      // Staff mode: redirect quickly (they need to serve next patient)
+      // Patient mode: redirect after a bit longer (they need to see queue number + QR)
+      const delay = isStaffMode ? 2000 : 4000
+      const timer = setTimeout(() => router.push('/'), delay)
       return () => clearTimeout(timer)
     }
   }, [submittedNumber, isStaffMode, router])
