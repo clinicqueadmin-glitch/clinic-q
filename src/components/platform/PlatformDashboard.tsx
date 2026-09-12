@@ -123,8 +123,8 @@ export default function PlatformDashboard() {
         const { data: clinics, error } = await sb.from('clinics').select('*')
         if (error || !clinics) { setIsLoading(false); return }
 
-        // Load stats for each clinic
-        const today = new Date().toISOString().split('T')[0]
+        // Load stats for each clinic — use ICT date to match queue_date in DB
+        const today = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().split('T')[0]
         const enriched: ClinicWithStats[] = await Promise.all(clinics.map(async (c: any) => {
           // Count queues today
           const { count: queuesToday } = await sb.from('queues')
@@ -228,7 +228,9 @@ export default function PlatformDashboard() {
           }))
           setAllUsers(usersList)
         }
-      } catch {}
+      } catch (err) {
+        console.error('PlatformDashboard load error:', err)
+      }
       setIsLoading(false)
     }
     loadClinics()
