@@ -493,6 +493,91 @@ export default function SettingsManager() {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  /* ───── QR Print (dedicated A4 sheet — no sidebar/header/nav) ─────
+   * Prints a standalone document into a hidden iframe so the output is a
+   * clean A4 poster: clinic name, big heading, sharp vector QR (the SAME
+   * SVG rendered on screen from trackingUrl), subtitle and the patient-menu
+   * URL. No pop-up required (works on iPad/Safari too); Browser Print and
+   * Save-as-PDF both work from the print dialog. */
+  const escapeHtml = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+  const handlePrintQr = () => {
+    try {
+      // Serialize the exact QR element rendered on screen (same trackingUrl).
+      const svgEl = document.getElementById('clinicq-screen-qr')?.querySelector('svg')
+      if (!svgEl) throw new Error('QR_NOT_FOUND')
+      const qrSvg = new XMLSerializer().serializeToString(svgEl)
+      const clinicName = escapeHtml(config?.name || 'คลินิกของเรา')
+      const url = escapeHtml(trackingUrl)
+
+      // Prefer a hidden iframe: it is not subject to pop-up blocking
+      // (iPad/Safari, kiosk, strict browser settings) and never prints the
+      // surrounding dashboard/settings chrome — only the QR sheet below.
+      document.querySelectorAll('#clinicq-print-frame').forEach(el => el.remove())
+      const iframe = document.createElement('iframe')
+      iframe.id = 'clinicq-print-frame'
+      iframe.setAttribute('aria-hidden', 'true')
+      iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;'
+      document.body.appendChild(iframe)
+      const win = iframe.contentWindow
+      if (!win) {
+        alert('ไม่สามารถเปิดหน้าพิมพ์ได้ กรุณาลองใหม่อีกครั้ง')
+        return
+      }
+
+      win.document.write(`<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<title>พิมพ์ QR — ${clinicName}</title>
+<style>
+  @page { size: A4; margin: 12mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    font-family: 'Prompt', 'Sarabun', 'Noto Sans Thai', -apple-system, 'Segoe UI', Roboto, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    background: #ffffff;
+    color: #111827;
+  }
+  .sheet { text-align: center; width: 100%; padding: 16px 24px; }
+  .clinic-name { font-size: 28px; font-weight: 700; color: #111827; }
+  .heading { font-size: 46px; font-weight: 800; color: #111827; line-height: 1.25; margin: 10px 0 26px; }
+  .qr-frame { display: inline-block; background: #ffffff; border: 3px dashed #94a3b8; border-radius: 20px; padding: 28px; }
+  .qr-frame svg { width: 400px; height: 400px; display: block; }
+  .subtitle { margin-top: 26px; font-size: 22px; font-weight: 600; color: #1f2937; }
+  .url { margin: 18px auto 0; max-width: 520px; font-size: 13px; color: #64748b; word-break: break-all; }
+  .footer { margin-top: 30px; font-size: 12px; color: #94a3b8; }
+</style>
+</head>
+<body>
+  <div class="sheet">
+    <div class="clinic-name">${clinicName}</div>
+    <div class="heading">สแกน QR เพื่อรับบริการ</div>
+    <div class="qr-frame">${qrSvg}</div>
+    <div class="subtitle">สแกนเพื่อจองคิว / ตรวจสอบคิว / ดูสถานะคิว</div>
+    <div class="url">${url}</div>
+    <div class="footer">ClinicQ • ระบบจัดการคิวคลินิก</div>
+  </div>
+</body>
+</html>`)
+      win.document.close()
+      win.focus()
+      // Let the hidden frame lay out the vector QR, then open the print dialog.
+      // The frame is intentionally kept (0x0, hidden) so the dialog is not
+      // cancelled; it is replaced on the next print.
+      setTimeout(() => {
+        try { win.focus(); win.print() } catch { /* ignore */ }
+      }, 350)
+    } catch {
+      alert('ไม่สามารถพิมพ์ QR Code ได้ กรุณาลองใหม่อีกครั้ง')
+    }
+  }
+
   if (!config) return null
 
   return (
@@ -818,7 +903,8 @@ export default function SettingsManager() {
                           <div className="text-white/70 text-xs mt-1">สแกน QR Code ด้วยมือถือ</div>
                         </div>
                         <div className="flex flex-col items-center py-6 px-4 bg-white">
-                          <div className="bg-white p-4 rounded-xl border border-gray-100">
+                          {/* #clinicq-screen-qr is the source of the printed QR (same trackingUrl) */}
+                          <div id="clinicq-screen-qr" className="bg-white p-4 rounded-xl border border-gray-100">
                             <QRCodeSVG value={trackingUrl} size={160} level="H" includeMargin />
                           </div>
                         </div>
@@ -834,9 +920,9 @@ export default function SettingsManager() {
                     </div>
                     <p className="text-xs text-gray-500">ใช้ลิงก์นี้ได้ทั้ง LINE OA, Facebook และ Website</p>
 
-                    {/* Print action */}
+                    {/* Print action — dedicated A4 sheet, not the whole page */}
                     <div className="mt-4">
-                      <button onClick={() => window.print()} className="px-4 py-2 rounded-lg text-white font-medium text-sm flex items-center gap-2" style={{ backgroundColor: config.color }}>
+                      <button onClick={handlePrintQr} className="px-4 py-2 rounded-lg text-white font-medium text-sm flex items-center gap-2" style={{ backgroundColor: config.color }}>
                         🖨️ พิมพ์ QR Code
                       </button>
                     </div>
