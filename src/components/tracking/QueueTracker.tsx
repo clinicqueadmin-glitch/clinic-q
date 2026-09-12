@@ -19,7 +19,7 @@ type ViewMode = 'search' | 'result' | 'error'
 
 export default function QueueTracker() {
   const searchParams = useSearchParams()
-  const { queue } = useQueue()
+  const { queue, setQueue, saveQueueItem } = useQueue()
   const { config, currentClinic: contextClinic } = useClinic()
   // Priority: URL param > context > fallback
   const urlClinic = searchParams.get('clinic') as ClinicType | null
@@ -33,6 +33,7 @@ export default function QueueTracker() {
   const [isLoading, setIsLoading] = useState(false)
   const [notificationEnabled, setNotificationEnabled] = useState(false)
   const [prevStatus, setPrevStatus] = useState<string | null>(null)
+  const [checkInLoading, setCheckInLoading] = useState(false)
 
   const useSupabase = isSupabaseConfigured()
   const { permission, requestPermission, notifyQueueCalled, notifyQueueCompleted } = useNotification()
@@ -300,6 +301,41 @@ export default function QueueTracker() {
     }
   }, [permission, viewMode])
 
+  // Patient self check-in for online bookings
+  const handleCheckIn = async () => {
+    if (!foundItem || checkInLoading) return
+    setCheckInLoading(true)
+    try {
+      const timeStr = new Date().toLocaleTimeString('en-GB', {
+        hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok',
+      })
+      const bookedTime = foundItem.bookedTimeSlot || foundItem.time
+      const [bh, bm] = bookedTime.split(':').map(Number)
+      const [ah, am] = timeStr.split(':').map(Number)
+      const diff = (ah * 60 + am) - (bh * 60 + bm)
+      const isOnTime = diff <= 10
+      const lateMinutes = diff > 10 ? diff : 0
+
+      const updated: QueueItem = {
+        ...foundItem,
+        arrived: true,
+        arrivedAt: timeStr,
+        checkinAt: timeStr,
+        isOnTime,
+        lateMinutes,
+        assignedRoom: 0,
+        assignedDoctor: '',
+      }
+      await saveQueueItem(updated)
+      setLiveItem(updated)
+      setQueue(prev => prev.map(q => q.id === updated.id ? updated : q))
+    } catch (e) {
+      console.error('Check-in failed:', e)
+    } finally {
+      setCheckInLoading(false)
+    }
+  }
+
   const handleEnableNotification = async () => {
     const result = await requestPermission()
     if (result === 'granted') {
@@ -485,6 +521,24 @@ export default function QueueTracker() {
                       </div>
                     </button>
                   )}
+                </div>
+              )}
+
+              {/* Patient self check-in for online bookings */}
+              {trackingInfo.item.status === 'waiting' && trackingInfo.item.bookingMode === 'remote' && !trackingInfo.item.arrived && (
+                <div className="px-6 py-4">
+                  <button
+                    onClick={handleCheckIn}
+                    disabled={checkInLoading}
+                    className="w-full flex items-center justify-center gap-3 py-4 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white rounded-2xl text-base font-bold transition-all shadow-lg shadow-green-500/20 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {checkInLoading ? (
+                      <><Loader2 className="w-5 h-5 animate-spin" /> กำลังเช็คอิน...</>
+                    ) : (
+                      <><CheckCircle className="w-5 h-5" /> มาถึงคลินิก / เข้าคิว</>
+                    )}
+                  </button>
+                  <p className="text-center text-white/60 text-xs mt-2">กดเมื่อมาถึงคลินิกแล้ว</p>
                 </div>
               )}
 
