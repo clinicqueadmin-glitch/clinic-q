@@ -102,20 +102,14 @@ export default function PlatformDashboard() {
     }
   }, [])
 
-  // Enter clinic as platform owner — pretend to be clinic owner
+  // Enter clinic as platform owner — keep real identity, store viewing context
   const enterClinic = useCallback((clinicId: string, clinicType: string) => {
-    // Save platform owner session for back navigation
-    const authRaw = localStorage.getItem('clinicq-auth') || localStorage.getItem('clinicq-auth-session')
-    if (authRaw) {
-      localStorage.setItem('clinicq-platform-session', authRaw)
-    }
-    // Create session as clinic owner so the full dashboard loads
-    const clinicSession = {
-      user: { id: 'platform-owner', email: 'admin@clinicq.com', name: 'เจ้าของระบบ', role: 'owner' },
-      currentClinicId: clinicId,
-      isViewingAsOwner: true, // Flag to indicate platform owner is viewing
-    }
-    localStorage.setItem('clinicq-auth', JSON.stringify(clinicSession))
+    // Store which clinic the platform owner is viewing (separate from auth session)
+    localStorage.setItem('clinicq-viewing-clinic', JSON.stringify({
+      clinicId,
+      clinicType,
+      enteredAt: new Date().toISOString(),
+    }))
     localStorage.setItem('clinic-q-type', clinicType)
     window.location.href = '/'
   }, [])

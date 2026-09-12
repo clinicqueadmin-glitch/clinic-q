@@ -1,9 +1,9 @@
 'use client'
 
-import { type ReactNode, useEffect } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { ClinicProvider, useClinic } from '@/lib/clinic-context'
-import { clinicConfig } from '@/lib/queue-data'
+import { clinicConfig, type ClinicType } from '@/lib/queue-data'
 import { PractitionerProvider } from '@/lib/practitioner-context'
 import { useAuth } from '@/lib/auth-context'
 import { getSupabase, isSupabaseReady } from '@/lib/supabase'
@@ -68,8 +68,17 @@ function ClinicRouter({ children }: { children: ReactNode }) {
     }
   }, [isLoading, isAuthenticated, isConfigured, currentRole, session, setClinic])
 
-  // Platform Owner on root → redirect to /platform
-  if (pathname === '/' && isAuthenticated && currentRole === 'platform_owner') {
+  // Check if platform owner is viewing a clinic — read synchronously from localStorage
+  const [viewingClinic] = useState<{ clinicId: string; clinicType: string } | null>(() => {
+    if (typeof window === 'undefined') return null
+    try {
+      const raw = localStorage.getItem('clinicq-viewing-clinic')
+      return raw ? JSON.parse(raw) : null
+    } catch { return null }
+  })
+
+  // Platform Owner on root → redirect to /platform (unless viewing a clinic)
+  if (pathname === '/' && isAuthenticated && currentRole === 'platform_owner' && !viewingClinic) {
     if (typeof window !== 'undefined' && window.location.pathname === '/') {
       window.location.href = '/platform'
     }
@@ -85,6 +94,21 @@ function ClinicRouter({ children }: { children: ReactNode }) {
 
   // Root path → authenticated users get AppShell with sidebar, unauthenticated get plain
   if (pathname === '/') {
+    // Platform owner viewing a clinic → show AppShell with that clinic's data
+    if (isAuthenticated && currentRole === 'platform_owner' && viewingClinic) {
+      // Set clinic from viewing context
+      if (!isConfigured) {
+        const vc = viewingClinic
+        import('@/lib/queue-data').then(({ clinicConfig }) => {
+          if (vc.clinicType && clinicConfig[vc.clinicType as keyof typeof clinicConfig]) {
+            setClinic(vc.clinicType as any)
+          }
+        })
+      }
+      const clinicType = (viewingClinic?.clinicType || currentClinic || 'dental') as ClinicType
+      const clinicId = viewingClinic?.clinicId || currentClinicId
+      return <PractitionerProvider clinicType={clinicType} clinicId={clinicId}><AppShell>{children}</AppShell></PractitionerProvider>
+    }
     if (isAuthenticated && currentRole !== 'platform_owner' && isConfigured) {
       return <PractitionerProvider clinicType={currentClinic || 'dental'} clinicId={currentClinicId}><AppShell>{children}</AppShell></PractitionerProvider>
     }
@@ -98,7 +122,14 @@ function ClinicRouter({ children }: { children: ReactNode }) {
     return <>{children}</>
   }
 
-  // Platform Owner goes to /platform without clinic selection
+  // Platform Owner viewing a clinic on non-root path → show AppShell with that clinic
+  if (currentRole === 'platform_owner' && pathname !== '/platform' && isAuthenticated && viewingClinic) {
+    const clinicType = (viewingClinic.clinicType || currentClinic || 'dental') as ClinicType
+    const clinicId = viewingClinic.clinicId || currentClinicId
+    return <PractitionerProvider clinicType={clinicType} clinicId={clinicId}><AppShell>{children}</AppShell></PractitionerProvider>
+  }
+
+  // Platform Owner without viewing clinic → redirect to /platform
   if (currentRole === 'platform_owner' && pathname !== '/platform' && isAuthenticated) {
     if (typeof window !== 'undefined') {
       window.location.href = '/platform'
@@ -145,8 +176,13 @@ function ClinicRouter({ children }: { children: ReactNode }) {
     return <SelectClinic />
   }
 
-  // Platform owner without clinic - still show shell
+  // Platform owner without clinic - show shell (or viewing clinic shell)
   if (!isConfigured && currentRole === 'platform_owner') {
+    if (viewingClinic) {
+      const clinicType = (viewingClinic.clinicType || currentClinic || 'dental') as ClinicType
+      const clinicId = viewingClinic.clinicId || currentClinicId
+      return <PractitionerProvider clinicType={clinicType} clinicId={clinicId}><AppShell>{children}</AppShell></PractitionerProvider>
+    }
     return <AppShell>{children}</AppShell>
   }
 
@@ -193,14 +229,28 @@ function ClinicRouter({ children }: { children: ReactNode }) {
     } catch {}
   }
 
-  return <PractitionerProvider clinicType={currentClinic || 'dental'} clinicId={currentClinicId}><AppShell>{children}</AppShell></PractitionerProvider>
+  // Final: use viewing clinic if platform owner is viewing
+  const finalClinicType = (viewingClinic?.clinicType || currentClinic || 'dental') as ClinicType
+  const finalClinicId = viewingClinic?.clinicId || currentClinicId
+  return <PractitionerProvider clinicType={finalClinicType} clinicId={finalClinicId}><AppShell>{children}</AppShell></PractitionerProvider>
 }
 
 export default function ClinicProviderWrapper({ children }: { children: ReactNode }) {
   // Get clinicId from auth context
-  const { currentClinicId } = useAuth()
+  const { currentClinicId, currentRole } = useAuth()
+  // Platform owner viewing a clinic — use the viewing clinic ID
+  let effectiveClinicId = currentClinicId
+  if (currentRole === 'platform_owner' && typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('clinicq-viewing-clinic')
+      if (raw) {
+        const viewing = JSON.parse(raw)
+        effectiveClinicId = viewing.clinicId || currentClinicId
+      }
+    } catch {}
+  }
   return (
-    <ClinicProvider clinicId={currentClinicId}>
+    <ClinicProvider clinicId={effectiveClinicId}>
       <ClinicRouter>{children}</ClinicRouter>
     </ClinicProvider>
   )

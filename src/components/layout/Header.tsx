@@ -17,31 +17,30 @@ export default function Header() {
   const userRef = useRef<HTMLDivElement>(null)
   const { user, currentRole, currentClinicId, getUserClinics, logout } = useAuth()
   
-  // Check if platform owner is viewing a clinic
-  const [isViewingAsOwner, setIsViewingAsOwner] = useState(false)
-  useEffect(() => {
+  // Check if platform owner is viewing a clinic — read synchronously
+  const [isViewingAsOwner] = useState(() => {
+    if (typeof window === 'undefined') return false
     try {
-      const authRaw = localStorage.getItem('clinicq-auth')
-      if (authRaw) {
-        const auth = JSON.parse(authRaw)
-        setIsViewingAsOwner(!!auth.isViewingAsOwner)
+      const raw = localStorage.getItem('clinicq-viewing-clinic')
+      return !!raw
+    } catch { return false }
+  })
+  const [viewingClinicName] = useState(() => {
+    if (typeof window === 'undefined') return ''
+    try {
+      const raw = localStorage.getItem('clinicq-viewing-clinic')
+      if (raw) {
+        const viewing = JSON.parse(raw)
+        const clinicsList = getUserClinics()
+        const found = clinicsList.find((c: any) => c.id === viewing.clinicId)
+        return found?.name || viewing.clinicId
       }
     } catch {}
-  }, [])
+    return ''
+  })
   
   const backToPlatform = () => {
-    const platformSession = localStorage.getItem('clinicq-platform-session')
-    if (platformSession) {
-      // Restore platform_owner role
-      try {
-        const parsed = JSON.parse(platformSession)
-        parsed.user.role = 'platform_owner'
-        localStorage.setItem('clinicq-auth', JSON.stringify(parsed))
-      } catch {
-        localStorage.setItem('clinicq-auth', platformSession)
-      }
-      localStorage.removeItem('clinicq-platform-session')
-    }
+    localStorage.removeItem('clinicq-viewing-clinic')
     window.location.href = '/platform'
   }
   
@@ -194,6 +193,23 @@ export default function Header() {
             </button>
           )}
         </span>
+      </div>
+    )}
+    {/* Platform Owner Mode Banner */}
+    {isViewingAsOwner && (
+      <div className="bg-gradient-to-r from-red-500 via-pink-500 to-purple-500 text-white px-4 py-2 flex items-center justify-between text-sm">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">👑</span>
+          <span className="font-bold">Platform Owner Mode</span>
+          <span className="text-white/80">—</span>
+          <span>กำลังดู: <strong>{viewingClinicName || 'คลินิก'}</strong></span>
+        </div>
+        <button
+          onClick={backToPlatform}
+          className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-bold transition-all"
+        >
+          กลับ Platform Dashboard
+        </button>
       </div>
     )}
     <header className="sticky top-0 z-30 bg-white border-b border-gray-200">
