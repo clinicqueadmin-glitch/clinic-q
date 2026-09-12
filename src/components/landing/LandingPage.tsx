@@ -73,19 +73,8 @@ const clinicTypes = [
   { icon: '🦴', name: 'กายภาพบำบัด', color: '#3B82F6' },
 ]
 
-/* ═══ Mock data for the real system preview (Dashboard) ═══ */
-const dashboardKpis = [
-  { label: 'รวมวันนี้', value: 24, color: '#EC4899', bg: '#FDF2F8' },
-  { label: 'รอเรียก', value: 8, color: '#F59E0B', bg: '#FFFBEB' },
-  { label: 'กำลังทำ', value: 3, color: '#22C55E', bg: '#F0FDF4' },
-  { label: 'เสร็จแล้ว', value: 13, color: '#2563EB', bg: '#EFF6FF' },
-]
-
-const dashboardRooms = [
-  { room: 'ห้อง 1', doc: 'ทพ.สมบูรณ์', status: 'กำลังให้บริการ', queue: 'E021', color: '#22C55E' },
-  { room: 'ห้อง 2', doc: 'ทพ.วิชัย', status: 'เลยเวลา', queue: 'E022', color: '#F59E0B' },
-  { room: 'ห้อง 3', doc: 'ว่าง', status: 'ว่าง', queue: null, color: '#9CA3AF' },
-]
+/* ═══ Preview URL — live ClinicQ walk-in page ═══ */
+const PREVIEW_URL = '/walkin?clinicId=clinic-dental'
 
 /* ═══ Mock data for analytics preview ═══ */
 const weeklyBars = [
@@ -115,6 +104,51 @@ const planFeatures = [
   'QR Code & ลิงก์สำหรับผู้รับบริการ',
   'จัดการสิทธิ์ Owner / Manager / Staff',
 ]
+
+/* ═══ Hero Live Preview — iframe showing real ClinicQ walk-in page ═══ */
+function HeroLivePreview() {
+  const [loaded, setLoaded] = useState(false)
+
+  return (
+    <div className="mt-16 max-w-5xl mx-auto animate-float">
+      <div className="candy-card p-2 sm:p-3 overflow-hidden">
+        {/* Browser chrome bar */}
+        <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-t-xl border-b border-gray-100">
+          <div className="flex gap-1.5">
+            <div className="w-2.5 h-2.5 rounded-full bg-red-400" />
+            <div className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
+            <div className="w-2.5 h-2.5 rounded-full bg-green-400" />
+          </div>
+          <div className="flex-1 mx-2">
+            <div className="bg-white rounded-md px-3 py-1 text-[10px] text-gray-400 font-mono truncate border border-gray-200">
+              clinic-q.app{PREVIEW_URL}
+            </div>
+          </div>
+          <span className="candy-badge bg-emerald-50 text-emerald-600 !text-[9px] !px-2 !py-0.5">
+            <span className="w-1 h-1 rounded-full bg-emerald-500 inline-block" /> LIVE
+          </span>
+        </div>
+
+        {/* Live iframe */}
+        <div className="relative aspect-[16/9] bg-gray-100 rounded-b-xl overflow-hidden">
+          {!loaded && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-8 h-8 border-3 border-teal-400 border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+          <iframe
+            src={PREVIEW_URL}
+            title="ClinicQ Walk-in Preview"
+            className={`w-full h-full border-0 transition-opacity duration-500 ${loaded ? 'opacity-100' : 'opacity-0'}`}
+            onLoad={() => setLoaded(true)}
+            sandbox="allow-scripts allow-same-origin allow-forms"
+            loading="lazy"
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function LandingPage() {
   const router = useRouter()
@@ -202,57 +236,8 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Hero visual — REAL system preview (Dashboard) */}
-          <div className="mt-16 max-w-5xl mx-auto animate-float">
-            <div className="candy-card p-4 sm:p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded-xl bg-teal-50 flex items-center justify-center">
-                  <LayoutDashboard className="w-4 h-4 text-teal-600" />
-                </div>
-                <p className="text-sm font-bold text-gray-700">ภาพรวมคลินิกวันนี้</p>
-                <span className="candy-badge bg-emerald-50 text-emerald-600 ml-auto">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> LIVE
-                </span>
-              </div>
-
-              {/* KPI row */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                {dashboardKpis.map((k, i) => (
-                  <div key={i} className="rounded-2xl p-4 text-center" style={{ backgroundColor: k.bg }}>
-                    <p className="text-3xl font-black" style={{ color: k.color }}>{k.value}</p>
-                    <p className="text-xs font-bold text-gray-500 mt-1">{k.label}</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Room status */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {dashboardRooms.map((r, i) => (
-                  <div key={i} className="bg-gray-50 rounded-2xl p-3 border border-gray-100">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: r.color }}>
-                        {i + 1}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-gray-900">{r.room}</p>
-                        <p className="text-[10px] text-gray-500 truncate">{r.doc}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      {r.queue && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold font-mono" style={{ backgroundColor: `${r.color}18`, color: r.color }}>
-                          {r.queue}
-                        </span>
-                      )}
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-medium" style={{ backgroundColor: `${r.color}15`, color: r.color }}>
-                        {r.status}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          {/* Hero visual — LIVE system preview (iframe) */}
+          <HeroLivePreview />
         </div>
       </section>
 
