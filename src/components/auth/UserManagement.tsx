@@ -40,6 +40,11 @@ interface RoleAssignmentForm {
   branchIds: string[]
 }
 
+// Synthetic staff Auth emails ({id}-{rand}@internal.clinicq.local) are credential
+// identifiers created by the server for staff accounts — they are internal to the
+// system and must never be shown to users as a real email address.
+const isInternalEmail = (email: string) => email.toLowerCase().endsWith('@internal.clinicq.local')
+
 export default function UserManagement({ canManageUsers = false, currentRole }: { canManageUsers?: boolean; currentRole?: string | null }) {
   const { currentClinicId } = useAuth()
   const { currentClinic } = useClinic()
@@ -75,6 +80,10 @@ export default function UserManagement({ canManageUsers = false, currentRole }: 
   const [resettingPassword, setResettingPassword] = useState<string | null>(null)
   const [resetTempPassword, setResetTempPassword] = useState<string | null>(null)
   const [copiedField, setCopiedField] = useState<'username' | 'password' | null>(null)
+  // Detail view of a member row — opened by clicking the user name.
+  const [detailUser, setDetailUser] = useState<UserWithRoles | null>(null)
+  // Copy feedback for the username shown in the detail modal.
+  const [usernameCopied, setUsernameCopied] = useState(false)
 
   const branches = branchData.branches.filter(b => b.active)
 
@@ -134,6 +143,11 @@ export default function UserManagement({ canManageUsers = false, currentRole }: 
     return true
   }, [canManageUsers, currentRole])
 
+  // Role management (assign/change/remove roles + practitioner branch
+  // assignments) is restricted to the clinic owner. Managers may still add
+  // users and manage staff, but can never choose or change a role.
+  const canManageRoles = currentRole === 'owner' || currentRole === 'platform_owner'
+
   // Open add user modal
   const openAddUser = () => {
     setEditingUser(null)
@@ -175,9 +189,12 @@ export default function UserManagement({ canManageUsers = false, currentRole }: 
             userId: editingUser.id,
             name: form.name,
             phone: form.phone || undefined,
-            // Only send roles when at least one is selected; otherwise keep the
-            // existing role set untouched (e.g. editing name of a deactivated user).
-            ...(form.roles.length > 0 ? { roles: form.roles, branchIds: form.branchIds } : {}),
+            // Only send roles when at least one is selected AND the caller may
+            // manage roles; otherwise keep the existing role set untouched
+            // (e.g. a manager editing name/phone, or a deactivated user).
+            ...(canManageRoles && form.roles.length > 0 ? { roles: form.roles, branchIds: form.branchIds } : {}),
+            // Username — owner-only; only sent when a non-empty value is set.
+            ...(canManageRoles && form.username ? { username: form.username } : {}),
           }),
         })
         const body = await res.json().catch(() => ({}))
@@ -554,7 +571,12 @@ export default function UserManagement({ canManageUsers = false, currentRole }: 
               clinicUsers.map(user => (
                 <tr key={user.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
+                    {/* Click the user name/row to open the detail modal. Username is deliberately NOT shown in the list — it lives in the detail view. */}
+                    <button
+                      onClick={() => setDetailUser(user)}
+                      className="group flex items-center gap-3 w-full text-left"
+                      title="ดูรายละเอียดผู้ใช้งาน"
+                    >
                       <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold text-white ${
                         user.roles.includes('owner') ? 'bg-orange-500' :
                         user.roles.includes('manager') ? 'bg-yellow-500' :
@@ -564,31 +586,21 @@ export default function UserManagement({ canManageUsers = false, currentRole }: 
                         {user.name.charAt(0)}
                       </div>
                       <div>
-                        <div className="text-sm font-medium text-gray-900">{user.name}</div>
-                        {/* Show email for owner, username for staff */}
-                        {user.roles.includes('owner') && user.email ? (
-                          <div className="text-xs text-gray-500">{user.email}</div>
+                        <div className="text-sm font-medium text-gray-900 group-hover:text-indigo-600">{user.name}</div>
+                        {user.phone ? (
+                          <div className="text-xs text-gray-500">📞 {user.phone}</div>
                         ) : (
-                          user.username ? (
-                            <div className="text-xs text-gray-500 font-mono">@{user.username}</div>
-                          ) : (
-                            <div className="text-xs text-gray-400">ไม่ระบุ</div>
-                          )
-                        )}
-                        {user.phone && (
-                          <a href={`tel:${user.phone}`} className="text-xs text-blue-600 hover:underline">
-                            📞 {user.phone}
-                          </a>
+                          <div className="text-xs text-gray-400">ไม่มีเบอร์โทร</div>
                         )}
                       </div>
-                    </div>
+                    </button>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1">
                       {user.roles.map(role => (
                         <div key={role} className="flex items-center gap-1">
                           <RoleBadge role={role} />
-                          {canManageUserRow(user) && role !== 'owner' && (
+                          {canManageUserRow(user) && canManageRoles && role !== 'owner' && (
                             <button
                               onClick={() => removeRole(user.id, role)}
                               className="p-0.5 rounded hover:bg-red-100 transition-colors"
@@ -599,7 +611,7 @@ export default function UserManagement({ canManageUsers = false, currentRole }: 
                           )}
                         </div>
                       ))}
-                      {canManageUserRow(user) && user.roles.length < Object.keys(roleConfig).length && (
+                      {canManageUserRow(user) && canManageRoles && user.roles.length < Object.keys(roleConfig).length && (
                         <button
                           onClick={() => openAddRole(user.id)}
                           className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors"
@@ -620,7 +632,7 @@ export default function UserManagement({ canManageUsers = false, currentRole }: 
                             return (
                               <span key={branchId} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-600">
                                 {branch?.name || branchId}
-                                {canManageUserRow(user) && (
+                                {canManageUserRow(user) && canManageRoles && (
                                   <button
                                     onClick={() => removeBranch(user.id, branchId)}
                                     className="hover:text-red-500"
@@ -659,7 +671,7 @@ export default function UserManagement({ canManageUsers = false, currentRole }: 
                     )}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
+                    <div className="flex items-center justify-end gap-1.5 flex-wrap">
                       {canManageUserRow(user) && (
                         <>
                           <button
@@ -676,18 +688,23 @@ export default function UserManagement({ canManageUsers = false, currentRole }: 
                           >
                             <Trash2 className="w-3.5 h-3.5 text-red-400" />
                           </button>
-                          {/* Reset password for staff/manager/counter/practitioner */}
+                          {/* Reset password for staff/manager/counter/practitioner — text label, never icon-only */}
                           {user.roles.some(r => r !== 'owner') && (
                             <button
                               onClick={() => handleResetPassword(user.id, user.roles)}
                               disabled={resettingPassword === user.id || saving}
-                              className="p-1.5 rounded-lg hover:bg-amber-50 transition-colors"
-                              title="รีเซ็ตรหัสผ่าน"
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-medium transition-colors"
                             >
                               {resettingPassword === user.id ? (
-                                <div className="w-3.5 h-3.5 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />
+                                <>
+                                  <div className="w-3.5 h-3.5 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />
+                                  กำลังรีเซ็ต...
+                                </>
                               ) : (
-                                <Lock className="w-3.5 h-3.5 text-amber-500" />
+                                <>
+                                  <Lock className="w-3.5 h-3.5 text-amber-500" />
+                                  Reset รหัสผ่าน
+                                </>
                               )}
                             </button>
                           )}
@@ -776,6 +793,28 @@ export default function UserManagement({ canManageUsers = false, currentRole }: 
                 onChange={(v) => setForm({ ...form, phone: v })}
               />
 
+              {/* Username — only the clinic owner may change the login username.
+                  Managers never see or edit it (server also enforces this). */}
+              {canManageRoles && editingUser && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Username <span className="text-xs text-gray-400">(ใช้เข้าสู่ระบบ)</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">@</span>
+                    <input
+                      value={form.username}
+                      onChange={(e) => setForm({ ...form, username: e.target.value })}
+                      className="w-full pl-7 pr-3 py-2 rounded-xl border border-gray-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                      placeholder="เช่น SM4827-staff01"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">
+                    เปลี่ยน Username แล้วผู้ใช้จะเข้าสู่ระบบด้วย Username ใหม่ (ห้ามซ้ำกับผู้ใช้อื่น)
+                  </p>
+                </div>
+              )}
+
               {/* Account info — username + password generated by server */}
               {!editingUser && (
                 <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
@@ -790,14 +829,17 @@ export default function UserManagement({ canManageUsers = false, currentRole }: 
                 </div>
               )}
 
-              {/* Roles — single select for new users (username auto-generated per role) */}
+              {/* Roles — single select for new users (username auto-generated per role).
+                  Only the clinic owner may assign or change roles; managers see
+                  a locked notice instead of the selector. */}
+              {canManageRoles ? (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   บทบาท * {editingUser ? '(เลือกได้หลายบทบาท)' : '(เลือก 1 บทบาท)'}
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   {Object.entries(roleConfig)
-                    .filter(([key]) => key !== 'platform_owner' && key !== 'owner' && !(currentRole === 'manager' && key === 'manager'))
+                    .filter(([key]) => key !== 'platform_owner' && key !== 'owner')
                     .map(([key, cfg]) => {
                       const isSelected = editingUser
                         ? form.roles.includes(key as ClinicRole)
@@ -850,6 +892,16 @@ export default function UserManagement({ canManageUsers = false, currentRole }: 
                     })}
                 </div>
               </div>
+              ) : (
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                  <p className="text-sm text-gray-600">
+                    🔒 เฉพาะเจ้าของคลินิกเท่านั้นที่กำหนดบทบาทได้
+                    {editingUser
+                      ? ' — บทบาทของผู้ใช้รายนี้จะไม่ถูกแก้ไข'
+                      : ' — ผู้ใช้ใหม่จะถูกสร้างด้วยบทบาทเริ่มต้น (พนักงานเคาน์เตอร์)'}
+                  </p>
+                </div>
+              )}
 
               {/* Branch Selection for Practitioner */}
               {form.roles.includes('practitioner') && (
@@ -1149,6 +1201,141 @@ export default function UserManagement({ canManageUsers = false, currentRole }: 
                 className="flex-1 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 เพิ่มบทบาท
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ User Detail Modal — opened by clicking a member row ═══ */}
+      {detailUser && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setDetailUser(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="bg-gradient-to-r from-indigo-500 to-purple-500 p-5 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center text-2xl font-black text-white mx-auto mb-3">
+                {detailUser.name.charAt(0)}
+              </div>
+              <h3 className="text-lg font-extrabold text-white">{detailUser.name}</h3>
+              <p className="text-xs text-white/80 mt-1">
+                {detailUser.roles.map(r => roleConfig[r]?.label).join(' · ')}
+              </p>
+            </div>
+            <div className="p-6 space-y-4">
+              {/* Name */}
+              <div>
+                <div className="text-xs text-gray-400 mb-0.5">ชื่อผู้ใช้งาน</div>
+                <div className="text-sm font-medium text-gray-900">{detailUser.name}</div>
+              </div>
+              {/* Email — only real emails are shown. Synthetic staff Auth emails
+                  ({id}-{rand}@internal.clinicq.local) are credential identifiers used
+                  by the system for staff login and must never be presented as a real
+                  email address. */}
+              <div>
+                <div className="text-xs text-gray-400 mb-0.5">อีเมล (ใช้เข้าสู่ระบบ)</div>
+                {detailUser.email && !isInternalEmail(detailUser.email) ? (
+                  <div className="text-sm font-medium text-gray-900 break-all">{detailUser.email}</div>
+                ) : (
+                  <div className="text-sm text-gray-400">ไม่มีข้อมูล</div>
+                )}
+              </div>
+              {/* Phone */}
+              <div>
+                <div className="text-xs text-gray-400 mb-0.5">เบอร์โทรศัพท์</div>
+                {detailUser.phone ? (
+                  <a href={`tel:${detailUser.phone}`} className="text-sm font-medium text-blue-600 hover:underline">
+                    📞 {detailUser.phone}
+                  </a>
+                ) : (
+                  <div className="text-sm text-gray-400">ไม่มีข้อมูล</div>
+                )}
+              </div>
+              {/* Roles */}
+              <div>
+                <div className="text-xs text-gray-400 mb-1">บทบาท</div>
+                <div className="flex flex-wrap gap-1">
+                  {detailUser.roles.map(role => <RoleBadge key={role} role={role} />)}
+                </div>
+              </div>
+              {/* Username — only visible in the detail view, not in the list.
+                  Field name `username` comes straight from GET /api/clinics/[clinicId]/users
+                  (joined from staff_usernames) — never hardcoded. */}
+              <div>
+                <div className="text-xs text-gray-400 mb-0.5">Username สำหรับเข้าสู่ระบบ</div>
+                <div className="flex items-center gap-2">
+                  {detailUser.username ? (
+                    <>
+                      <code className="text-sm font-mono font-medium text-gray-900">@{detailUser.username}</code>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(detailUser.username || '').catch(() => {})
+                          setUsernameCopied(true)
+                          setTimeout(() => setUsernameCopied(false), 1500)
+                        }}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-medium transition-colors"
+                        title="คัดลอก Username"
+                      >
+                        <Copy className="w-3 h-3" /> {usernameCopied ? 'คัดลอกแล้ว' : 'คัดลอก'}
+                      </button>
+                    </>
+                  ) : (
+                    <div className="text-sm text-gray-400">— (เข้าสู่ระบบด้วยอีเมล)</div>
+                  )}
+                </div>
+                {detailUser.username && (
+                  <p className="text-[10px] text-gray-400 mt-1">ใช้ Username นี้ร่วมกับรหัสผ่านเพื่อเข้าสู่ระบบ</p>
+                )}
+              </div>
+              {/* Account status */}
+              <div>
+                <div className="text-xs text-gray-400 mb-1">สถานะบัญชี</div>
+                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                  detailUser.isActive ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
+                }`}>
+                  {detailUser.isActive ? '✓ ใช้งาน' : '○ ปิดใช้งาน'}
+                </span>
+              </div>
+              {/* Created date */}
+              <div>
+                <div className="text-xs text-gray-400 mb-0.5">วันที่สร้าง</div>
+                <div className="text-sm font-medium text-gray-900">
+                  {detailUser.createdAt
+                    ? new Date(detailUser.createdAt).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
+                    : 'ไม่มีข้อมูล'}
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3 p-6 border-t border-gray-100 bg-gray-50">
+              {canManageUserRow(detailUser) && (
+                <button
+                  onClick={() => handleResetPassword(detailUser.id, detailUser.roles)}
+                  disabled={resettingPassword === detailUser.id || saving}
+                  className="flex-1 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {resettingPassword === detailUser.id ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <div className="w-3.5 h-3.5 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />
+                      กำลังรีเซ็ต...
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5">
+                      <Lock className="w-4 h-4 text-amber-500" />
+                      Reset รหัสผ่าน
+                    </span>
+                  )}
+                </button>
+              )}
+              <button
+                onClick={() => setDetailUser(null)}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-white transition-colors"
+              >
+                ปิด
               </button>
             </div>
           </div>

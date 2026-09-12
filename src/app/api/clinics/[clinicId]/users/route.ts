@@ -281,13 +281,22 @@ export async function POST(
   if (callerRole === 'manager' && rawRoles.includes('manager')) {
     return NextResponse.json({ error: 'manager cannot create another manager account' }, { status: 403 })
   }
+  // Only the clinic owner may choose the role of a new account. A manager
+  // caller may still add users, but the account is always created with the
+  // default staff role (front_desk) server-side — the manager never gets to
+  // pick or escalate a role.
+  if (callerRole === 'manager' && rawRoles.length > 0) {
+    return NextResponse.json({ error: 'manager cannot assign roles — contact the clinic owner' }, { status: 403 })
+  }
 
   // Regular staff creation mode
   const name = typeof body?.name === 'string' ? body.name.trim() : ''
   const username = typeof body?.username === 'string' ? body.username.trim() : ''
   const phone = typeof body?.phone === 'string' && body.phone.trim() ? body.phone.trim() : ''
   const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : ''
-  const roles = Array.isArray(body?.roles) ? body.roles.filter((r: unknown): r is string => typeof r === 'string') : []
+  const roles = callerRole === 'manager'
+    ? ['front_desk']
+    : (Array.isArray(body?.roles) ? body.roles.filter((r: unknown): r is string => typeof r === 'string') : [])
   const branchIds = Array.isArray(body?.branchIds)
     ? body.branchIds.filter((b: unknown): b is string => typeof b === 'string')
     : []
@@ -906,6 +915,7 @@ export async function PATCH(
 
   const name = typeof body?.name === 'string' ? body.name.trim() : undefined
   const phone = typeof body?.phone === 'string' && body.phone.trim() ? body.phone.trim() : undefined
+  const newUsername = typeof body?.username === 'string' ? body.username.trim() : undefined
   const roles: string[] | undefined = Array.isArray(body?.roles)
     ? (body.roles as unknown[]).filter((r): r is string => typeof r === 'string')
     : undefined
@@ -940,12 +950,49 @@ export async function PATCH(
     }
   }
 
+  // Only the clinic owner may change roles, practitioner branch
+  // assignments, or the username. A manager may still update name/phone/
+  // active state of staff accounts, but never the role configuration or
+  // the login username.
+  if (callerRole === 'manager' && (roles !== undefined || branchIds !== undefined || newUsername !== undefined)) {
+    return NextResponse.json({ error: 'manager cannot change roles or branch assignments' }, { status: 403 })
+  }
+
+  // Username validation — matches the clinic-scoped uniqueness rule used by
+  // account creation. Changing the username updates staff_usernames so the
+  // new value is the one used for login (login resolves username → staff_usernames).
+  if (newUsername !== undefined) {
+    if (!newUsername) {
+      return NextResponse.json({ error: 'username cannot be empty' }, { status: 400 })
+    }
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,49}$/.test(newUsername)) {
+      return NextResponse.json(
+        { error: 'กรุณากรอก Username ที่ถูกต้อง (ตัวอักษร ตัวเลข . _ - เท่านั้น)' },
+        { status: 400 }
+      )
+    }
+  }
+
   // ── 4. Resolve target membership(s) in this clinic ────────────
   const admin = getAdminClient()
   if (!admin) {
     return NextResponse.json({ error: 'server not configured for account management' }, { status: 500 })
   }
   const db = admin as any
+
+  // Username uniqueness — clinic-scoped, same rule as account creation.
+  if (newUsername !== undefined) {
+    const { data: dup } = await db
+      .from('staff_usernames')
+      .select('id')
+      .eq('clinic_id', clinicId)
+      .eq('username', newUsername)
+      .neq('user_id', userId)
+      .maybeSingle()
+    if (dup) {
+      return NextResponse.json({ error: 'username already exists in this clinic' }, { status: 409 })
+    }
+  }
 
   const { data: targetMemberships, error: targetMemError } = await db
     .from('clinic_memberships')
@@ -1030,6 +1077,18 @@ export async function PATCH(
     const { error: userErr } = await db.from('users').update(patch).eq('id', userId)
     if (userErr) {
       return NextResponse.json({ error: 'failed to update user profile' }, { status: 500 })
+    }
+  }
+
+  // 6a2. Update username (staff_usernames) — owner-only, uniqueness enforced above.
+  if (newUsername !== undefined) {
+    const { error: unErr } = await db
+      .from('staff_usernames')
+      .update({ username: newUsername })
+      .eq('user_id', userId)
+      .eq('clinic_id', clinicId)
+    if (unErr) {
+      return NextResponse.json({ error: 'failed to update username' }, { status: 500 })
     }
   }
 

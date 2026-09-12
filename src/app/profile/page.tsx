@@ -15,6 +15,11 @@ export default function ProfilePage() {
   const [name, setName] = useState(user?.name || '')
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState(user?.email || '')
+
+  // Synthetic staff Auth emails ({id}-{rand}@internal.clinicq.local) are internal
+  // credential identifiers, never a real user email — hide them from the profile UI.
+  const isInternalEmail = (e: string) => e.toLowerCase().endsWith('@internal.clinicq.local')
+  const displayEmail = email && !isInternalEmail(email) ? email : ''
   const [isSaving, setIsSaving] = useState(false)
   const [profileImage, setProfileImage] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -224,8 +229,9 @@ export default function ProfilePage() {
             </label>
             <input
               type="email"
-              value={email}
+              value={displayEmail}
               disabled
+              placeholder="ไม่มีข้อมูล"
               className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed"
             />
             <p className="text-xs text-gray-400 mt-1">ไม่สามารถเปลี่ยนอีเมลได้</p>
