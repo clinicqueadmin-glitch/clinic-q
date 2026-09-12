@@ -78,7 +78,9 @@ export default function PaymentModal({ isOpen, onClose, plan, amount, clinicId, 
           const res = await fetch('/api/slip2go/verify-slip', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ qrCode: base64, expectedAmount: amount }),
+            // clinicId + plan let the server record the purchase in
+            // clinic_settings('subscription') and alert the Platform Owner.
+            body: JSON.stringify({ qrCode: base64, expectedAmount: amount, clinicId, plan }),
           })
           const data = await res.json()
           setVerifyResult(data)

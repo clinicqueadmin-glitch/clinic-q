@@ -171,7 +171,11 @@ export default function RegisterPage() {
     }
 
     // Session available (confirmation disabled) → create defaults now.
-    await createDefaultAccounts((result as any).clinicId || '')
+    const clinicId = (result as any).clinicId || ''
+    await createDefaultAccounts(clinicId)
+    // Fire-and-forget: persist trial in DB + alert Platform Owner on LINE.
+    // Idempotent — safe to call even if the endpoint was already hit.
+    notifyNewClinic(clinicId, form.ownerName, form.email)
     setStep('success')
   }
 
@@ -247,7 +251,10 @@ export default function RegisterPage() {
         }
 
         // Create default Manager / Staff / Practitioner accounts
-        await createDefaultAccounts(complete.clinicId || '')
+        const confirmedClinicId = complete.clinicId || ''
+        await createDefaultAccounts(confirmedClinicId)
+        // Fire-and-forget: persist trial in DB + alert Platform Owner on LINE.
+        notifyNewClinic(confirmedClinicId, pending.name || '', pending.email || '')
         try { sessionStorage.removeItem('pendingRegistration') } catch {}
         setStep('success')
       } catch (e) {
@@ -261,6 +268,28 @@ export default function RegisterPage() {
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Fire-and-forget: persist trial + notify Platform Owner (best effort).
+  // Uses the user's Supabase session token to prove clinic ownership.
+  const notifyNewClinic = (clinicId: string, ownerName: string, ownerEmail: string) => {
+    if (!clinicId) return
+    import('@/lib/supabase').then(({ getSupabase }) => {
+      const sb = getSupabase()
+      if (!sb) return
+      sb.auth.getSession().then((res: any) => {
+        const session = res?.data?.session as { access_token?: string } | null
+        if (!session?.access_token) return
+        fetch('/api/platform/clinic-registered', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ clinicId, ownerName, ownerEmail }),
+        }).catch(() => {})
+      }).catch(() => {})
+    }).catch(() => {})
+  }
 
   // Create default Manager + Staff + Practitioner accounts for the new clinic
   // via the server-side API. Best-effort: if it fails the clinic still works,

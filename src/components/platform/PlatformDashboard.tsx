@@ -161,15 +161,20 @@ export default function PlatformDashboard() {
               ownerEmail = ownerUser.email || ''
             }
           }
-          // Get subscription from localStorage
+          // Get subscription from DB (clinic_settings → setting_key='subscription')
           let planType: 'trial' | 'monthly' | 'yearly' = 'trial'
           let isEarlyBird = false
           let expiresAt: string | null = null
           let registeredAt = c.created_at || ''
           try {
-            const subRaw = localStorage.getItem(`clinicq-subscription-${c.id}`)
-            if (subRaw) {
-              const sub = JSON.parse(subRaw)
+            const { data: subRow } = await sb.from('clinic_settings')
+              .select('setting_value')
+              .eq('clinic_id', c.id)
+              .eq('setting_key', 'subscription')
+              .limit(1)
+              .maybeSingle()
+            const sub = subRow?.setting_value as Record<string, any> | null
+            if (sub) {
               planType = sub.plan || 'trial'
               if (sub.paidEndDate) expiresAt = new Date(sub.paidEndDate).toLocaleDateString('th-TH')
               else if (sub.trialEndDate) expiresAt = new Date(sub.trialEndDate).toLocaleDateString('th-TH')
