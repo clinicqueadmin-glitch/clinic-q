@@ -153,7 +153,7 @@ export function writeDailyRoomsCache(clinicId: string | null | undefined, rooms:
   } catch {}
 }
 
-// ═══ Read daily rooms: Supabase first, then localStorage fallback ═══
+// ═══ Read daily rooms: Supabase first, then auto-create from config, then localStorage fallback ═══
 export async function getDailyRooms(
   clinicId: string,
   date?: string
@@ -183,7 +183,23 @@ export async function getDailyRooms(
   }
 
   // 2. Fallback: local cache only (Supabase remains the source of truth)
-  return readDailyRoomsCache(clinicId, targetDate)
+  const cached = readDailyRoomsCache(clinicId, targetDate)
+  if (cached && cached.length > 0) return cached
+
+  // 3. No daily rooms for today — auto-create from room config template.
+  //    This ensures the dashboard has rooms to show on the first visit of a new day.
+  try {
+    const roomConfig = await getClinicSetting<any[]>(clinicId, 'rooms')
+    if (Array.isArray(roomConfig) && roomConfig.length > 0) {
+      const created = await setDailyRooms(clinicId, roomConfig, targetDate)
+      if (created) {
+        writeDailyRoomsCache(clinicId, roomConfig, targetDate)
+        return roomConfig
+      }
+    }
+  } catch {}
+
+  return null
 }
 
 // ═══ Write daily rooms: Supabase + localStorage ═══
