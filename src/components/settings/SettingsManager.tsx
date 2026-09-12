@@ -517,7 +517,10 @@ export default function SettingsManager() {
       if (!svgEl) throw new Error('QR_NOT_FOUND')
       const qrSvg = new XMLSerializer().serializeToString(svgEl)
       const clinicName = escapeHtml(config?.name || 'คลินิกของเรา')
+      const phone = escapeHtml(clinicPhone || '')
+      const brandColor = config?.color || '#0d9488'
       const url = escapeHtml(walkinUrl)
+      const logoHtml = clinicLogo ? `<img src="${escapeHtml(clinicLogo)}" style="width:72px;height:72px;object-fit:contain;border-radius:14px;" />` : `<div style="width:72px;height:72px;border-radius:14px;background:${brandColor};display:flex;align-items:center;justify-content:center;color:#fff;font-size:28px;font-weight:800;">${escapeHtml(config?.prefix || 'Q')}</div>`
 
       // Prefer a hidden iframe: it is not subject to pop-up blocking
       // (iPad/Safari, kiosk, strict browser settings) and never prints the
@@ -539,37 +542,117 @@ export default function SettingsManager() {
 <head>
 <meta charset="utf-8" />
 <title>พิมพ์ QR ลงคิว — ${clinicName}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;600;700;800&display=swap" rel="stylesheet" />
 <style>
-  @page { size: A4; margin: 12mm; }
+  @page { size: A4 portrait; margin: 0; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body {
-    font-family: 'Prompt', 'Sarabun', 'Noto Sans Thai', -apple-system, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Prompt', 'Sarabun', 'Noto Sans Thai', -apple-system, sans-serif;
+    color: #1a1a2e;
+    background: #ffffff;
+  }
+  .sheet {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0 auto;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    min-height: 100vh;
-    background: #ffffff;
-    color: #111827;
+    padding: 32px 24px;
+    position: relative;
   }
-  .sheet { text-align: center; width: 100%; padding: 16px 24px; }
-  .clinic-name { font-size: 28px; font-weight: 700; color: #111827; }
-  .heading { font-size: 46px; font-weight: 800; color: #111827; line-height: 1.25; margin: 10px 0 26px; }
-  .qr-frame { display: inline-block; background: #ffffff; border: 3px dashed #94a3b8; border-radius: 20px; padding: 28px; }
-  .qr-frame svg { width: 400px; height: 400px; display: block; }
-  .subtitle { margin-top: 26px; font-size: 22px; font-weight: 600; color: #1f2937; }
-  .url { margin: 18px auto 0; max-width: 520px; font-size: 13px; color: #64748b; word-break: break-all; }
-  .footer { margin-top: 30px; font-size: 12px; color: #94a3b8; }
+  /* top accent bar */
+  .sheet::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 8px;
+    background: ${brandColor};
+    border-radius: 0 0 8px 8px;
+  }
+  .brand { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .brand-logo { border-radius: 14px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+  .brand-name {
+    font-size: 32px;
+    font-weight: 800;
+    color: #1a1a2e;
+    letter-spacing: -0.5px;
+  }
+  .brand-phone {
+    font-size: 16px;
+    font-weight: 400;
+    color: #6b7280;
+    margin-top: -4px;
+  }
+  .divider {
+    width: 80px;
+    height: 3px;
+    background: ${brandColor};
+    border-radius: 2px;
+    margin: 18px 0 24px;
+  }
+  .heading {
+    font-size: 42px;
+    font-weight: 800;
+    color: ${brandColor};
+    line-height: 1.2;
+    text-align: center;
+  }
+  .qr-wrap {
+    margin: 24px 0;
+    padding: 24px;
+    background: #ffffff;
+    border: 2px solid #e5e7eb;
+    border-radius: 24px;
+    display: inline-block;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+  }
+  .qr-wrap svg {
+    width: 280px;
+    height: 280px;
+    display: block;
+  }
+  .subtitle {
+    font-size: 20px;
+    font-weight: 600;
+    color: #374151;
+    margin-top: 8px;
+  }
+  .url {
+    margin-top: 10px;
+    font-size: 11px;
+    color: #9ca3af;
+    word-break: break-all;
+    max-width: 440px;
+  }
+  .footer-bar {
+    margin-top: auto;
+    padding-top: 24px;
+    text-align: center;
+    font-size: 11px;
+    color: #9ca3af;
+    border-top: 1px solid #f3f4f6;
+    width: 100%;
+  }
 </style>
 </head>
 <body>
   <div class="sheet">
-    <div class="clinic-name">${clinicName}</div>
+    <div class="brand">
+      <div class="brand-logo">${logoHtml}</div>
+      <div class="brand-name">${clinicName}</div>
+      ${phone ? `<div class="brand-phone">☎ ${phone}</div>` : ''}
+    </div>
+    <div class="divider"></div>
     <div class="heading">ลงทะเบียน Walk-in</div>
-    <div class="qr-frame">${qrSvg}</div>
-    <div class="subtitle">สแกนเพื่อลงคิวที่คลินิก</div>
+    <div class="qr-wrap">${qrSvg}</div>
+    <div class="subtitle">📱 สแกน QR Code เพื่อลงคิว</div>
     <div class="url">${url}</div>
-    <div class="footer">ClinicQ • ระบบจัดการคิวคลินิก</div>
+    <div class="footer-bar">${clinicName} — จัดการโดย ClinicQ</div>
   </div>
 </body>
 </html>`)
