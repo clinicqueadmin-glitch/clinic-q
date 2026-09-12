@@ -30,13 +30,14 @@ export async function POST(request: NextRequest) {
 
   if (isEmail) {
     // ── Owner / email-based user: use Supabase resetPasswordForEmail ──
-    const { getSupabase } = await import('@/lib/supabase')
-    const sb = getSupabase()
-    if (!sb) {
+    const { getAdminClient } = await import('@/lib/supabase-admin')
+    const admin = getAdminClient()
+    if (!admin) {
       return NextResponse.json({ error: 'Supabase ไม่ได้เชื่อมต่อ' }, { status: 500 })
     }
 
-    const { error } = await sb.auth.resetPasswordForEmail(identifier, {
+    const db = admin as any
+    const { error } = await db.auth.resetPasswordForEmail(identifier, {
       redirectTo: `${request.headers.get('origin') || 'https://clinic-q.app'}/login`,
     })
 
@@ -92,10 +93,10 @@ export async function POST(request: NextRequest) {
 
     if (!isInternal) {
       // Non-internal email → use Supabase resetPasswordForEmail
-      const { getSupabase } = await import('@/lib/supabase')
-      const sb = getSupabase()
-      if (sb) {
-        await sb.auth.resetPasswordForEmail(authEmail, {
+      const { getAdminClient } = await import('@/lib/supabase-admin')
+      const adminClient = getAdminClient()
+      if (adminClient) {
+        await (adminClient as any).auth.resetPasswordForEmail(authEmail, {
           redirectTo: `${request.headers.get('origin') || 'https://clinic-q.app'}/login`,
         })
       }
