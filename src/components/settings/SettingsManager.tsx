@@ -332,6 +332,14 @@ export default function SettingsManager() {
     return `${base}/qr?clinic=${clinicParam}${idParam}`
   }, [currentClinic, currentClinicId])
 
+  // Walk-in URL — links directly to the walk-in registration form
+  const walkinUrl = useMemo(() => {
+    const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'
+    const clinicParam = currentClinic || 'medical'
+    const idParam = currentClinicId ? `&clinicId=${encodeURIComponent(currentClinicId)}` : ''
+    return `${base}/book?clinic=${clinicParam}${idParam}`
+  }, [currentClinic, currentClinicId])
+
   // Webhook URL สำหรับ LINE OA
   const lineWebhookUrl = useMemo(() => {
     const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'
@@ -504,12 +512,12 @@ export default function SettingsManager() {
 
   const handlePrintQr = () => {
     try {
-      // Serialize the exact QR element rendered on screen (same trackingUrl).
-      const svgEl = document.getElementById('clinicq-screen-qr')?.querySelector('svg')
+      // Serialize the walk-in QR element (same walkinUrl).
+      const svgEl = document.getElementById('clinicq-walkin-qr')?.querySelector('svg')
       if (!svgEl) throw new Error('QR_NOT_FOUND')
       const qrSvg = new XMLSerializer().serializeToString(svgEl)
       const clinicName = escapeHtml(config?.name || 'คลินิกของเรา')
-      const url = escapeHtml(trackingUrl)
+      const url = escapeHtml(walkinUrl)
 
       // Prefer a hidden iframe: it is not subject to pop-up blocking
       // (iPad/Safari, kiosk, strict browser settings) and never prints the
@@ -530,7 +538,7 @@ export default function SettingsManager() {
 <html lang="th">
 <head>
 <meta charset="utf-8" />
-<title>พิมพ์ QR — ${clinicName}</title>
+<title>พิมพ์ QR ลงคิว — ${clinicName}</title>
 <style>
   @page { size: A4; margin: 12mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -557,9 +565,9 @@ export default function SettingsManager() {
 <body>
   <div class="sheet">
     <div class="clinic-name">${clinicName}</div>
-    <div class="heading">สแกน QR เพื่อรับบริการ</div>
+    <div class="heading">ลงทะเบียน Walk-in</div>
     <div class="qr-frame">${qrSvg}</div>
-    <div class="subtitle">สแกนเพื่อจองคิว / ตรวจสอบคิว / ดูสถานะคิว</div>
+    <div class="subtitle">สแกนเพื่อลงคิวที่คลินิก</div>
     <div class="url">${url}</div>
     <div class="footer">ClinicQ • ระบบจัดการคิวคลินิก</div>
   </div>
@@ -883,69 +891,92 @@ export default function SettingsManager() {
               </div>
             )}
 
-            {/* ═══════ TAB: QR สำหรับผู้รับบริการ ═══════ */}
+            {/* ═══════ TAB: QR Code & Link ═══════ */}
             {activeTab === 'qr' && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-lg font-semibold text-gray-900 mb-1">📱 QR สำหรับผู้รับบริการ</h2>
-                  <p className="text-sm text-gray-500">สแกน QR นี้เพื่อเข้าสู่เมนูบริการของคลินิก</p>
+                  <h2 className="text-lg font-semibold text-gray-900 mb-1">📱 QR Code & Link สำหรับผู้รับบริการ</h2>
+                  <p className="text-sm text-gray-500">QR สำหรับลงคิวที่คลินิก และลิงก์สำหรับจองออนไลน์</p>
                 </div>
 
-                {/* ═══ QR หลักเพียง 1 อัน + ลิงก์เดียว ═══ */}
+                {/* ═══ Section 1: QR สำหรับลงคิวที่คลินิก ═══ */}
                 <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+                  <div className="px-5 pt-5 pb-2">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-lg">📋</span>
+                      <h3 className="text-base font-bold text-gray-900">QR สำหรับลงคิวที่คลินิก</h3>
+                    </div>
+                    <p className="text-xs text-gray-500">แปะ QR นี้หน้าคลินิกหรือเคาน์เตอร์ — คนไข้สแกนแล้วเข้าฟอร์มลงทะเบียน Walk-in ทันที</p>
+                  </div>
                   <div className="p-5">
                     {/* QR Preview Card */}
                     <div className="bg-gray-50 rounded-xl p-4 mb-4">
                       <div className="bg-white rounded-xl shadow-sm max-w-sm mx-auto overflow-hidden border border-gray-100">
                         <div className="text-center py-4 px-4" style={{ backgroundColor: config.color }}>
                           <div className="text-white text-sm font-medium opacity-90">🏥 {config.name}</div>
-                          <div className="text-white text-2xl font-black mt-1">เมนูผู้ป่วย</div>
+                          <div className="text-white text-2xl font-black mt-1">ลงทะเบียน Walk-in</div>
                           <div className="text-white/70 text-xs mt-1">สแกน QR Code ด้วยมือถือ</div>
                         </div>
                         <div className="flex flex-col items-center py-6 px-4 bg-white">
-                          {/* #clinicq-screen-qr is the source of the printed QR (same trackingUrl) */}
-                          <div id="clinicq-screen-qr" className="bg-white p-4 rounded-xl border border-gray-100">
-                            <QRCodeSVG value={trackingUrl} size={160} level="H" includeMargin />
+                          <div id="clinicq-walkin-qr" className="bg-white p-4 rounded-xl border border-gray-100">
+                            <QRCodeSVG value={walkinUrl} size={160} level="H" includeMargin />
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Single link — same URL as the QR above */}
-                    <div className="flex flex-col sm:flex-row gap-2 mb-1">
+                    {/* Print + Copy actions */}
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <button onClick={handlePrintQr} className="px-4 py-2.5 rounded-lg text-white font-medium text-sm flex items-center justify-center gap-2 flex-shrink-0" style={{ backgroundColor: config.color }}>
+                        🖨️ พิมพ์ QR Code
+                      </button>
+                      <button onClick={() => { navigator.clipboard.writeText(walkinUrl).catch(() => {}); showToastMsg('คัดลอกลิงก์ลงคิวแล้ว!', 'success') }} className="px-4 py-2.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium flex items-center justify-center gap-1 flex-shrink-0">
+                        <Copy className="w-4 h-4" /> คัดลอกลิงก์
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">หลังลงทะเบียนสำเร็จ ระบบจะแสดง QR สำหรับตรวจสอบคิวให้คนไข้บันทึกเอง</p>
+                  </div>
+                </div>
+
+                {/* ═══ Section 2: ลิงก์สำหรับจองออนไลน์ ═══ */}
+                <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+                  <div className="px-5 pt-5 pb-2">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-lg">🔗</span>
+                      <h3 className="text-base font-bold text-gray-900">ลิงก์สำหรับจองออนไลน์และตรวจสอบคิว</h3>
+                    </div>
+                    <p className="text-xs text-gray-500">นำลิงก์นี้ไปใส่ใน LINE OA, Facebook หรือ Website — ไม่ต้องพิมพ์ QR</p>
+                  </div>
+                  <div className="p-5">
+                    <div className="flex flex-col sm:flex-row gap-2 mb-3">
                       <input type="text" value={trackingUrl} readOnly className="flex-1 px-3 py-2.5 rounded-lg bg-gray-50 border border-gray-200 text-sm text-gray-700 truncate" />
                       <button onClick={copyLink} className="px-4 py-2.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium flex items-center justify-center gap-1 flex-shrink-0">
                         {copied ? <><Check className="w-4 h-4 text-green-500" /> คัดลอกแล้ว</> : <><Copy className="w-4 h-4" /> 📋 คัดลอกลิงก์</>}
                       </button>
                     </div>
-                    <p className="text-xs text-gray-500">ใช้ลิงก์นี้ได้ทั้ง LINE OA, Facebook และ Website</p>
-
-                    {/* Print action — dedicated A4 sheet, not the whole page */}
-                    <div className="mt-4">
-                      <button onClick={handlePrintQr} className="px-4 py-2 rounded-lg text-white font-medium text-sm flex items-center gap-2" style={{ backgroundColor: config.color }}>
-                        🖨️ พิมพ์ QR Code
-                      </button>
-                    </div>
+                    <p className="text-xs text-gray-500">ลิงก์นี้เปิดหน้าเมนูผู้ป่วย ซึ่งมีปุ่มจองคิว / ลงทะเบียน Walk-in / ตรวจสอบคิว / ดูสถานะคิว</p>
                   </div>
                 </div>
 
                 {/* ═══ วิธีใช้งาน ═══ */}
                 <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5">
                   <h4 className="font-bold text-blue-900 mb-3">📖 วิธีใช้งาน</h4>
-                  <ol className="text-sm text-blue-700 space-y-2 list-decimal list-inside">
-                    <li>พิมพ์ QR ติดหน้าคลินิกหรือเคาน์เตอร์</li>
-                    <li>นำลิงก์ไปใส่ใน LINE OA, Facebook หรือ Website</li>
-                    <li>ผู้รับบริการใช้ QR หรือลิงก์เดียวกันเพื่อเข้าหน้าเมนู</li>
-                  </ol>
-                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <div className="bg-white rounded-xl p-3 border border-blue-100 text-center">
-                      <p className="text-xs font-bold text-blue-800">📝 จองคิว / ลงทะเบียน Walk-in</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm font-bold text-blue-800 mb-2">📋 QR สำหรับลงคิวที่คลินิก</p>
+                      <ol className="text-xs text-blue-700 space-y-1 list-decimal list-inside">
+                        <li>พิมพ์ QR ติดหน้าคลินิกหรือเคาน์เตอร์</li>
+                        <li>คนไข้สแกนแล้วเข้าฟอร์มลงทะเบียนทันที</li>
+                        <li>หลังลงทะเบียนสำเร็จ จะเห็น QR สำหรับตรวจสอบคิว</li>
+                      </ol>
                     </div>
-                    <div className="bg-white rounded-xl p-3 border border-blue-100 text-center">
-                      <p className="text-xs font-bold text-blue-800">🔍 ตรวจสอบคิวของฉัน</p>
-                    </div>
-                    <div className="bg-white rounded-xl p-3 border border-blue-100 text-center">
-                      <p className="text-xs font-bold text-blue-800">📺 ดูสถานะคิววันนี้</p>
+                    <div>
+                      <p className="text-sm font-bold text-blue-800 mb-2">🔗 ลิงก์สำหรับจองออนไลน์</p>
+                      <ol className="text-xs text-blue-700 space-y-1 list-decimal list-inside">
+                        <li>คัดลอกลิงก์ไปใส่ใน LINE OA / Facebook / Website</li>
+                        <li>คนไข้กดลิงก์แล้วเลือกบริการที่ต้องการ</li>
+                        <li>จองคิวออนไลน์หรือตรวจสอบสถานะคิว</li>
+                      </ol>
                     </div>
                   </div>
                 </div>
