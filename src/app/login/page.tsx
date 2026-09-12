@@ -8,7 +8,7 @@ import { KeyRound, X, CheckCircle, Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import { isRecoveryRedirect, getRecoverySession, supabaseUpdatePassword } from '@/lib/supabase-auth'
 
 export default function LoginPage() {
-  const { login, resetPasswordByEmail } = useAuth()
+  const { login } = useAuth()
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -68,22 +68,35 @@ export default function LoginPage() {
     }
   }
 
+  const [forgotTempPassword, setForgotTempPassword] = useState('')
+
   const handleForgotPassword = async () => {
     if (!forgotEmail.trim()) {
-      setForgotResult({ success: false, message: 'กรุณากรอกอีเมล' })
+      setForgotResult({ success: false, message: 'กรุณากรอกอีเมลหรือชื่อผู้ใช้' })
       return
     }
     setForgotLoading(true)
     setForgotResult(null)
-    const result = await resetPasswordByEmail(forgotEmail.trim())
-    setForgotLoading(false)
-    if (result.success) {
-      setForgotResult({ 
-        success: true, 
-        message: 'ระบบได้ส่งลิงก์สำหรับตั้งรหัสผ่านใหม่ไปยังอีเมลของคุณแล้ว กรุณาตรวจสอบอีเมล (รวมถึงโฟลเดอร์สแปม)' 
+    setForgotTempPassword('')
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: forgotEmail.trim() }),
       })
-    } else {
-      setForgotResult({ success: false, message: result.error || 'ไม่สามารถส่งลิงก์รีเซ็ตรหัสผ่านได้' })
+      const data = await res.json()
+      setForgotLoading(false)
+      if (data.success) {
+        setForgotResult({ success: true, message: data.message })
+        if (data.tempPassword) {
+          setForgotTempPassword(data.tempPassword)
+        }
+      } else {
+        setForgotResult({ success: false, message: data.error || 'ไม่สามารถดำเนินการได้' })
+      }
+    } catch {
+      setForgotLoading(false)
+      setForgotResult({ success: false, message: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้' })
     }
   }
 
@@ -306,7 +319,7 @@ export default function LoginPage() {
                 </div>
                 <div>
                   <h2 className="text-lg font-bold text-gray-900">🔑 ลืมรหัสผ่าน</h2>
-                  <p className="text-xs text-gray-500">ส่งลิงก์สำหรับตั้งรหัสผ่านใหม่ไปยังอีเมลของคุณ</p>
+                  <p className="text-xs text-gray-500">ส่งลิงก์หรือรหัสผ่านชั่วคราวสำหรับตั้งรหัสผ่านใหม่</p>
                 </div>
               </div>
               <button onClick={() => setShowForgot(false)} className="p-2 hover:bg-gray-100 rounded-lg">
@@ -319,33 +332,52 @@ export default function LoginPage() {
               <div className="bg-teal-50 border border-teal-200 rounded-xl p-4">
                 <p className="text-sm text-teal-700">
                   <CheckCircle className="w-4 h-4 inline mr-1" />
-                  ระบบจะส่งลิงก์สำหรับตั้งรหัสผ่านใหม่ไปยังอีเมลของคุณ กรุณาตรวจสอบอีเมล (รวมถึงโฟลเดอร์สแปม)
+                  สำหรับเจ้าของคลินิก: ระบบจะส่งลิงก์ไปยังอีเมล · สำหรับเจ้าหน้าที่: ระบบจะแสดงรหัสผ่านชั่วคราวบนหน้าจอ
                 </p>
               </div>
 
               {/* Email Input */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  <Mail className="w-4 h-4 inline mr-1" /> อีเมลที่สมัครไว้
+                  <Mail className="w-4 h-4 inline mr-1" /> อีเมลหรือชื่อผู้ใช้
                 </label>
                 <input
-                  type="email"
+                  type="text"
                   value={forgotEmail}
                   onChange={(e) => setForgotEmail(e.target.value)}
-                  placeholder="your@email.com"
+                  placeholder="your@email.com หรือ ชื่อผู้ใช้"
                   className="w-full px-4 py-3 rounded-2xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-amber-300 focus:border-transparent transition-all text-sm"
                 />
-              </div>
-
-              {/* Result Message */}
+              </div>              {/* Result Message */}
               {forgotResult && (
                 <div className={clsx(
                   'p-3 rounded-xl border text-sm',
                   forgotResult.success 
-                    ? 'bg-green-50 border-green-200 text-green-700' 
+                    ? 'bg-green-50 border-green-200 text-green-700'
                     : 'bg-red-50 border-red-200 text-red-600'
                 )}>
                   {forgotResult.success ? '✅' : '❌'} {forgotResult.message}
+                </div>
+              )}
+
+              {/* Temp Password Display (for staff) */}
+              {forgotTempPassword && (
+                <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4">
+                  <p className="text-sm font-bold text-amber-800 mb-2">🔑 รหัสผ่านชั่วคราว:</p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 px-3 py-2 bg-white rounded-lg border border-amber-200 text-lg font-mono font-bold text-amber-900 tracking-wider select-all">
+                      {forgotTempPassword}
+                    </code>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(forgotTempPassword).catch(() => {})
+                      }}
+                      className="px-3 py-2 rounded-lg bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 transition-colors"
+                    >
+                      📋 คัดลอก
+                    </button>
+                  </div>
+                  <p className="text-xs text-amber-600 mt-2">⚠️ ใช้รหัสผ่านนี้เข้าสู่ระบบ แล้วเปลี่ยนรหัสผ่านทันที</p>
                 </div>
               )}
             </div>
