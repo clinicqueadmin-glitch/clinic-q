@@ -516,7 +516,7 @@ export default function SettingsManager() {
       const svgEl = document.getElementById('clinicq-walkin-qr')?.querySelector('svg')
       if (!svgEl) throw new Error('QR_NOT_FOUND')
       const qrSvg = new XMLSerializer().serializeToString(svgEl)
-      const clinicName = escapeHtml(config?.name || 'คลินิกของเรา')
+      const printClinicName = escapeHtml(clinicName || config?.name || 'คลินิกของเรา')
       const phone = escapeHtml(clinicPhone || '')
       const brandColor = config?.color || '#0d9488'
       const url = escapeHtml(walkinUrl)
@@ -541,7 +541,7 @@ export default function SettingsManager() {
 <html lang="th">
 <head>
 <meta charset="utf-8" />
-<title>พิมพ์ QR ลงคิว — ${clinicName}</title>
+<title>พิมพ์ QR ลงคิว — ${printClinicName}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;600;700;800&display=swap" rel="stylesheet" />
@@ -644,7 +644,7 @@ export default function SettingsManager() {
   <div class="sheet">
     <div class="brand">
       <div class="brand-logo">${logoHtml}</div>
-      <div class="brand-name">${clinicName}</div>
+      <div class="brand-name">${printClinicName}</div>
       ${phone ? `<div class="brand-phone">☎ ${phone}</div>` : ''}
     </div>
     <div class="divider"></div>
@@ -652,7 +652,7 @@ export default function SettingsManager() {
     <div class="qr-wrap">${qrSvg}</div>
     <div class="subtitle">📱 สแกน QR Code เพื่อลงคิว</div>
     <div class="url">${url}</div>
-    <div class="footer-bar">${clinicName} — จัดการโดย ClinicQ</div>
+    <div class="footer-bar">${printClinicName} — จัดการโดย ClinicQ</div>
   </div>
 </body>
 </html>`)
