@@ -51,8 +51,7 @@ export default function TVQueueCard({ item, clinic, variant, size }: TVQueueCard
             </div>
           </div>
 
-          {/* Patient Name */}
-          <p className="text-xl font-semibold text-white mb-2 truncate">คุณ{item.firstName || item.patientName}</p>
+          {/* Privacy: จอ TV แสดงเฉพาะหมายเลขคิว ห้ามแสดงชื่อผู้ป่วย */}
 
           {/* Info Row */}
           <div className="flex items-center gap-3 text-sm text-gray-400">
@@ -87,7 +86,7 @@ export default function TVQueueCard({ item, clinic, variant, size }: TVQueueCard
 
           {/* Patient Info */}
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-white truncate">คุณ{item.firstName || item.patientName}</p>
+            {/* Privacy: จอ TV แสดงเฉพาะหมายเลขคิว */}
             <p className="text-xs text-gray-500">{item.time}</p>
           </div>
 

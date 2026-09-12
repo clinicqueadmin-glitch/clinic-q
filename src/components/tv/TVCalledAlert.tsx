@@ -83,9 +83,9 @@ export default function TVCalledAlert({ queue, clinic, onDismiss }: TVCalledAler
           </span>
         </div>
 
-        {/* Patient first name only — no last name for privacy */}
+        {/* Privacy: ใช้หมายเลขคิวแทนชื่อผู้ป่วยทั้งหมด */}
         <h2 className="text-3xl md:text-4xl font-bold text-white mb-3">
-          คุณ{queue.firstName || queue.patientName}
+          คิวที่ {queue.number}
         </h2>
 
         {/* Room assignment */}

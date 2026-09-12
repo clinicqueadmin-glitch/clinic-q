@@ -48,9 +48,9 @@ function RoomStatus({ serving, branchData }: { serving: QueueItem; branchData: a
           {ot && <span className="text-[10px] font-normal text-gray-500"> / {ot.expected}น.</span>}
         </div>
       )}
-      {/* Privacy-safe: first name only (no last name) */}
-      <p className="text-xl font-bold text-white mt-2 truncate" title="{serving.firstName || serving.patientName}">
-        {serving.firstName || serving.patientName}
+      {/* Privacy: จอ TV แสดงเฉพาะหมายเลขคิว ห้ามแสดงชื่อผู้ป่วย */}
+      <p className="text-xl font-bold text-white mt-2 truncate">
+        {serving.number}
       </p>
     </>
   )
@@ -283,8 +283,8 @@ export default function TVDisplay() {
 
   const callNextQueue = useCallback(() => {
     if (!nextQueue) return
-    const firstName = nextQueue.patientName.trim().split(/\s+/)[0] || nextQueue.patientName
-    const updated = { ...nextQueue, status: 'serving' as const, servingAt: Date.now(), firstName }
+    // Privacy: จอ TV ไม่ส่ง/แสดงชื่อผู้ป่วย
+    const updated = { ...nextQueue, status: 'serving' as const, servingAt: Date.now() }
     setQueue(prev => prev.map(q => q.id === nextQueue.id ? updated : q))
     // Also save to Supabase so other devices see the change
     saveQueueItem(updated).catch(() => {})
@@ -490,7 +490,7 @@ export default function TVDisplay() {
               <div className="p-5 border-b border-white/10 bg-emerald-500/10">
                 <p className="text-[10px] text-emerald-400 font-medium uppercase tracking-wider mb-1">⏭ คิวถัดไป</p>
                 <div className={`${fontSizeClass} font-mono font-black text-emerald-400 tabular-nums mb-3`}>{nextQueue.number}</div>
-                <p className="text-lg font-bold text-emerald-300 mb-2">คุณ{nextQueue.firstName || nextQueue.patientName}</p>
+                {/* Privacy: จอ TV ไม่แสดงชื่อผู้ป่วย */}
                 <p className="text-sm text-emerald-400/60 mb-3">เชิญเข้าห้อง {nextQueue.assignedRoom}</p>
                 <button onClick={callNextQueue} className="w-full px-4 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-bold text-sm transition-colors shadow-lg shadow-emerald-500/30">
                   ▶ เรียกคิว
