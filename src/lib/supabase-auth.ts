@@ -353,8 +353,9 @@ export async function supabaseResetPassword(email: string): Promise<{ success: b
   const sb = getSupabase()
   if (!sb) return { success: false, error: 'Supabase ไม่ได้เชื่อมต่อ' }
 
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin
   const { error } = await sb.auth.resetPasswordForEmail(email, {
-    redirectTo: `${window.location.origin}/login`,
+    redirectTo: `${siteUrl}/login`,
   })
 
   if (error) return { success: false, error: error.message }
