@@ -332,12 +332,12 @@ export default function SettingsManager() {
     return `${base}/qr?clinic=${clinicParam}${idParam}`
   }, [currentClinic, currentClinicId])
 
-  // Walk-in URL — links directly to the walk-in registration form
+  // Walk-in URL — links directly to the walk-in registration form (not online booking)
   const walkinUrl = useMemo(() => {
     const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'
     const clinicParam = currentClinic || 'medical'
     const idParam = currentClinicId ? `&clinicId=${encodeURIComponent(currentClinicId)}` : ''
-    return `${base}/book?clinic=${clinicParam}${idParam}`
+    return `${base}/walkin?clinic=${clinicParam}${idParam}`
   }, [currentClinic, currentClinicId])
 
   // Webhook URL สำหรับ LINE OA

@@ -152,6 +152,8 @@ export default function WalkinPage() {
   // in that window still cannot create a second queue item.
   const submittedRef = useRef(false)
   const [submitError, setSubmitError] = useState('')
+  // Ref for the QR box so we can serialize it to a downloadable PNG.
+  const qrBoxRef = useRef<HTMLDivElement>(null)
 
   // Booking mode: walkin or appointment
   type BookingMode = 'walkin' | 'appointment'
@@ -460,6 +462,32 @@ export default function WalkinPage() {
 
   const accentColor = clinicCfg.color
 
+  // Save the walk-in QR as a PNG image for the patient.
+  const handleSaveQr = () => {
+    try {
+      const el = qrBoxRef.current
+      if (!el) return
+      const svg = el.querySelector('svg')
+      if (!svg) return
+      const svgData = new XMLSerializer().serializeToString(svg)
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+      const img = new Image()
+      img.onload = () => {
+        canvas.width = img.width
+        canvas.height = img.height
+        ctx?.drawImage(img, 0, 0)
+        const link = document.createElement('a')
+        link.download = `clinicq-queue-${submittedNumber || 'walkin'}.png`
+        link.href = canvas.toDataURL('image/png')
+        link.click()
+      }
+      img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)))
+    } catch {
+      alert('ไม่สามารถบันทึก QR Code ได้ กรุณาลองใหม่อีกครั้ง')
+    }
+  }
+
   // Auto redirect to dashboard after staff registration
   useEffect(() => {
     if (submittedNumber && isStaffMode) {
@@ -496,10 +524,21 @@ export default function WalkinPage() {
           </div>
 
           {/* QR for tracking */}
-          <div className="bg-white p-4 rounded-2xl border border-gray-100 mb-4 inline-block">
+          <div ref={qrBoxRef} className="bg-white p-4 rounded-2xl border border-gray-100 mb-4 inline-block">
             <QRCodeSVG value={trackUrl} size={140} level="M" />
           </div>
           <p className="text-xs text-gray-400">สแกนเพื่อติดตามสถานะคิว</p>
+
+          <button
+            onClick={handleSaveQr}
+            className="mt-4 w-full py-3 rounded-2xl font-bold text-sm text-white transition-all hover:shadow-lg active:scale-[0.98]"
+            style={{ backgroundColor: accentColor }}
+          >
+            💾 บันทึก QR Code
+          </button>
+          <p className="text-[11px] text-gray-400 mt-2">
+            บันทึก QR ไว้ในโทรศัพท์เพื่อติดตามสถานะคิวของคุณ
+          </p>
 
           {/* Info */}
           <div className="mt-6 space-y-2 text-left bg-gray-50 rounded-xl p-4">
