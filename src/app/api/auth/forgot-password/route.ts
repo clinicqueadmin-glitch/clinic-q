@@ -30,14 +30,16 @@ export async function POST(request: NextRequest) {
 
   if (isEmail) {
     // ── Owner / email-based user: use Supabase resetPasswordForEmail ──
-    const { getAdminClient } = await import('@/lib/supabase-admin')
-    const admin = getAdminClient()
-    if (!admin) {
+    // Must use anon key (not service-role) for email sending to work
+    const { createClient } = await import('@supabase/supabase-js')
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (!url || !key) {
       return NextResponse.json({ error: 'Supabase ไม่ได้เชื่อมต่อ' }, { status: 500 })
     }
 
-    const db = admin as any
-    const { error } = await db.auth.resetPasswordForEmail(identifier, {
+    const sb = createClient(url, key)
+    const { error } = await sb.auth.resetPasswordForEmail(identifier, {
       redirectTo: `${request.headers.get('origin') || 'https://clinic-q.app'}/login`,
     })
 
@@ -93,10 +95,12 @@ export async function POST(request: NextRequest) {
 
     if (!isInternal) {
       // Non-internal email → use Supabase resetPasswordForEmail
-      const { getAdminClient } = await import('@/lib/supabase-admin')
-      const adminClient = getAdminClient()
-      if (adminClient) {
-        await (adminClient as any).auth.resetPasswordForEmail(authEmail, {
+      const { createClient } = await import('@supabase/supabase-js')
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+      const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      if (url && key) {
+        const sb = createClient(url, key)
+        await sb.auth.resetPasswordForEmail(authEmail, {
           redirectTo: `${request.headers.get('origin') || 'https://clinic-q.app'}/login`,
         })
       }
