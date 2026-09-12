@@ -374,11 +374,35 @@ export function isRecoveryRedirect(): boolean {
 }
 
 // ═══ Password recovery — wait for the recovery session to be ready ═══
-// The Supabase client picks up the tokens from the URL on initialization;
-// we poll briefly so the login page can show the "set new password" form.
+// Supabase recovery emails use the implicit flow and put the tokens in the
+// URL hash (#access_token=...&refresh_token=...&type=recovery).
+// The @supabase/ssr browser client hardcodes flowType 'pkce', so it refuses
+// to process an implicit-grant URL ("Not a valid PKCE flow url.") and never
+// creates a session. We therefore read the hash ourselves and hand the tokens
+// to setSession(), which has no flow-type gate.
 export async function getRecoverySession(retries = 12): Promise<any> {
   const sb = getSupabase()
   if (!sb) return null
+
+  // 1) Already have a session (e.g. the client handled a PKCE ?code= link)
+  const { data: { session: existing } } = await sb.auth.getSession()
+  if (existing) return existing
+
+  // 2) Adopt implicit-flow tokens from the URL hash that the PKCE client ignores
+  if (typeof window !== 'undefined') {
+    const hashParams = new URLSearchParams(window.location.hash.substring(1))
+    const accessToken = hashParams.get('access_token')
+    const refreshToken = hashParams.get('refresh_token')
+    if (accessToken && refreshToken) {
+      const { data, error } = await sb.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      })
+      if (!error && data?.session) return data.session
+    }
+  }
+
+  // 3) Fall back to polling briefly so the login page can proceed
   for (let i = 0; i < retries; i++) {
     const { data: { session } } = await sb.auth.getSession()
     if (session) return session
