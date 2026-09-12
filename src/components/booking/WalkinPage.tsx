@@ -34,10 +34,12 @@ export default function WalkinPage() {
       // Priority 1: URL ?clinicId=xxx (exact match)
       if (urlClinicId) {
         const found = clinics.find((c: any) => c.id === urlClinicId)
+        // Use URL ?clinic= param as fallback when localStorage lookup fails
+        const resolvedType = (found?.type || urlClinicType || 'dental') as ClinicType
         return {
           clinicId: urlClinicId,
-          clinicType: (found?.type || 'dental') as ClinicType,
-          clinicCfg: clinicConfig[(found?.type || 'dental') as ClinicType] || clinicConfig['dental'],
+          clinicType: resolvedType,
+          clinicCfg: clinicConfig[resolvedType] || clinicConfig['dental'],
         }
       }
       // Priority 2: URL ?clinic=dental (type match)
