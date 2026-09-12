@@ -319,6 +319,7 @@ export default function QueueTracker() {
       const updated: QueueItem = {
         ...foundItem,
         arrived: true,
+        arrivalTime: timeStr,
         arrivedAt: timeStr,
         checkinAt: timeStr,
         isOnTime,

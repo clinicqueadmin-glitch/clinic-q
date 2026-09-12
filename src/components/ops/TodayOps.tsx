@@ -374,6 +374,7 @@ export default function TodayOps() {
     const updated = {
       ...item,
       arrived: true,
+      arrivalTime: timeStr,
       arrivedAt: timeStr,
       checkinAt: timeStr,
       isOnTime,
