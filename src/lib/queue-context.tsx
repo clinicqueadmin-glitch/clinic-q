@@ -459,15 +459,19 @@ export function QueueProvider({ children }: { children: ReactNode }) {
           })
 
           if (res.ok) {
+            // create_queue_item() returns RETURNS TABLE → PostgREST responds with a
+            // JSON array even for a single row, so read result[0] (or the object if
+            // the server ever returns one directly).
             const result = await res.json()
-            if (result && result.id) {
+            const row = Array.isArray(result) ? result[0] : result
+            if (row && row.id) {
               // RPC returned the created queue item
               const newItem: QueueItem = {
                 ...item,
-                id: result.id,
-                number: result.number,  // Use server-generated number
-                status: result.status || 'waiting',
-                queueDate: result.queue_date || getTodayICT(),  // Server business date
+                id: row.id,
+                number: row.number,  // Use server-generated number
+                status: row.status || 'waiting',
+                queueDate: row.queue_date || getTodayICT(),  // Server business date
               }
               setQueue(prev => [...prev, newItem])
               return newItem
