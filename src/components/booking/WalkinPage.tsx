@@ -78,11 +78,21 @@ export default function WalkinPage() {
           if (parsed.clinicName) return parsed.clinicName
         } catch {}
       }
-    }
-    return clinicCfg.name
+    }    return clinicCfg.name
   }, [clinicId, clinicCfg])
-  
-  
+ 
+  // Sync resolved clinic type to localStorage so QueueProvider can read it.
+  // Without this, a fresh device scanning the QR code has empty localStorage
+  // → clinicType is null → Supabase RPC never fires → queue number is empty.
+  useEffect(() => {
+    if (clinicType && typeof window !== 'undefined') {
+      const current = localStorage.getItem('clinic-q-type')
+      if (current !== clinicType) {
+        localStorage.setItem('clinic-q-type', clinicType)
+      }
+    }
+  }, [clinicType])
+ 
   // Load branch data from Supabase → localStorage → defaults
   const [branchData, setBranchData] = useState<ClinicBranchData>(() => getDefaultBranchData(clinicType || 'dental'))
 
