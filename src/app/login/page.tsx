@@ -40,6 +40,22 @@ export default function LoginPage() {
   // ═══ Detect Supabase password-recovery redirect (email link with token) ═══
   useEffect(() => {
     if (typeof window === 'undefined') return
+
+    // Check for Supabase error in URL hash (e.g. #error=access_denied&error_code=otp_expired)
+    const hashParams = new URLSearchParams(window.location.hash.substring(1))
+    const hashError = hashParams.get('error')
+    const errorCode = hashParams.get('error_code')
+    if (hashError) {
+      // Clean up the URL
+      window.history.replaceState({}, '', '/login')
+      if (errorCode === 'otp_expired' || errorCode === 'access_denied') {
+        setError('ลิงก์รีเซ็ตรหัสผ่านหมดอายุหรือไม่ถูกต้อง กรุณาขอลิงก์ใหม่')
+      } else {
+        setError(`เกิดข้อผิดพลาด: ${hashError}`)
+      }
+      return
+    }
+
     if (!isRecoveryRedirect()) return
 
     setRecoveryMode(true)

@@ -39,8 +39,10 @@ export async function POST(request: NextRequest) {
     }
 
     const sb = createClient(url, key)
+    // Always use production URL — origin header may be localhost in dev
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://clinic-q.app'
     const { error } = await sb.auth.resetPasswordForEmail(identifier, {
-      redirectTo: `${request.headers.get('origin') || 'https://clinic-q.app'}/login`,
+      redirectTo: `${siteUrl}/login`,
     })
 
     if (error) {
@@ -100,8 +102,9 @@ export async function POST(request: NextRequest) {
       const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
       if (url && key) {
         const sb = createClient(url, key)
+        const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://clinic-q.app'
         await sb.auth.resetPasswordForEmail(authEmail, {
-          redirectTo: `${request.headers.get('origin') || 'https://clinic-q.app'}/login`,
+          redirectTo: `${siteUrl}/login`,
         })
       }
       return NextResponse.json({
