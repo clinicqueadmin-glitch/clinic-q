@@ -61,6 +61,27 @@ export async function getClinicSetting<T = any>(
   return null
 }
 
+// ═══ Clinic display name from the clinic row ═══
+// The clinic's own name lives on the `clinics` row. This is the only fallback for
+// display surfaces when clinic_settings.general has no clinicName yet: a clinic
+// *type* must never be turned into a name, because clinicConfig holds the seed
+// clinics' names (e.g. 'คลินิกทันตกรรม') and would label the wrong clinic.
+// Uses maybeSingle() so a missing row is a normal null, not a 406 (PGRST116).
+export async function getClinicName(clinicId?: string | null): Promise<string | null> {
+  if (!clinicId) return null
+  const sb = getSB()
+  if (!sb) return null
+  try {
+    const { data, error } = await sb
+      .from('clinics')
+      .select('name')
+      .eq('id', clinicId)
+      .maybeSingle()
+    if (!error && data?.name) return String(data.name)
+  } catch {}
+  return null
+}
+
 // ═══ Write a setting: Supabase + localStorage ═══
 export async function setClinicSetting<T = any>(
   clinicId: string,

@@ -55,7 +55,7 @@ export default function Sidebar() {
   const [isOpen, setIsOpen] = useState(false)
   const [showGuide, setShowGuide] = useState(false)
   const pathname = usePathname()
-  const { config, clearClinic, settings } = useClinic()
+  const { config, clearClinic, settings, clinicName } = useClinic()
   const { user, currentRole, logout } = useAuth()
   const accentColor = config?.color || '#F97316'
   const roleCfg = currentRole ? roleConfig[currentRole] : null
@@ -111,7 +111,7 @@ export default function Sidebar() {
                 )}
                 <div>
                   <h1 className="text-base font-extrabold text-gray-800 leading-tight">Clinic-Q</h1>
-                  <p className="text-[11px] text-teal-500 font-semibold">{settings.clinicName || config?.name || 'ระบบจัดการคิวคลินิก'}</p>
+                  <p className="text-[11px] text-teal-500 font-semibold">{clinicName || 'ระบบจัดการคิวคลินิก'}</p>
                 </div>
               </div>
               <button
@@ -137,7 +137,7 @@ export default function Sidebar() {
                   {config.prefix}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-gray-800 truncate">{settings.clinicName || config.name}</p>
+                  <p className="text-xs font-bold text-gray-800 truncate">{clinicName || 'คลินิก'}</p>
                   <p className="text-[10px] text-pink-400 font-semibold">กำลังใช้งาน</p>
                 </div>
               </div>

@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Phone, MessageCircle, Check, AlertCircle, User, ArrowRight } from 'lucide-react'
 import { saveLineUserProfile, type LineUserProfile } from '@/lib/line-notification'
+import { getClinicName, getClinicSetting } from '@/lib/clinic-data'
 
 function LineBindForm() {
   const searchParams = useSearchParams()
@@ -17,23 +18,27 @@ function LineBindForm() {
   const [clinicName, setClinicName] = useState('')
 
   useEffect(() => {
-    // Get clinic info from URL or localStorage
+    // Clinic identity from the URL. The `clinic` param is only a clinic *type*: it
+    // is not an identity (several clinics can share a type) so it is never resolved
+    // into a clinic, and never turned into a name.
     const clinic = searchParams.get('clinic') || 'dental'
     setClinicId(clinic)
-    
-    // Get clinic name from settings (clinic-specific)
-    const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
-    const matchedClinic = clinics.find((c: any) => c.type === clinic)
-    const cid = matchedClinic?.id
-    const saved = (cid ? localStorage.getItem(`clinic-q-settings-${cid}`) : null) || localStorage.getItem('clinic-q-settings')
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved)
-        setClinicName(parsed.clinicName || 'คลินิก')
-      } catch {
-        setClinicName('คลินิก')
-      }
+
+    // Display name only for an explicitly identified clinic, taken from that
+    // clinic's own settings, then its clinics row. With no id we show nothing
+    // rather than another clinic's cached name.
+    const explicitClinicId = searchParams.get('clinicId') || ''
+    if (!explicitClinicId) {
+      setClinicName('')
+      return
     }
+    let cancelled = false
+    ;(async () => {
+      const general = await getClinicSetting<{ clinicName?: string }>(explicitClinicId, 'general')
+      const name = general?.clinicName?.trim() || (await getClinicName(explicitClinicId))
+      if (!cancelled) setClinicName(name || '')
+    })()
+    return () => { cancelled = true }
   }, [searchParams])
 
   const formatPhoneNumber = (value: string) => {
@@ -115,7 +120,7 @@ function LineBindForm() {
             <span className="text-[#06c755] font-bold text-xl">Q+</span>
           </div>
           <h1 className="text-xl font-bold text-white">เชื่อมต่อบัญชี LINE</h1>
-          <p className="text-white/80 text-sm mt-1">{clinicName}</p>
+          {clinicName && <p className="text-white/80 text-sm mt-1">{clinicName}</p>}
         </div>
 
         {/* Form */}

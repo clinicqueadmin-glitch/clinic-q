@@ -107,7 +107,7 @@ function getElapsedMinutes(timeStr: string | undefined): number | null {
 }
 
 export default function TodayOps() {
-  const { config, currentClinic, settings } = useClinic()
+  const { config, currentClinic, settings, clinicName } = useClinic()
   const { user, currentRole, currentClinicId } = useAuth()
   // Clinic-specific storage keys
   const roomKey = currentClinicId ? `clinic-rooms-${currentClinicId}` : 'clinic-rooms'
@@ -1733,7 +1733,7 @@ export default function TodayOps() {
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-white font-extrabold text-lg shadow-lg animate-float" style={{ background: `linear-gradient(135deg, ${config.color}, ${config.color}cc)` }}>{config.prefix}</div>
             <div>
-              <h1 className="text-lg font-extrabold text-gray-800">{settings.clinicName || config.name}</h1>
+              <h1 className="text-lg font-extrabold text-gray-800">{clinicName || 'คลินิก'}</h1>
               <p className="text-xs text-pink-400 font-semibold">
                 {now.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
               </p>
@@ -1797,7 +1797,7 @@ export default function TodayOps() {
       {!isProvider && (
       <div className="flex flex-wrap items-center gap-2">
         <a href={`/walkin?staff=1&clinic=${currentClinic || 'dental'}&clinicId=${currentClinicId || ''}`} className="candy-btn candy-btn-primary shadow-lg">
-          <Plus className="w-4 h-4" /> ลงคิวคนไข้ {config?.name ? `(${config.name})` : ''}
+          <Plus className="w-4 h-4" /> ลงคิวคนไข้ {clinicName ? `(${clinicName})` : ''}
         </a>
         {nextQueue && (
           <button
@@ -2208,7 +2208,7 @@ export default function TodayOps() {
       <SetupGuide
         open={showSetupGuide}
         onClose={closeSetupGuide}
-        clinicName={settings.clinicName || config?.name}
+        clinicName={clinicName || undefined}
       />
     </div>
   )

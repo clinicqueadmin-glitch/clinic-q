@@ -56,8 +56,11 @@ export default function SettingsManager() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
 
   /* ───── Clinic Settings State ───── */
-  const { settings, updateSettings } = useClinic()
-  const [clinicName, setClinicName] = useState(config?.name || 'คลินิกเวชกรรม')
+  const { settings, updateSettings, clinicName: resolvedClinicName } = useClinic()
+  // Seeded empty, not with clinicConfig[type].name: that holds a seed clinic's name and
+  // would label this clinic wrong. The clinic's own name is loaded below from its
+  // clinic_settings then its clinics row.
+  const [clinicName, setClinicName] = useState('')
   const [clinicPhone, setClinicPhone] = useState('02-123-4567')
   const [clinicAddress, setClinicAddress] = useState('123 ถนนสุขุมวิท แขวงคลองเตย เขตคลองเตย กรุงเทพมหานคร 10110')
   const [clinicLogo, setClinicLogo] = useState('')
@@ -112,8 +115,10 @@ export default function SettingsManager() {
   // Fetch clinic name from Supabase on mount and reset to defaults
   useEffect(() => {
     const fetchClinicData = async () => {
-      // First, try to load from localStorage settings (clinic-specific)
-      const saved = localStorage.getItem(settingsKey) || localStorage.getItem('clinic-q-settings')
+      // First, try to load from localStorage settings — the clinic-specific key ONLY.
+      // The legacy shared key may hold another clinic's name/logo, so it is never
+      // used as a fallback.
+      const saved = currentClinicId ? localStorage.getItem(settingsKey) : null
       if (saved) {
         try {
           const parsed = JSON.parse(saved)
@@ -144,19 +149,26 @@ export default function SettingsManager() {
         if (sb) {
           const { data: { user } } = await sb.auth.getUser()
           if (user) {
-            // Get clinic from memberships
-            const { data: memberships } = await sb.from('clinic_memberships')
-              .select('clinic_id')
-              .eq('user_id', user.id)
-              .eq('is_active', true)
-              .limit(1)
-            
-            if (memberships && memberships.length > 0) {
+            // The clinic being configured is the selected one. Only when the session has
+            // no explicit clinic do we fall back to the user's first active membership —
+            // never pick a membership arbitrarily when an identity is already known,
+            // otherwise another clinic's name would land in this clinic's settings.
+            let targetClinicId: string | null = currentClinicId || null
+            if (!targetClinicId) {
+              const { data: memberships } = await sb.from('clinic_memberships')
+                .select('clinic_id')
+                .eq('user_id', user.id)
+                .eq('is_active', true)
+                .limit(1)
+              targetClinicId = memberships?.[0]?.clinic_id || null
+            }
+
+            if (targetClinicId) {
               const { data: clinic } = await sb.from('clinics')
                 .select('name, type')
-                .eq('id', memberships[0].clinic_id)
-                .single()
-              
+                .eq('id', targetClinicId)
+                .maybeSingle()
+
               if (clinic?.name) {
                 setClinicName(clinic.name)
               }
@@ -166,7 +178,9 @@ export default function SettingsManager() {
       }
     }
     fetchClinicData()
-  }, [])
+    // Re-resolve when the clinic identity resolves/changes, so the name always belongs
+    // to the clinic currently being configured.
+  }, [currentClinicId])
 
   /* ───── QR State ───── */
   const [copied, setCopied] = useState(false)
@@ -516,7 +530,7 @@ export default function SettingsManager() {
       const svgEl = document.getElementById('clinicq-walkin-qr')?.querySelector('svg')
       if (!svgEl) throw new Error('QR_NOT_FOUND')
       const qrSvg = new XMLSerializer().serializeToString(svgEl)
-      const printClinicName = escapeHtml(clinicName || config?.name || 'คลินิกของเรา')
+      const printClinicName = escapeHtml(clinicName || resolvedClinicName || 'คลินิกของเรา')
       const phone = escapeHtml(clinicPhone || '')
       const brandColor = config?.color || '#0d9488'
       const url = escapeHtml(walkinUrl)
@@ -772,7 +786,7 @@ export default function SettingsManager() {
           <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm" style={{ backgroundColor: config.color }}>{config.prefix}</div>
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900">ตั้งค่า</h1>
         </div>
-        <p className="text-gray-500 mt-1">{config.name}</p>
+        <p className="text-gray-500 mt-1">{resolvedClinicName || 'คลินิก'}</p>
       </div>
 
       <div className="flex flex-col lg:flex-row gap-6">
@@ -996,7 +1010,7 @@ export default function SettingsManager() {
                     <div className="bg-gray-50 rounded-xl p-4 mb-4">
                       <div className="bg-white rounded-xl shadow-sm max-w-sm mx-auto overflow-hidden border border-gray-100">
                         <div className="text-center py-4 px-4" style={{ backgroundColor: config.color }}>
-                          <div className="text-white text-sm font-medium opacity-90">🏥 {config.name}</div>
+                          <div className="text-white text-sm font-medium opacity-90">🏥 {clinicName || resolvedClinicName || 'คลินิกของเรา'}</div>
                           <div className="text-white text-2xl font-black mt-1">ลงทะเบียน Walk-in</div>
                           <div className="text-white/70 text-xs mt-1">สแกน QR Code ด้วยมือถือ</div>
                         </div>
@@ -1086,7 +1100,7 @@ export default function SettingsManager() {
                       <div className={clsx('w-6 h-6 rounded-lg flex items-center justify-center text-white text-[10px] font-bold', tvTheme === 'dark' ? 'bg-gray-700' : 'bg-primary-500')}>
                         {config.prefix}
                       </div>
-                      <span className={clsx('text-xs font-bold', tvTheme === 'dark' ? 'text-white' : 'text-gray-900')}>{config?.name || 'คลินิก'}</span>
+                      <span className={clsx('text-xs font-bold', tvTheme === 'dark' ? 'text-white' : 'text-gray-900')}>{clinicName || resolvedClinicName || 'คลินิก'}</span>
                     </div>
                     <span className={clsx('text-[10px] font-mono', tvTheme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>10:30:00</span>
                   </div>
@@ -1421,13 +1435,13 @@ export default function SettingsManager() {
                     <div className="flex gap-2">
                       <input
                         type="text"
-                        value={`${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}/line-bind?clinic=${currentClinic || 'dental'}`}
+                        value={`${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}/line-bind?clinic=${currentClinic || 'dental'}${currentClinicId ? `&clinicId=${currentClinicId}` : ''}`}
                         readOnly
                         className="flex-1 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-sm text-gray-700 font-mono"
                       />
                       <button
                         onClick={() => {
-                          const url = `${window.location.origin}/line-bind?clinic=${currentClinic || 'dental'}`
+                          const url = `${window.location.origin}/line-bind?clinic=${currentClinic || 'dental'}${currentClinicId ? `&clinicId=${currentClinicId}` : ''}`
                           navigator.clipboard.writeText(url).catch(() => {})
                           showToastMsg('คัดลอก URL แล้ว!', 'success')
                         }}

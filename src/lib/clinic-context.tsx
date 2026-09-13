@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { type ClinicType, clinicConfig } from './queue-data'
-import { getClinicSetting, setClinicSetting } from './clinic-data'
+import { getClinicSetting, getClinicName, setClinicSetting } from './clinic-data'
 
 export interface DaySchedule {
   enabled: boolean
@@ -54,6 +54,13 @@ interface ClinicContextType {
   config: typeof clinicConfig[ClinicType] | null
   isConfigured: boolean
   settings: ClinicSettings
+  /**
+   * The clinic's own display name, from its clinic_settings / clinics row.
+   * Deliberately NOT derived from the clinic type: clinicConfig holds the seed
+   * clinics' names, so a type lookup would label the wrong clinic.
+   * Null means "not resolved" — callers must show a neutral placeholder.
+   */
+  clinicName: string | null
   /** Persist settings to Supabase (source of truth). Resolves true only when the DB write succeeded. */
   updateSettings: (settings: Partial<ClinicSettings>) => Promise<boolean>
 }
@@ -65,6 +72,7 @@ const ClinicContext = createContext<ClinicContextType>({
   config: null,
   isConfigured: false,
   settings: { operatingDays: ['mon', 'tue', 'wed', 'thu', 'fri'] },
+  clinicName: null,
   updateSettings: async () => true,
 })
 
@@ -76,11 +84,14 @@ export function ClinicProvider({ children, clinicId }: { children: ReactNode; cl
   const [currentClinic, setCurrentClinic] = useState<ClinicType | null>(null)
   const [isLoaded, setIsLoaded] = useState(false)
   const [settings, setSettings] = useState<ClinicSettings>(defaultSettings)
+  const [clinicRowName, setClinicRowName] = useState<string | null>(null)
   const settingsRef = useRef<ClinicSettings>(defaultSettings)
   useEffect(() => { settingsRef.current = settings }, [settings])
   
-  // Clinic-specific settings key
-  const settingsKey = clinicId ? `clinic-q-settings-${clinicId}` : 'clinic-q-settings'
+  // Settings are always clinic-scoped. Without a clinic identity there is no key
+  // that belongs to this session, so nothing is read — the legacy shared key is
+  // never used as a cross-clinic fallback.
+  const settingsKey = clinicId ? `clinic-q-settings-${clinicId}` : ''
 
   // Load from localStorage on mount, then sync from Supabase
   useEffect(() => {
@@ -88,8 +99,11 @@ export function ClinicProvider({ children, clinicId }: { children: ReactNode; cl
     if (saved && clinicConfig[saved]) {
       setCurrentClinic(saved)
     }
-    // Load settings from clinic-specific key first (fast, immediate)
-    const savedSettings = localStorage.getItem(settingsKey) || localStorage.getItem('clinic-q-settings')
+    // Reset first: on a clinic switch the previous clinic's name/hours must not
+    // linger while the newly-selected clinic's settings load.
+    setSettings(defaultSettings)
+    // Load settings from the clinic-specific key only (fast, immediate)
+    const savedSettings = settingsKey ? localStorage.getItem(settingsKey) : null
     if (savedSettings) {
       try {
         const parsed = JSON.parse(savedSettings)
@@ -115,6 +129,21 @@ export function ClinicProvider({ children, clinicId }: { children: ReactNode; cl
     }
   }, [settingsKey, clinicId])
 
+  // Display name comes from the clinic itself: clinic_settings.general.clinicName
+  // (DB-backed, editable by the clinic) first, then the clinics row. Never from the
+  // clinic type, and never from another clinic's cached settings.
+  useEffect(() => {
+    let cancelled = false
+    setClinicRowName(null)
+    if (!clinicId) return
+    getClinicName(clinicId)
+      .then((name) => { if (!cancelled) setClinicRowName(name) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [clinicId])
+
+  const clinicName = settings.clinicName?.trim() || clinicRowName || null
+
   const setClinic = useCallback((clinic: ClinicType) => {
     setCurrentClinic(clinic)
     localStorage.setItem('clinic-q-type', clinic)
@@ -130,11 +159,15 @@ export function ClinicProvider({ children, clinicId }: { children: ReactNode; cl
     settingsRef.current = updated
     setSettings(updated)
 
-    // Cache to localStorage (best-effort; quota errors must not block the DB write)
-    try {
-      localStorage.setItem(settingsKey, JSON.stringify(updated))
-    } catch {
-      // Quota exceeded — localStorage cache is optional, Supabase is the source of truth
+    // Cache to localStorage under the clinic-scoped key (best-effort; quota errors
+    // must not block the DB write). Without a clinic identity there is no key this
+    // session owns, so nothing is cached — never the shared legacy key.
+    if (settingsKey) {
+      try {
+        localStorage.setItem(settingsKey, JSON.stringify(updated))
+      } catch {
+        // Quota exceeded — localStorage cache is optional, Supabase is the source of truth
+      }
     }
 
     // Persist to Supabase — success is reported back so the UI can show a real result
@@ -161,7 +194,7 @@ export function ClinicProvider({ children, clinicId }: { children: ReactNode; cl
   }
 
   return (
-    <ClinicContext.Provider value={{ currentClinic, setClinic, clearClinic, config, isConfigured: currentClinic !== null, settings, updateSettings }}>
+    <ClinicContext.Provider value={{ currentClinic, setClinic, clearClinic, config, isConfigured: currentClinic !== null, settings, clinicName, updateSettings }}>
       {children}
     </ClinicContext.Provider>
   )
