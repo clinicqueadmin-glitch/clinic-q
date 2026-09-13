@@ -1,6 +1,7 @@
 'use client'
 
 import { getSupabase } from './supabase'
+import { getTodayICT } from './ict-date'
 
 // ═══ Setting keys ═══
 export type ClinicSettingKey =
@@ -99,12 +100,11 @@ export async function setClinicSetting<T = any>(
 }
 
 // ═══ ICT (Asia/Bangkok) business date ═══
-// Room/queue dates are business dates in the clinic timezone. `toISOString()`
-// returns the UTC date, which is still "yesterday" during early-morning ICT and
-// caused off-by-one mismatches against daily_rooms.room_date.
-export function getTodayICT(): string {
-  return new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().split('T')[0]
-}
+// Room/queue dates are business dates in the clinic timezone. The canonical
+// implementation lives in ./ict-date (deliberately not 'use client') so server
+// route handlers can import it too; it is re-exported here so existing client
+// import paths keep working.
+export { getTodayICT }
 
 // ═══ Daily rooms storage keys ═══
 // Clinic-specific key first, then the legacy shared key (some surfaces resolve

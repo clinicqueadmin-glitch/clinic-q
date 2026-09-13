@@ -1,6 +1,7 @@
 'use client'
 
 import { getSupabase } from './supabase'
+import { getTodayICT } from './clinic-data'
 import type { ClinicType } from './queue-data'
 
 export interface QueueItemDB {
@@ -72,7 +73,7 @@ export async function fetchQueues(clinicId: string, date?: string) {
   const sb = getSupabase()
   if (!sb) return []
 
-  const targetDate = date || new Date().toISOString().split('T')[0]
+  const targetDate = date || getTodayICT()
   
   const { data: queueRows, error } = await sb
     .from('queues')
@@ -160,7 +161,7 @@ export async function insertQueue(item: {
   const sb = getSupabase()
   if (!sb) return null
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = getTodayICT()
   
   const { data, error } = await sb
     .from('queues')

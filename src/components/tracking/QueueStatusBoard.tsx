@@ -9,6 +9,7 @@ import { useClinic } from '@/lib/clinic-context'
 import { clinicConfig, type ClinicType } from '@/lib/queue-data'
 import { getDefaultBranchData, getEstimatedDuration, type Room } from '@/lib/branch-data'
 import { useDailyRooms } from '@/lib/use-daily-rooms'
+import { getTodayICT } from '@/lib/clinic-data'
 
 // Helper: lighten a hex color for background
 function lighten(hex: string, factor = 0.85): string {
@@ -59,7 +60,7 @@ export default function QueueStatusBoard() {
     if (queue.length > 0) return queue
     // Re-read from localStorage on refreshTick changes
     try {
-      const today = new Date().toISOString().split('T')[0]
+      const today = getTodayICT()
       // Try clinic-specific key first
       const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
       const matched = clinics.find((c: any) => c.type === clinicType)

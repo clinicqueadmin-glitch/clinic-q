@@ -13,6 +13,7 @@ import { getDefaultBranchData, getAllActiveProcedures, estimateNextServiceTime, 
 import { getDaySchedule, type ClinicSettings } from '@/lib/clinic-context'
 import { useQueue } from '@/lib/queue-context'
 import PhoneInput from '@/components/ui/PhoneInput'
+import { getTodayICT } from '@/lib/clinic-data'
 
 export default function BookingPage() {
   const searchParams = useSearchParams()
@@ -102,11 +103,7 @@ export default function BookingPage() {
   const [selectedProcedure, setSelectedProcedure] = useState('')
   // Online booking is for TODAY only — the booking date is fixed automatically
   // (ICT timezone), so no date picker is shown to the patient.
-  const selectedDate = useMemo(() => {
-    const now = new Date()
-    const ictMs = now.getTime() + 7 * 60 * 60 * 1000
-    return new Date(ictMs).toISOString().split('T')[0]
-  }, [])
+  const selectedDate = useMemo(() => getTodayICT(), [])
   const [submittedNumber, setSubmittedNumber] = useState('')
   const [estimatedTime, setEstimatedTime] = useState('')
   const [availableRoomCount, setAvailableRoomCount] = useState<number | null>(null)

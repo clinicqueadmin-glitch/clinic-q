@@ -12,6 +12,7 @@ import {
   type PlatformClinic, type PackageType,
 } from '@/lib/platform-data'
 import { createClient } from '@/utils/supabase/client'
+import { getTodayICT } from '@/lib/clinic-data'
 
 interface ClinicWithStats extends PlatformClinic {
   totalQueuesToday: number
@@ -124,7 +125,7 @@ export default function PlatformDashboard() {
         if (error || !clinics) { setIsLoading(false); return }
 
         // Load stats for each clinic — use ICT date to match queue_date in DB
-        const today = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().split('T')[0]
+        const today = getTodayICT()
         const enriched: ClinicWithStats[] = await Promise.all(clinics.map(async (c: any) => {
           // Count queues today
           const { count: queuesToday } = await sb.from('queues')

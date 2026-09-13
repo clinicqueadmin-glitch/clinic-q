@@ -14,6 +14,7 @@ import { createClient } from '@/utils/supabase/client'
 import { getClinicId, isSupabaseConfigured } from '@/lib/supabase-queue'
 import { useNotification } from '@/lib/use-notification'
 import { getDefaultBranchData, getQueueWaitInfo } from '@/lib/branch-data'
+import { getTodayICT } from '@/lib/clinic-data'
 
 type ViewMode = 'search' | 'result' | 'error'
 
@@ -89,7 +90,7 @@ export default function QueueTracker() {
     if (!useSupabase) return []
     const sb = createClient()
     if (!sb) return []
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTodayICT()
     let query = sb
       .from('queues')
       .select('*')
@@ -140,7 +141,7 @@ export default function QueueTracker() {
   useEffect(() => {
     if (!useSupabase || !currentClinic) return // Skip if no clinic context
     const clinicId = getClinicId(currentClinic as ClinicType)
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTodayICT()
     
     const sb = createClient()
     if (!sb) return
@@ -220,7 +221,7 @@ export default function QueueTracker() {
     if (!searchInput.trim()) return
     setIsLoading(true)
     const q = searchInput.trim()
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTodayICT()
     
     // Try Supabase first
     if (useSupabase) {

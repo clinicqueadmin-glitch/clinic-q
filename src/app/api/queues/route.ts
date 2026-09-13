@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { cookies } from 'next/headers'
+import { getTodayICT } from '@/lib/ict-date'
 
 export const dynamic = 'force-dynamic'
 
@@ -8,7 +9,7 @@ export const dynamic = 'force-dynamic'
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const clinicId = searchParams.get('clinic_id')
-  const date = searchParams.get('date') || new Date().toISOString().split('T')[0]
+  const date = searchParams.get('date') || getTodayICT()
 
   if (!clinicId) {
     return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 })

@@ -4,14 +4,7 @@ import { createContext, useContext, useState, useEffect, useCallback, type React
 import { type ClinicType } from './queue-data'
 import { getDefaultBranchData } from './branch-data'
 import { useAuth } from './auth-context'
-
-/* ─── ICT Date Helper (Asia/Bangkok = UTC+7) ─── */
-function getTodayICT(): string {
-  const now = new Date()
-  const ictMs = now.getTime() + 7 * 60 * 60 * 1000
-  const ictDate = new Date(ictMs)
-  return ictDate.toISOString().split('T')[0]
-}
+import { getTodayICT } from './clinic-data'
 
 export type BookingMode = 'walkin' | 'remote' | 'appointment'
 
@@ -153,9 +146,8 @@ function dbRowToQueueItem(row: any, procs: any[] = []): QueueItem {
 /* ─── Convert QueueItem → DB row ─── */
 function queueItemToDbRow(item: QueueItem, clinicId: string) {
   const now = new Date().toISOString()
-  // Use ICT (UTC+7) date since time strings are displayed in ICT
-  const ictDate = new Date(Date.now() + 7 * 60 * 60 * 1000)
-  const today = ictDate.toISOString().split('T')[0]
+  // Business date in ICT (UTC+7) — the time strings below are stored in ICT.
+  const today = getTodayICT()
   return {
     id: item.id,
     clinic_id: clinicId,
