@@ -236,6 +236,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setNeedsClinicSelection(needsSelection)
     // NOTE: force_password_change is no longer enforced (MVP). Users can log
     // in immediately with the password they were given.
+
+    // 4. Keep the clinic-type cache in sync with the clinic this session actually
+    //    resolves to (same rule as login()). Without this, a type left over from
+    //    a previous session survives a reload and type-keyed readers show the
+    //    wrong clinic. The type is only ever derived FROM the resolved
+    //    membership — never the reverse, and never guessed when nothing resolves.
+    const activeClinic = freshClinics.find(c => c.id === currentClinicId)
+    if (activeClinic?.type) {
+      localStorage.setItem('clinic-q-type', activeClinic.type)
+    }
   }, [])
 
   // ═══ Re-check the data layer on demand ═══
