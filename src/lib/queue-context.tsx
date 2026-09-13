@@ -84,7 +84,9 @@ export function useQueue() {
 }
 
 /* ─── Convert DB row → QueueItem ─── */
-function dbRowToQueueItem(row: any, procs: any[] = []): QueueItem {
+// Exported so other read paths (Analytics date-range queries) map rows with
+// exactly the same rules instead of duplicating them. Pure function — no state.
+export function dbRowToQueueItem(row: any, procs: any[] = []): QueueItem {
   return {
     id: row.id,
     number: row.number,

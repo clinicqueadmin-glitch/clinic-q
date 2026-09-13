@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { clsx } from 'clsx'
 import {
   ChevronLeft, ChevronRight, ArrowLeft, ChevronDown, ChevronUp,
@@ -9,6 +9,12 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis
 import { useQueue, type QueueItem, type DifficultyLevel, type CompletedProcedure } from '@/lib/queue-context'
 import { useClinic } from '@/lib/clinic-context'
 import { getDefaultBranchData, type ClinicBranchData, type Procedure } from '@/lib/branch-data'
+import { analyticsDateRange } from '@/lib/analytics-range'
+import { fetchClinicQueueRange } from '@/lib/analytics-queue'
+import { getTodayICT } from '@/lib/ict-date'
+
+/** Stable empty list so the period memo deps do not churn on every render. */
+const EMPTY_QUEUE: QueueItem[] = []
 
 type TimeFilter = 'day' | 'week' | 'month' | 'year'
 type DrillView = 'overview' | 'practitioner'
@@ -423,7 +429,9 @@ function PractitionerDrillDown({ doc, onBack, branchData }: { doc: PractitionerD
 /* ═══════ MAIN ANALYTICS ═══════ */
 export default function Analytics() {
   const { queue } = useQueue()
-  const { config } = useClinic()
+  // clinicId is the clinic this screen was opened for (session clinic, or the clinic a
+  // platform owner is viewing) — the range queries are always scoped to it.
+  const { config, clinicId } = useClinic()
 
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('day')
   const [selectedDate, setSelectedDate] = useState(new Date())
@@ -435,8 +443,59 @@ export default function Analytics() {
   const [drillView, setDrillView] = useState<DrillView>('overview')
   const [selectedDoc, setSelectedDoc] = useState<PractitionerDetail | null>(null)
 
+  // ═══ Selected period → an inclusive queue_date range (ICT business dates) ═══
+  const range = useMemo(
+    () => analyticsDateRange(timeFilter, {
+      date: selectedDate,
+      weekStart: selectedWeekStart,
+      month: selectedMonth,
+      year: selectedYear,
+    }),
+    [timeFilter, selectedDate, selectedWeekStart, selectedMonth, selectedYear],
+  )
+  const isLiveToday = range.start === range.end && range.start === getTodayICT()
   const today = new Date()
-  const filteredQueue = useMemo(() => queue, [queue])
+
+  const [rangeQueue, setRangeQueue] = useState<QueueItem[] | null>(null)
+  const [rangeError, setRangeError] = useState<string | null>(null)
+
+  // Today keeps using the live queue context (it polls and is already scoped to this
+  // clinic). Every other period is fetched from Supabase for its own date range, so
+  // the numbers always belong to the period shown in the header.
+  useEffect(() => {
+    if (isLiveToday || !clinicId) {
+      setRangeQueue(null)
+      setRangeError(null)
+      return
+    }
+    let cancelled = false
+    setRangeError(null)
+    fetchClinicQueueRange(clinicId, range)
+      .then(rows => { if (!cancelled) setRangeQueue(rows) })
+      .catch((e: unknown) => {
+        if (cancelled) return
+        // Never present a failed load as an empty period.
+        setRangeQueue(EMPTY_QUEUE)
+        setRangeError(e instanceof Error ? e.message : 'โหลดข้อมูลไม่สำเร็จ')
+      })
+    return () => { cancelled = true }
+  }, [clinicId, range, isLiveToday])
+
+  // Without a verified clinic identity there are no numbers at all — never a
+  // cached queue that may belong to another clinic.
+  const filteredQueue = !clinicId
+    ? EMPTY_QUEUE
+    : isLiveToday
+      ? queue
+      : (rangeQueue ?? EMPTY_QUEUE)
+
+  const periodNotice = !clinicId
+    ? 'ไม่พบคลินิกที่กำลังใช้งาน — จึงยังแสดงข้อมูลตามช่วงเวลาไม่ได้'
+    : rangeError
+      ? `โหลดข้อมูลช่วงเวลานี้ไม่สำเร็จ: ${rangeError}`
+      : !isLiveToday && rangeQueue === null
+        ? 'กำลังโหลดข้อมูลช่วงเวลานี้…'
+        : null
 
   const total = filteredQueue.length
   const completedCount = filteredQueue.filter(q => q.status === 'completed').length
@@ -448,14 +507,35 @@ export default function Analytics() {
     : 0
 
   const dateLabel = useMemo(() => {
-    if (timeFilter === 'day') return selectedDate.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+    // Anchored to ICT so the label always names the same business dates the range
+    // query asks for (queue_date is an ICT date, not a UTC one).
+    const moment = { timeZone: 'Asia/Bangkok' } as const
+    if (timeFilter === 'day') return selectedDate.toLocaleDateString('th-TH', { ...moment, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
     if (timeFilter === 'week') {
       const weekEnd = new Date(selectedWeekStart); weekEnd.setDate(weekEnd.getDate() + 6)
-      return `สัปดาห์ ${selectedWeekStart.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })} - ${weekEnd.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}`
+      return `สัปดาห์ ${selectedWeekStart.toLocaleDateString('th-TH', { ...moment, day: 'numeric', month: 'short' })} - ${weekEnd.toLocaleDateString('th-TH', { ...moment, day: 'numeric', month: 'short' })}`
     }
-    if (timeFilter === 'month') return `${new Date(selectedYear, selectedMonth).toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}`
+    if (timeFilter === 'month') return `${new Date(selectedYear, selectedMonth).toLocaleDateString('th-TH', { ...moment, month: 'long', year: 'numeric' })}`
     return `ปี ${selectedYear + 543}`
   }, [timeFilter, selectedDate, selectedWeekStart, selectedMonth, selectedYear])
+
+  // Card 5 wording follows the selected period. Presentation only — the count and
+  // its logic (procedureStats) are untouched. For a single day the label names the
+  // date actually being shown (ICT), so browsing back in time is not mislabelled
+  // "today".
+  const procedureCardLabel = useMemo(() => {
+    if (timeFilter === 'week') return 'หัตถการที่ทำสัปดาห์นี้'
+    if (timeFilter === 'month') return 'หัตถการที่ทำเดือนนี้'
+    if (timeFilter === 'year') return 'หัตถการที่ทำปีนี้'
+    if (isLiveToday) return 'หัตถการที่ทำวันนี้'
+    const moment = { timeZone: 'Asia/Bangkok' } as const
+    const sameYear = selectedDate.toLocaleDateString('th-TH', { ...moment, year: 'numeric' })
+      === new Date().toLocaleDateString('th-TH', { ...moment, year: 'numeric' })
+    const date = selectedDate.toLocaleDateString('th-TH', sameYear
+      ? { ...moment, day: 'numeric', month: 'short' }
+      : { ...moment, day: 'numeric', month: 'short', year: 'numeric' })
+    return `หัตถการที่ทำวันที่ ${date}`
+  }, [timeFilter, isLiveToday, selectedDate])
 
   const navigateDate = (dir: number) => {
     if (timeFilter === 'day') { const d = new Date(selectedDate); d.setDate(d.getDate() + dir); setSelectedDate(d) }
@@ -651,6 +731,11 @@ export default function Analytics() {
           <div>
             <h1 className="text-xl font-bold text-gray-900">📊 วิเคราะห์ข้อมูล</h1>
             <p className="text-sm text-gray-500 mt-0.5">{dateLabel}</p>
+            {periodNotice && (
+              <p className={clsx('text-xs mt-1 font-medium', rangeError ? 'text-amber-600' : 'text-gray-400')}>
+                {periodNotice}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <div className="flex bg-black/[0.04] rounded-2xl p-1">
@@ -700,7 +785,7 @@ export default function Analytics() {
         <div className="bg-white rounded-2xl border-2 p-5 text-center shadow-md hover:shadow-lg transition-all" style={{ borderColor: (config?.color || '#93C5FD') + '40' }}>
           <div className="w-12 h-12 mx-auto rounded-xl flex items-center justify-center text-2xl mb-2" style={{ backgroundColor: (config?.color || '#93C5FD') + '15' }}>🩺</div>
           <p className="text-5xl font-black leading-none" style={{ color: config?.color || '#93C5FD' }}>{procedureStats.length}</p>
-          <p className="text-sm text-gray-500 mt-2 font-medium">หัตถการที่ทำวันนี้</p>
+          <p className="text-sm text-gray-500 mt-2 font-medium">{procedureCardLabel}</p>
         </div>
       </div>
 
