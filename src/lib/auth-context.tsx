@@ -12,6 +12,7 @@ import {
 } from './auth-types'
 import { supabaseLogout, supabaseResetPassword, supabaseUpdatePassword } from './supabase-auth'
 import { getSupabase, isSupabaseReady } from './supabase'
+import { getTodayICT } from './clinic-data'
 
 interface AuthContextType {
   session: AuthSession | null
@@ -350,10 +351,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
   
-  // ═══ Auto-logout at midnight (0:00) ═══
+  // ═══ Auto-logout at midnight (0:00 ICT / Asia/Bangkok) ═══
+  // The business date is the clinic-local date, so this must use ICT (UTC+7).
+  // `toISOString()` returns the UTC date, which rolls over at 00:00 UTC = 07:00 ICT
+  // — signing every clinic's staff out right when clinics open.
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTodayICT()
     const lastLoginDate = localStorage.getItem('clinicq-last-login-date')
     // Store today's date on first load
     if (!lastLoginDate) {
@@ -361,7 +365,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     // Check every minute if date changed
     const checker = setInterval(() => {
-      const now = new Date().toISOString().split('T')[0]
+      const now = getTodayICT()
       const stored = localStorage.getItem('clinicq-last-login-date')
       if (stored && now !== stored) {
         // Date changed — force logout
