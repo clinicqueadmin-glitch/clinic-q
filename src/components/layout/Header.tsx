@@ -31,15 +31,35 @@ export default function Header() {
       const raw = localStorage.getItem('clinicq-viewing-clinic')
       if (raw) {
         const viewing = JSON.parse(raw)
-        const clinicsList = getUserClinics()
-        const found = clinicsList.find((c: any) => c.id === viewing.clinicId)
-        return found?.name || viewing.clinicId
+        // The viewing context carries the clinic's real name, taken from the clinic row.
+        if (viewing?.clinicName) return String(viewing.clinicName)
+        // Legacy context written before clinicName was stored: fall back to the
+        // session membership list (a real identity source). Never to a type→name
+        // table, and never to the raw clinic ID.
+        const found = getUserClinics().find((c: any) => c.id === viewing?.clinicId)
+        return found?.name || ''
       }
     } catch {}
     return ''
   })
   
+  // Only a real platform owner may surface viewing mode. A leftover viewing context
+  // must never leak into a clinic user's session (they are not viewing another clinic).
+  const showOwnerMode = isViewingAsOwner && currentRole === 'platform_owner'
+
   const backToPlatform = () => {
+    try {
+      const raw = localStorage.getItem('clinicq-viewing-clinic')
+      if (raw) {
+        const viewing = JSON.parse(raw)
+        // Leaving viewing mode must not leave the viewed clinic's type behind as the
+        // session's clinic identity. Only undo a value this viewing session wrote —
+        // a new type is never invented here.
+        if (viewing?.clinicType && localStorage.getItem('clinic-q-type') === viewing.clinicType) {
+          localStorage.removeItem('clinic-q-type')
+        }
+      }
+    } catch {}
     localStorage.removeItem('clinicq-viewing-clinic')
     window.location.href = '/platform'
   }
@@ -196,7 +216,7 @@ export default function Header() {
       </div>
     )}
     {/* Platform Owner Mode Banner */}
-    {isViewingAsOwner && (
+    {showOwnerMode && (
       <div className="bg-gradient-to-r from-red-500 via-pink-500 to-purple-500 text-white px-4 py-2 flex items-center justify-between text-sm">
         <div className="flex items-center gap-2">
           <span className="text-lg">👑</span>
@@ -216,7 +236,7 @@ export default function Header() {
       <div className="flex items-center justify-between px-4 md:px-6 py-4">
         {/* Back + Home Buttons */}
         <div className="flex items-center gap-1 mr-3">
-          {isViewingAsOwner ? (
+          {showOwnerMode ? (
             <button
               onClick={backToPlatform}
               className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-xl text-xs font-bold hover:from-red-600 hover:to-pink-600 transition-all shadow-md"

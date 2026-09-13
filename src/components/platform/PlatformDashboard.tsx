@@ -104,14 +104,18 @@ export default function PlatformDashboard() {
   }, [])
 
   // Enter clinic as platform owner — keep real identity, store viewing context
-  const enterClinic = useCallback((clinicId: string, clinicType: string) => {
-    // Store which clinic the platform owner is viewing (separate from auth session)
+  const enterClinic = useCallback((clinicId: string, clinicType: string, clinicName: string) => {
+    // Store which clinic the platform owner is viewing (separate from auth session).
+    // clinicName comes from the clinic row itself — never derived from the type.
     localStorage.setItem('clinicq-viewing-clinic', JSON.stringify({
       clinicId,
+      clinicName,
       clinicType,
       enteredAt: new Date().toISOString(),
     }))
-    localStorage.setItem('clinic-q-type', clinicType)
+    // NOTE: the viewing clinic is a different context from the session clinic, so it
+    // must NOT overwrite the global clinic-q-type key — that key belongs to the
+    // session clinic (derived in auth-context login/restore).
     window.location.href = '/'
   }, [])
 
@@ -570,7 +574,7 @@ export default function PlatformDashboard() {
                       <td className="py-3 px-3 text-center">
                         <div className="flex items-center gap-1.5 justify-center">
                           <button
-                            onClick={() => enterClinic(clinic.id, clinic.type)}
+                            onClick={() => enterClinic(clinic.id, clinic.type, clinic.name)}
                             className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 transition-all shadow-sm"
                           >
                             <ExternalLink className="w-3 h-3" />
