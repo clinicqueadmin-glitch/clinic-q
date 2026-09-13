@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { useQueue, type QueueItem } from '@/lib/queue-context'
 import { useClinic } from '@/lib/clinic-context'
+import { useAuth } from '@/lib/auth-context'
 import { clinicConfig, type ClinicType } from '@/lib/queue-data'
 import { createClient } from '@/utils/supabase/client'
 import { getClinicId, isSupabaseConfigured } from '@/lib/supabase-queue'
@@ -22,9 +23,16 @@ export default function QueueTracker() {
   const searchParams = useSearchParams()
   const { queue, setQueue, saveQueueItem } = useQueue()
   const { config, currentClinic: contextClinic } = useClinic()
-  // Priority: URL param > context > fallback
+  const { currentClinicId } = useAuth()
+  // Clinic *type* — used for theming/config only, never to pick a clinic ID.
   const urlClinic = searchParams.get('clinic') as ClinicType | null
   const currentClinic = urlClinic || contextClinic
+  // Clinic identity (P0): only an explicitly supplied or authenticated clinic ID
+  // is trusted. The ID is NEVER derived from `currentClinic` (a type) — that old
+  // type→ID lookup matched the `clinicq-clinics` cache by type and then fell back
+  // to hardcoded seed/demo IDs, which could read a different clinic's queues.
+  // `null` means "no verified clinic" → skip every queue query (see safe state).
+  const clinicId = getClinicId(searchParams.get('clinicId') || currentClinicId)
 
   const [query, setQuery] = useState('')
   const [viewMode, setViewMode] = useState<ViewMode>('search')
@@ -54,10 +62,8 @@ export default function QueueTracker() {
       .from('queues')
       .select('*')
       .ilike('number', number)
-    if (currentClinic) {
-      const clinicId = getClinicId(currentClinic as ClinicType)
-      query = query.eq('clinic_id', clinicId)
-    }
+    if (!clinicId) return null
+    query = query.eq('clinic_id', clinicId)
     const { data, error } = await query.single()
     if (error || !data) return null
     // Convert DB row to QueueItem
@@ -83,23 +89,20 @@ export default function QueueTracker() {
       totalDuration: data.total_duration || undefined,
       completedProcedures: [],
     } as QueueItem
-  }, [useSupabase, currentClinic])
+  }, [useSupabase, clinicId])
 
   // Fetch all queues from Supabase
   const fetchAllFromSupabase = useCallback(async () => {
-    if (!useSupabase) return []
+    if (!useSupabase || !clinicId) return []
     const sb = createClient()
     if (!sb) return []
     const today = getTodayICT()
-    let query = sb
+    const query = sb
       .from('queues')
       .select('*')
       .eq('queue_date', today)
+      .eq('clinic_id', clinicId)
       .order('created_at', { ascending: true })
-    if (currentClinic) {
-      const clinicId = getClinicId(currentClinic as ClinicType)
-      query = query.eq('clinic_id', clinicId)
-    }
     const { data, error } = await query
     if (error || !data) return []
     return data.map((row: any) => ({
@@ -124,7 +127,7 @@ export default function QueueTracker() {
       totalDuration: row.total_duration || undefined,
       completedProcedures: [],
     })) as QueueItem[]
-  }, [useSupabase, currentClinic])
+  }, [useSupabase, clinicId])
 
   // Auto-load from URL params (supports ?id=E024 or ?phone=081-234-5678)
   useEffect(() => {
@@ -139,8 +142,7 @@ export default function QueueTracker() {
 
   // Subscribe to real-time updates if Supabase is configured
   useEffect(() => {
-    if (!useSupabase || !currentClinic) return // Skip if no clinic context
-    const clinicId = getClinicId(currentClinic as ClinicType)
+    if (!useSupabase || !clinicId) return // Skip if no verified clinic
     const today = getTodayICT()
     
     const sb = createClient()
@@ -162,13 +164,14 @@ export default function QueueTracker() {
       .subscribe()
 
     return () => { sb.removeChannel(channel) }
-  }, [useSupabase, currentClinic, query, fetchAllFromSupabase])
+  }, [useSupabase, clinicId, query, fetchAllFromSupabase])
 
   // Branch data for wait time calculation (load from clinic-specific storage)
   const branchData = useMemo(() => {
     if (typeof window !== 'undefined') {
       const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
-      const matched = clinics.find((c: any) => c.type === (currentClinic || 'dental'))
+      // Match by verified clinic ID — never by type, which could select another clinic.
+      const matched = clinicId ? clinics.find((c: any) => c.id === clinicId) : null
       const cid = matched?.id
       if (cid) {
         const saved = localStorage.getItem(`clinic-branch-data-${cid}`)
@@ -181,7 +184,7 @@ export default function QueueTracker() {
       }
     }
     return getDefaultBranchData(currentClinic || 'dental')
-  }, [currentClinic])
+  }, [currentClinic, clinicId])
 
   // Determine which queue source to use
   const effectiveQueue = useSupabase && liveQueue.length > 0 ? liveQueue : queue
@@ -227,19 +230,16 @@ export default function QueueTracker() {
     if (useSupabase) {
       try {
         const sb = createClient()
-        if (sb) {
-          // Build query: filter by clinic if known, otherwise search all clinics
-          let query = sb
+        if (sb && clinicId) {
+          // P0: a verified clinic ID is required — we never search across clinics.
+          const query = sb
             .from('queues')
             .select('*')
             .eq('phone', q)
             .eq('queue_date', today)
+            .eq('clinic_id', clinicId)
             .order('created_at', { ascending: false })
             .limit(1)
-          if (currentClinic) {
-            const clinicId = getClinicId(currentClinic as ClinicType)
-            query = query.eq('clinic_id', clinicId)
-          }
           const { data, error } = await query.maybeSingle()
           if (data && !error) {
             setLiveItem({
@@ -404,6 +404,14 @@ export default function QueueTracker() {
               <p className="text-white/70">ป้อนเบอร์โทรศัพท์ของคุณเพื่อตรวจสอบสถานะคิว</p>
             </div>
 
+            {/* Safe state (P0): DB is configured but we have no verified clinic ID —
+                we deliberately do not query any clinic rather than guess one. */}
+            {useSupabase && !clinicId && (
+              <div className="bg-amber-400/20 border border-amber-200/40 rounded-2xl px-4 py-3 text-center text-white/95 text-sm">
+                ⚠️ ไม่พบคลินิกที่กำลังใช้งาน — กรุณาสแกน QR Code ของคลินิกอีกครั้ง
+              </div>
+            )}
+
             <form onSubmit={(e) => { e.preventDefault(); handleSearch() }} className="space-y-3">
               <div>
                 <input
@@ -456,13 +464,23 @@ export default function QueueTracker() {
         {viewMode === 'error' && (
           <div className="text-center text-white space-y-6">
             <div className="w-20 h-20 bg-white/20 rounded-2xl flex items-center justify-center mx-auto">
-              <span className="text-4xl">🔍</span>
+              <span className="text-4xl">{useSupabase && !clinicId ? '⚠️' : '🔍'}</span>
             </div>
+            {/* Safe state (P0): never report a misleading "no data" when the real
+                reason is that we have no verified clinic and stop querying. */}
+            {useSupabase && !clinicId ? (
+              <div>
+                <h2 className="text-xl font-bold mb-2">ไม่พบคลินิกที่กำลังใช้งาน</h2>
+                <p className="text-white/70">กรุณาสแกน QR Code ของคลินิกอีกครั้ง</p>
+                <p className="text-white/50 text-sm mt-2">ระบบไม่ตรวจสอบคิวข้ามคลินิก เพื่อความปลอดภัยของข้อมูล</p>
+              </div>
+            ) : (
             <div>
               <h2 className="text-xl font-bold mb-2">ไม่มีข้อมูลในระบบ</h2>
               <p className="text-white/70">ไม่พบเบอร์โทร "{query}" สำหรับวันนี้</p>
               <p className="text-white/50 text-sm mt-2">หากคุณมีคิวในวันนี้ กรุณาติดต่อเจ้าหน้าที่หน้าห้องตรวจ</p>
             </div>
+            )}
             <button
               onClick={() => { setViewMode('search'); setQuery('') }}
               className="w-full py-4 bg-white text-gray-900 rounded-2xl font-bold shadow-lg hover:shadow-xl"

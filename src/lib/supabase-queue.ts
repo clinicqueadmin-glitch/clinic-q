@@ -2,7 +2,6 @@
 
 import { getSupabase } from './supabase'
 import { getTodayICT } from './clinic-data'
-import type { ClinicType } from './queue-data'
 
 export interface QueueItemDB {
   id: string
@@ -228,25 +227,18 @@ export function subscribeQueueChanges(clinicId: string, callback: () => void) {
   return () => { sb.removeChannel(channel) }
 }
 
-// ═══ Clinic ID mapping ═══
-const clinicIdMap: Record<ClinicType, string> = {
-  dental: 'clinic-dental',
-  medical: 'clinic-medical',
-  aesthetic: 'clinic-aesthetic',
-  thai: 'clinic-thai',
-  chinese: 'clinic-chinese',
-  physical: 'clinic-physical',
-}
-
-export function getClinicId(type: ClinicType): string {
-  // 1. Try to find actual clinic ID from clinicq-clinics localStorage
-  try {
-    const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
-    const matched = clinics.find((c: any) => c.type === type)
-    if (matched?.id) return matched.id
-  } catch {}
-  // 2. Fallback to hardcoded mapping
-  return clinicIdMap[type] || 'clinic-dental'
+// ═══ Clinic identity (P0) ═══
+// A clinic ID may ONLY come from an already-authenticated source (the Supabase
+// session / membership). It is never inferred from a clinic *type*: the previous
+// type→ID map looked in the `clinicq-clinics` cache for the first clinic of that
+// type and otherwise fell back to hardcoded seed/demo clinic IDs
+// (medical → 'clinic-medical', physical → 'clinic-physical', …). That let one
+// clinic read another clinic's queues. With no trustworthy ID we return null so
+// callers must skip the query instead of guessing.
+export function getClinicId(authenticatedClinicId?: string | null): string | null {
+  if (typeof authenticatedClinicId !== 'string') return null
+  const clinicId = authenticatedClinicId.trim()
+  return clinicId.length > 0 ? clinicId : null
 }
 
 // ═══ Check if Supabase is configured ═══

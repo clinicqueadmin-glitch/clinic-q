@@ -82,16 +82,6 @@ export function useQueue() {
   return ctx
 }
 
-/* ─── Clinic ID mapping ─── */
-const clinicIdMap: Record<ClinicType, string> = {
-  dental: 'clinic-dental',
-  medical: 'clinic-medical',
-  aesthetic: 'clinic-aesthetic',
-  thai: 'clinic-thai',
-  chinese: 'clinic-chinese',
-  physical: 'clinic-physical',
-}
-
 /* ─── Convert DB row → QueueItem ─── */
 function dbRowToQueueItem(row: any, procs: any[] = []): QueueItem {
   return {
@@ -206,28 +196,19 @@ function getQueueStorageKey(clinic: ClinicType): string {
   return `clinicq-queue-${clinic}-${getTodayICT()}`
 }
 
-/** Look up actual clinic ID from auth session or clinicq-clinics by clinic type */
-function resolveClinicId(clinicType: ClinicType, authClinicId?: string | null): string {
-  // Priority 1: Use the auth session's currentClinicId
-  if (authClinicId) return authClinicId
-
-  // Priority 2: Look up from localStorage clinicq-clinics
-  try {
-    const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
-    const matched = clinics.find((c: any) => c.type === clinicType)
-    if (matched?.id) return matched.id
-  } catch {}
-
-  // Priority 3: Use hardcoded mapping as fallback
-  const clinicIdMap: Record<ClinicType, string> = {
-    dental: 'clinic-dental',
-    medical: 'clinic-medical',
-    aesthetic: 'clinic-aesthetic',
-    thai: 'clinic-thai',
-    chinese: 'clinic-chinese',
-    physical: 'clinic-physical',
-  }
-  return clinicIdMap[clinicType] || 'clinic-dental'
+/**
+ * Resolve the clinic ID used for queue reads/writes (P0).
+ *
+ * The ONLY trustworthy source is the authenticated session's clinic id. We never
+ * fall back to a clinic *type* (cache-by-type) or to the hardcoded seed clinic
+ * IDs, because that could silently target a different clinic. Returns null when
+ * there is no verified identity — callers must then skip the read/write instead
+ * of guessing.
+ */
+function resolveClinicId(authClinicId?: string | null): string | null {
+  if (typeof authClinicId !== 'string') return null
+  const clinicId = authClinicId.trim()
+  return clinicId.length > 0 ? clinicId : null
 }
 
 export function QueueProvider({ children }: { children: ReactNode }) {
@@ -259,7 +240,20 @@ export function QueueProvider({ children }: { children: ReactNode }) {
   // ─── Fetch from Supabase or use demo data (with localStorage persistence) ───
   const fetchData = useCallback(async (clinic: ClinicType) => {
     const storageKey = getQueueStorageKey(clinic)
-    const clinicId = resolveClinicId(clinic, currentClinicId)
+    const clinicId = resolveClinicId(currentClinicId)
+
+    // P0: with no verified clinic identity we must not query ANY clinic. Fall
+    // back to the local cache only, and never write to the database.
+    if (!clinicId) {
+      try {
+        const saved = localStorage.getItem(storageKey)
+        setQueue(saved ? JSON.parse(saved) : [])
+      } catch {
+        setQueue([])
+      }
+      setIsSupabaseConnected(false)
+      return
+    }
 
     // Try Supabase first
     try {
@@ -373,7 +367,8 @@ export function QueueProvider({ children }: { children: ReactNode }) {
   // ─── Realtime subscription ───
   useEffect(() => {
     if (!isSupabaseConnected || !clinicType) return
-    const clinicId = resolveClinicId(clinicType, currentClinicId)
+    // P0: no verified clinic identity → do not poll or query any clinic.
+    if (!resolveClinicId(currentClinicId)) return
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
     if (!supabaseUrl || !supabaseKey) return
@@ -386,7 +381,9 @@ export function QueueProvider({ children }: { children: ReactNode }) {
   // ─── Save to Supabase ───
   const saveToSupabase = useCallback(async (item: QueueItem) => {
     if (!isSupabaseConnected || !clinicType) return
-    const clinicId = resolveClinicId(clinicType, currentClinicId)
+    const clinicId = resolveClinicId(currentClinicId)
+    // P0: no verified clinic identity → never write to the database.
+    if (!clinicId) return
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
     if (!supabaseUrl || !supabaseKey) return
@@ -413,10 +410,12 @@ export function QueueProvider({ children }: { children: ReactNode }) {
     // If connected to Supabase, use atomic RPC function
     // This ensures queue number generation + INSERT are in the same transaction
     if (isSupabaseConnected && clinicType) {
-      const clinicId = resolveClinicId(clinicType, currentClinicId)
+      const clinicId = resolveClinicId(currentClinicId)
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
       const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-      if (supabaseUrl && supabaseKey) {
+      // P0: no verified clinic identity → skip the RPC and fall through to local
+      // mode rather than creating a queue under a guessed clinic.
+      if (clinicId && supabaseUrl && supabaseKey) {
         try {
           // Call atomic create_queue_item() via RPC
           const res = await fetch(`${supabaseUrl}/rest/v1/rpc/create_queue_item`, {
