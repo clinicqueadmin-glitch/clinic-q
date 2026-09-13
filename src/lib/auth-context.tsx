@@ -159,16 +159,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         err?.message || err || ''
       )
 
+      // Only trust the cached app session when it belongs to this same account —
+      // on a shared browser it may hold a different user's last clinic.
       const cached = loadFromStorage<AuthSession | null>(STORAGE_KEYS.AUTH, null)
+      const sameAccount = cached?.user?.id === supabaseUserId ? cached : null
       setSession({
         user: {
           ...user,
-          name: user.name || cached?.user?.name || '',
-          phone: user.phone || cached?.user?.phone || '',
-          createdAt: cached?.user?.createdAt || user.createdAt,
+          name: user.name || sameAccount?.user?.name || '',
+          phone: user.phone || sameAccount?.user?.phone || '',
+          createdAt: sameAccount?.user?.createdAt || user.createdAt,
         },
         // Best-effort clinic pointer so the app shell can still render.
-        currentClinicId: cached?.currentClinicId || localStorage.getItem('clinicq-last-clinic-id') || null,
+        currentClinicId: sameAccount?.currentClinicId || null,
       })
       setRestUnavailable(true)
       return
@@ -419,7 +422,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const supabaseUserId = authData.user.id
       const supabaseEmail = (authData.user.email || '').toLowerCase()
 
-      const { data: profile } = await sb.from('users')
+      const { data: profile, error: profileError } = await sb.from('users')
         .select('*')
         .eq('id', supabaseUserId)
         .single()
@@ -433,10 +436,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         forcePasswordChange: profile?.force_password_change || false,
       }
 
-      const { data: memberships } = await sb.from('clinic_memberships')
+      const { data: memberships, error: membershipsError } = await sb.from('clinic_memberships')
         .select('*, clinics(*)')
         .eq('user_id', supabaseUserId)
         .eq('is_active', true)
+
+      // ═══ Data layer unavailable → this is NOT "no permission" ═══
+      // Supabase Auth already accepted the credentials and issued a session, so a
+      // failed membership lookup must never be reported as a permissions problem.
+      // Keep the user signed in and flag the outage instead; retryRest rebuilds the
+      // real memberships as soon as the data layer answers again (and the normal
+      // "no access" rule below still applies when the query actually succeeds).
+      if (profileError || membershipsError) {
+        const err = (membershipsError || profileError) as any
+        console.warn(
+          isRestUnavailableError(err)
+            ? '[auth] Supabase REST unavailable during login — keeping session, NOT reporting "no access":'
+            : '[auth] profile/membership query failed during login — keeping session, NOT reporting "no access":',
+          err?.code || err?.status || '',
+          err?.message || err || ''
+        )
+
+        // Only trust the cached app session when it belongs to this same account.
+        const cached = loadFromStorage<AuthSession | null>(STORAGE_KEYS.AUTH, null)
+        const sameAccount = cached?.user?.id === supabaseUserId ? cached : null
+
+        setSession({ user, currentClinicId: sameAccount?.currentClinicId || null })
+        setNeedsClinicSelection(false)
+        setRestUnavailable(true)
+        return { success: true, needsClinicSelection: false }
+      }
 
       let freshMemberships: ClinicMembership[] = []
       let freshClinics: Clinic[] = []
