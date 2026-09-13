@@ -21,6 +21,10 @@ interface AuthContextType {
   isAuthenticated: boolean
   isLoading: boolean
   forcePasswordChange: boolean
+  // True when the Supabase data layer (PostgREST) is temporarily unavailable
+  // while the Auth session itself is still valid. The user stays signed in.
+  restUnavailable: boolean
+  retryRest: () => Promise<void>
   
   // Login/Logout
   login: (identifier: string, password: string) => Promise<{ success: boolean; error?: string; needsClinicSelection?: boolean }>
@@ -60,6 +64,21 @@ const STORAGE_KEYS = {
 // Platform owner accounts — full system access, no clinic membership required
 const PLATFORM_OWNER_EMAILS = ['sakarinmam999@gmail.com', 'clinicque.admin@gmail.com']
 
+// ═══ Data-layer failure detection ═══
+// Distinguishes "PostgREST is temporarily unavailable" from "this user really has
+// no access". A failed query must NEVER be read as "no permission".
+function isRestUnavailableError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const e = error as { code?: string; message?: string; status?: number }
+  const msg = (e.message || '').toLowerCase()
+  if (e.code === 'PGRST303') return true
+  if (msg.includes('jwt issued at future')) return true
+  if (e.status === 401) return true
+  if (msg.includes('failed to fetch')) return true
+  if (msg.includes('networkerror')) return true
+  return false
+}
+
 function loadFromStorage<T>(key: string, defaultValue: T): T {
   if (typeof window === 'undefined') return defaultValue
   try {
@@ -85,6 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
   const [needsClinicSelection, setNeedsClinicSelection] = useState(false)
   const [forcePasswordChange, setForcePasswordChange] = useState(false)
+  const [restUnavailable, setRestUnavailable] = useState(false)
   
   // Data stores (Supabase is the source of truth; localStorage is only a cache)
   const [users, setUsers] = useState<User[]>(() => loadFromStorage(STORAGE_KEYS.USERS, []))
@@ -101,7 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!sb) return
 
     // 1. User profile from users table
-    const { data: profile } = await sb
+    const { data: profile, error: profileError } = await sb
       .from('users')
       .select('*')
       .eq('id', supabaseUserId)
@@ -117,11 +137,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     // 2. Memberships + clinics from Supabase
-    const { data: memberships } = await sb
+    const { data: memberships, error: membershipsError } = await sb
       .from('clinic_memberships')
       .select('*, clinics(*)')
       .eq('user_id', supabaseUserId)
       .eq('is_active', true)
+
+    // ═══ Data layer unavailable → do NOT treat this as "no access" ═══
+    // A failed query (e.g. 401 PGRST303 "JWT issued at future") proves nothing
+    // about the user's permissions. The Supabase Auth session is still valid, so
+    // keep the user signed in with the last known app session rather than wiping
+    // the session and bouncing them to /login. Recovery is automatic — see the
+    // retryRest effect below.
+    if (profileError || membershipsError) {
+      const err = (membershipsError || profileError) as any
+      console.warn(
+        isRestUnavailableError(err)
+          ? '[auth] Supabase REST unavailable — keeping session, NOT logging out:'
+          : '[auth] profile/membership query failed — keeping session, NOT logging out:',
+        err?.code || err?.status || '',
+        err?.message || err || ''
+      )
+
+      const cached = loadFromStorage<AuthSession | null>(STORAGE_KEYS.AUTH, null)
+      setSession({
+        user: {
+          ...user,
+          name: user.name || cached?.user?.name || '',
+          phone: user.phone || cached?.user?.phone || '',
+          createdAt: cached?.user?.createdAt || user.createdAt,
+        },
+        // Best-effort clinic pointer so the app shell can still render.
+        currentClinicId: cached?.currentClinicId || localStorage.getItem('clinicq-last-clinic-id') || null,
+      })
+      setRestUnavailable(true)
+      return
+    }
 
     let freshMemberships: ClinicMembership[] = []
     let freshClinics: Clinic[] = []
@@ -171,6 +222,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    setRestUnavailable(false)
     setMemberships(freshMemberships)
     setClinics(freshClinics)
 
@@ -181,6 +233,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // NOTE: force_password_change is no longer enforced (MVP). Users can log
     // in immediately with the password they were given.
   }, [])
+
+  // ═══ Re-check the data layer on demand ═══
+  // Safe to call any time: it only re-runs the session restore. If REST answers
+  // again, the session is rebuilt from real data and restUnavailable clears.
+  const retryRest = useCallback(async () => {
+    try {
+      const sb = getSupabase()
+      if (!sb) return
+      const { data: { session: supabaseSession } } = await sb.auth.getSession()
+      if (!supabaseSession?.user) return
+      await restoreFromSupabaseSession(supabaseSession.user.id, supabaseSession.user.email || '')
+    } catch (err) {
+      // Never let a retry reject — it is fired from focus/visibility listeners.
+      console.warn('[auth] data-layer retry failed:', err)
+    }
+  }, [restoreFromSupabaseSession])
+
+  // ═══ Auto-recover when the user returns to the tab ═══
+  // While the data layer is down we re-check on focus/visibility instead of
+  // polling blindly, so the app returns to normal as soon as Supabase responds.
+  useEffect(() => {
+    if (!restUnavailable || typeof window === 'undefined') return
+    const recheck = () => {
+      if (document.visibilityState === 'visible') void retryRest()
+    }
+    window.addEventListener('focus', recheck)
+    document.addEventListener('visibilitychange', recheck)
+    return () => {
+      window.removeEventListener('focus', recheck)
+      document.removeEventListener('visibilitychange', recheck)
+    }
+  }, [restUnavailable, retryRest])
 
   // ═══ Initialize auth: Supabase session is the source of truth ═══
   // Subscribe to onAuthStateChange so the app session is restored immediately
@@ -502,6 +586,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null)
     setNeedsClinicSelection(false)
     setForcePasswordChange(false)
+    setRestUnavailable(false)
     localStorage.removeItem(STORAGE_KEYS.AUTH)
   }, [])
   
@@ -704,7 +789,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   
   // ═══ Computed Values ═══
   const currentMembership = getCurrentMembership()
-  const currentRole = currentMembership?.role || (!session?.currentClinicId && session?.user ? 'platform_owner' as PlatformRole : null)
+  // A session without a clinic must only be treated as a platform owner when the
+  // account really is one. Deriving it from "no clinic id" alone would hand
+  // platform privileges to any user whose clinic could not be resolved (e.g. a
+  // data-layer outage or a multi-clinic account awaiting selection).
+  const isPlatformOwnerSession =
+    !!session?.user && PLATFORM_OWNER_EMAILS.includes((session.user.email || '').toLowerCase())
+  const currentRole = currentMembership?.role
+    || (!session?.currentClinicId && isPlatformOwnerSession ? 'platform_owner' as PlatformRole : null)
   
   const contextValue: AuthContextType = {
     session,
@@ -714,6 +806,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAuthenticated: !!session?.user,
     isLoading,
     forcePasswordChange,
+    restUnavailable,
+    retryRest,
     login,
     logout,
     updatePassword,
