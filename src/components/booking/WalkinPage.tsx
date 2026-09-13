@@ -513,7 +513,11 @@ export default function WalkinPage() {
 
   // ═══ Submitted ═══
   if (submittedNumber) {
-    const trackUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/track?id=${submittedNumber}&clinic=${clinicType || 'dental'}`
+    // Carry the explicit clinic ID into the tracking link: the patient opens it
+    // anonymously, so the link itself is the only source of clinic identity.
+    const trackParams = new URLSearchParams({ id: submittedNumber, clinic: clinicType || 'dental' })
+    if (clinicId) trackParams.set('clinicId', clinicId)
+    const trackUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/track?${trackParams.toString()}`
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: `${accentColor}08` }}>
         <div className="bento-card p-8 max-w-sm w-full text-center animate-scale-in">

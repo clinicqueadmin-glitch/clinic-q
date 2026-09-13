@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
+import { usePathname } from 'next/navigation'
 import { type ClinicType } from './queue-data'
 import { getDefaultBranchData } from './branch-data'
 import { useAuth } from './auth-context'
@@ -211,12 +212,59 @@ function resolveClinicId(authClinicId?: string | null): string | null {
   return clinicId.length > 0 ? clinicId : null
 }
 
+/**
+ * Explicit clinic identity carried by the current URL (?clinicId=…).
+ *
+ * The patient entry points (walk-in kiosk, online booking, queue tracking) are
+ * anonymous — no session, no membership — so the clinic puts its ID directly in
+ * the link/QR it hands out. That is a caller-supplied identity, not a type→ID
+ * guess: the value is used exactly as given and never converted from a clinic
+ * type (a bare type can only match no clinic at all, so it reads nothing).
+ */
+function readUrlClinicId(): string | null {
+  if (typeof window === 'undefined') return null
+  try {
+    return new URLSearchParams(window.location.search).get('clinicId')
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The anonymous, link-driven patient surfaces: the pages a clinic's QR/link opens
+ * (same set ClinicProviderWrapper treats as public). On these, the explicit clinic
+ * ID in the URL is the only identity the visitor has, so it takes priority.
+ */
+const PATIENT_ROUTES = ['/walkin', '/book', '/track', '/queue-status', '/qr', '/kiosk', '/tv']
+
+function isPatientRoute(pathname: string): boolean {
+  return PATIENT_ROUTES.some(p => pathname === p || pathname.startsWith(`${p}/`))
+}
+
 export function QueueProvider({ children }: { children: ReactNode }) {
-  const { currentClinicId } = useAuth()
+  const { currentClinicId, isLoading: authLoading } = useAuth()
+  const pathname = usePathname()
   const [clinicType, setClinicType] = useState<ClinicType | null>(null)
+  const [urlClinicId, setUrlClinicId] = useState<string | null>(() => readUrlClinicId())
   const [queue, setQueue] = useState<QueueItem[]>([])
   const [isSupabaseConnected, setIsSupabaseConnected] = useState(false)
   const [loadedFromStorage, setLoadedFromStorage] = useState(false)
+
+  // ─── Active clinic identity ───
+  // Priority:
+  //   1. explicit clinicId from the URL/QR — on the patient surfaces this IS the
+  //      identity (no session exists), so it wins there.
+  //   2. the authenticated session's clinic.
+  //   3. neither → null, so every read/write stops instead of guessing (P0).
+  // On the signed-in app surfaces the session wins even if a ?clinicId= is present,
+  // so a crafted link cannot move a logged-in user to another clinic. While the
+  // session is still restoring we wait (null) instead of briefly trusting the URL,
+  // which would otherwise let the URL param win for the first moments of a load.
+  const sessionClinicId = resolveClinicId(currentClinicId)
+  const explicitClinicId = resolveClinicId(urlClinicId)
+  const clinicId = isPatientRoute(pathname || '')
+    ? (explicitClinicId ?? sessionClinicId)
+    : (authLoading ? null : (sessionClinicId ?? explicitClinicId))
 
   // Read clinic type from localStorage
   useEffect(() => {
@@ -229,20 +277,26 @@ export function QueueProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('storage', handler)
   }, [])
 
+  // Re-read the clinic type (written by the page that resolved it) and the explicit
+  // ?clinicId= from the address bar. Either can change without a reload — the kiosk
+  // and booking pages write the type, and client-side navigation rewrites the query.
   useEffect(() => {
-    const interval = setInterval(() => {
+    const sync = () => {
       const saved = localStorage.getItem('clinic-q-type') as ClinicType | null
       setClinicType(prev => prev !== saved ? saved : prev)
-    }, 500)
+      const nextUrlClinicId = readUrlClinicId()
+      setUrlClinicId(prev => prev !== nextUrlClinicId ? nextUrlClinicId : prev)
+    }
+    sync()
+    const interval = setInterval(sync, 500)
     return () => clearInterval(interval)
   }, [])
 
   // ─── Fetch from Supabase or use demo data (with localStorage persistence) ───
   const fetchData = useCallback(async (clinic: ClinicType) => {
     const storageKey = getQueueStorageKey(clinic)
-    const clinicId = resolveClinicId(currentClinicId)
 
-    // P0: with no verified clinic identity we must not query ANY clinic. Fall
+    // P0: with no clinic identity we must not query ANY clinic. Fall
     // back to the local cache only, and never write to the database.
     if (!clinicId) {
       try {
@@ -335,7 +389,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(storageKey, JSON.stringify([]))
       setIsSupabaseConnected(false)
     }
-  }, [currentClinicId])
+  }, [clinicId])
 
   // ─── Sync queue to localStorage whenever it changes ───
   useEffect(() => {
@@ -367,8 +421,8 @@ export function QueueProvider({ children }: { children: ReactNode }) {
   // ─── Realtime subscription ───
   useEffect(() => {
     if (!isSupabaseConnected || !clinicType) return
-    // P0: no verified clinic identity → do not poll or query any clinic.
-    if (!resolveClinicId(currentClinicId)) return
+    // P0: no clinic identity → do not poll or query any clinic.
+    if (!clinicId) return
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
     if (!supabaseUrl || !supabaseKey) return
@@ -381,8 +435,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
   // ─── Save to Supabase ───
   const saveToSupabase = useCallback(async (item: QueueItem) => {
     if (!isSupabaseConnected || !clinicType) return
-    const clinicId = resolveClinicId(currentClinicId)
-    // P0: no verified clinic identity → never write to the database.
+    // P0: no clinic identity → never write to the database.
     if (!clinicId) return
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
@@ -399,7 +452,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
       },
       body: JSON.stringify(dbRow),
     })
-  }, [isSupabaseConnected, clinicType, currentClinicId])
+  }, [isSupabaseConnected, clinicType, clinicId])
 
   const saveQueueItem = useCallback(async (item: QueueItem) => {
     setQueue(prev => prev.map(q => q.id === item.id ? item : q))
@@ -410,11 +463,10 @@ export function QueueProvider({ children }: { children: ReactNode }) {
     // If connected to Supabase, use atomic RPC function
     // This ensures queue number generation + INSERT are in the same transaction
     if (isSupabaseConnected && clinicType) {
-      const clinicId = resolveClinicId(currentClinicId)
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
       const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-      // P0: no verified clinic identity → skip the RPC and fall through to local
-      // mode rather than creating a queue under a guessed clinic.
+      // P0: no clinic identity → skip the RPC and fall through to local mode
+      // rather than creating a queue under a guessed clinic.
       if (clinicId && supabaseUrl && supabaseKey) {
         try {
           // Call atomic create_queue_item() via RPC
@@ -482,7 +534,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
     const newItem: QueueItem = { ...item, id: crypto.randomUUID(), number: '', queueDate: getTodayICT() }
     setQueue(prev => [...prev, newItem])
     return newItem
-  }, [isSupabaseConnected, clinicType, currentClinicId])
+  }, [isSupabaseConnected, clinicType, clinicId])
 
   return (
     <QueueContext.Provider value={{ queue, setQueue, saveQueueItem, addQueueItem, isSupabaseConnected }}>
