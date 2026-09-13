@@ -1,10 +1,13 @@
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
-import { Plus, Search, Edit, Trash2, Eye, X, Phone, User, PhoneCall, Filter, Clock, Stethoscope, FileText, Calendar } from 'lucide-react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
+import { Plus, Search, Edit, Trash2, Eye, X, Phone, User, PhoneCall, Filter, Clock, Stethoscope, FileText, Calendar, ChevronLeft, ChevronRight } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useClinic } from '@/lib/clinic-context'
 import { useQueue, type QueueItem } from '@/lib/queue-context'
+import { analyticsDateRange, type AnalyticsPeriod } from '@/lib/analytics-range'
+import { fetchClinicQueueRange } from '@/lib/analytics-queue'
+import { getTodayICT } from '@/lib/ict-date'
 import Toast from '@/components/ui/Toast'
 import PhoneInput from '@/components/ui/PhoneInput'
 
@@ -58,11 +61,21 @@ function formatDate(dateStr: string): string {
   }
 }
 
+/** Stable empty list so the period memo deps do not churn on every render. */
+const EMPTY_QUEUE: QueueItem[] = []
+
 export default function PatientManager() {
-  const { config, clinicName } = useClinic()
+  const { config, clinicName, clinicId } = useClinic()
   const { queue } = useQueue()
   const [searchQuery, setSearchQuery] = useState('')
   const [filterMode, setFilterMode] = useState<'all' | 'recall'>('all')
+  const [timeFilter, setTimeFilter] = useState<AnalyticsPeriod>('month')
+  const [selectedDate, setSelectedDate] = useState(new Date())
+  const [selectedWeekStart, setSelectedWeekStart] = useState(() => {
+    const d = new Date(); const day = d.getDay(); const diff = d.getDate() - day + (day === 0 ? -6 : 1); d.setDate(diff); d.setHours(0, 0, 0, 0); return d
+  })
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth())
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
   const [showViewModal, setShowViewModal] = useState<string | null>(null)
   const [showEditModal, setShowEditModal] = useState<string | null>(null)
@@ -75,17 +88,100 @@ export default function PatientManager() {
     setTimeout(() => setToast(null), 3000)
   }, [])
 
-  // Build patient list from queue data (grouped by phone)
+  // ═══ Selected period → an inclusive queue_date range (ICT business dates) ═══
+  // The live queue context only ever holds today, which is why a patient's past
+  // visits disappeared from this screen. Every other period is fetched for its own
+  // date range — the same range math and row mapper Analytics uses — always scoped
+  // to this clinic.
+  const range = useMemo(
+    () => analyticsDateRange(timeFilter, {
+      date: selectedDate,
+      weekStart: selectedWeekStart,
+      month: selectedMonth,
+      year: selectedYear,
+    }),
+    [timeFilter, selectedDate, selectedWeekStart, selectedMonth, selectedYear],
+  )
+  const isLiveToday = range.start === range.end && range.start === getTodayICT()
+  const today = new Date()
+
+  const [rangeQueue, setRangeQueue] = useState<QueueItem[] | null>(null)
+  const [rangeError, setRangeError] = useState<string | null>(null)
+
+  // Today keeps using the live queue context (it polls and is already scoped to
+  // this clinic). Any other period is read from Supabase for its own dates.
+  useEffect(() => {
+    if (isLiveToday || !clinicId) {
+      setRangeQueue(null)
+      setRangeError(null)
+      return
+    }
+    let cancelled = false
+    setRangeError(null)
+    fetchClinicQueueRange(clinicId, range)
+      .then(rows => { if (!cancelled) setRangeQueue(rows) })
+      .catch((e: unknown) => {
+        if (cancelled) return
+        // A failed load must never look like "no patients ever visited".
+        setRangeQueue(EMPTY_QUEUE)
+        setRangeError(e instanceof Error ? e.message : 'โหลดข้อมูลไม่สำเร็จ')
+      })
+    return () => { cancelled = true }
+  }, [clinicId, range, isLiveToday])
+
+  // Without a verified clinic identity there is nothing to show — never a cached
+  // queue that may belong to another clinic.
+  const effectiveQueue = !clinicId
+    ? EMPTY_QUEUE
+    : isLiveToday
+      ? queue
+      : (rangeQueue ?? EMPTY_QUEUE)
+
+  const periodNotice = !clinicId
+    ? 'ไม่พบคลินิกที่กำลังใช้งาน — จึงยังแสดงประวัติผู้รับบริการไม่ได้'
+    : rangeError
+      ? `โหลดประวัติช่วงเวลานี้ไม่สำเร็จ: ${rangeError}`
+      : !isLiveToday && rangeQueue === null
+        ? 'กำลังโหลดประวัติผู้รับบริการ…'
+        : null
+
+  const periodLabel = useMemo(() => {
+    // Anchored to ICT so the label names the same business dates the query asks for.
+    const moment = { timeZone: 'Asia/Bangkok' } as const
+    if (timeFilter === 'day') {
+      if (isLiveToday) return 'ข้อมูลจากคิววันนี้'
+      return `ข้อมูลวันที่ ${selectedDate.toLocaleDateString('th-TH', { ...moment, day: 'numeric', month: 'short', year: 'numeric' })}`
+    }
+    if (timeFilter === 'week') {
+      const weekEnd = new Date(selectedWeekStart); weekEnd.setDate(weekEnd.getDate() + 6)
+      return `ข้อมูลสัปดาห์ ${selectedWeekStart.toLocaleDateString('th-TH', { ...moment, day: 'numeric', month: 'short' })} - ${weekEnd.toLocaleDateString('th-TH', { ...moment, day: 'numeric', month: 'short' })}`
+    }
+    if (timeFilter === 'month') return `ข้อมูลเดือน${new Date(selectedYear, selectedMonth).toLocaleDateString('th-TH', { ...moment, month: 'long', year: 'numeric' })}`
+    return `ข้อมูลปี ${selectedYear + 543}`
+  }, [timeFilter, isLiveToday, selectedDate, selectedWeekStart, selectedMonth, selectedYear])
+
+  const navigateDate = (dir: number) => {
+    if (timeFilter === 'day') { const d = new Date(selectedDate); d.setDate(d.getDate() + dir); setSelectedDate(d) }
+    else if (timeFilter === 'week') { const d = new Date(selectedWeekStart); d.setDate(d.getDate() + dir * 7); setSelectedWeekStart(d) }
+    else if (timeFilter === 'month') { setSelectedMonth(prev => prev + dir) }
+    else { setSelectedYear(prev => prev + dir) }
+  }
+
+  // Build patient list from the selected period's data (grouped by phone)
   const patients = useMemo(() => {
     const patientMap = new Map<string, PatientRecord>()
 
-    // Process all completed queue items
-    queue.forEach(item => {
+    effectiveQueue.forEach(item => {
       if (!item.phone || item.phone.length < 9) return
       
       const existing = patientMap.get(item.phone)
-      // Use bookedAt or appointmentDate for the visit date, fallback to today
-      const visitDate = item.bookedAt || item.appointmentDate || item.arrivalTime?.split('T')[0] || new Date().toISOString().split('T')[0]
+      // The service date the server assigned to this row is authoritative; the
+      // booking timestamps come next, and today's ICT date is only a last resort.
+      const visitDate = item.queueDate
+        || item.appointmentDate
+        || item.bookedAt
+        || item.arrivalTime?.split('T')[0]
+        || getTodayICT()
       const visit: VisitRecord = {
         date: visitDate,
         practitioner: item.assignedDoctor || 'ไม่ระบุ',
@@ -115,7 +211,7 @@ export default function PatientManager() {
     })
 
     return Array.from(patientMap.values())
-  }, [queue])
+  }, [effectiveQueue])
 
   const filteredPatients = useMemo(() => {
     return patients.filter(patient => {
@@ -264,7 +360,26 @@ export default function PatientManager() {
             <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm" style={{ backgroundColor: config.color }}>{config.prefix}</div>
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900">ผู้รับบริการ</h1>
           </div>
-          <p className="text-gray-500">{clinicName || 'คลินิก'} — ข้อมูลจากคิววันนี้</p>
+          <p className="text-gray-500">{clinicName || 'คลินิก'} — {periodLabel}</p>
+          {periodNotice && (
+            <p className={clsx('text-xs mt-1 font-medium', rangeError ? 'text-amber-600' : 'text-gray-400')}>
+              {periodNotice}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex bg-black/[0.04] rounded-2xl p-1">
+            {(['day', 'week', 'month', 'year'] as AnalyticsPeriod[]).map(tf => (
+              <button key={tf} onClick={() => setTimeFilter(tf)} className={clsx('px-3 py-1.5 rounded-lg text-xs font-medium transition-all', timeFilter === tf ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700')}>
+                {tf === 'day' ? 'วัน' : tf === 'week' ? 'สัปดาห์' : tf === 'month' ? 'เดือน' : 'ปี'}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1">
+            <button onClick={() => navigateDate(-1)} className="p-1.5 rounded-lg hover:bg-gray-100" title="ช่วงก่อนหน้า"><ChevronLeft className="w-4 h-4 text-gray-500" /></button>
+            <button onClick={() => { setSelectedDate(new Date()); setSelectedWeekStart(() => { const d = new Date(); const day = d.getDay(); const diff = d.getDate() - day + (day === 0 ? -6 : 1); d.setDate(diff); d.setHours(0, 0, 0, 0); return d }); setSelectedMonth(today.getMonth()); setSelectedYear(today.getFullYear()) }} className="px-3 py-1.5 rounded-lg bg-gray-100 text-xs font-medium text-gray-700 hover:bg-gray-200">วันนี้</button>
+            <button onClick={() => navigateDate(1)} className="p-1.5 rounded-lg hover:bg-gray-100" title="ช่วงถัดไป"><ChevronRight className="w-4 h-4 text-gray-500" /></button>
+          </div>
         </div>
       </div>
 
@@ -288,6 +403,7 @@ export default function PatientManager() {
             </button>
             <button
               onClick={() => setFilterMode('recall')}
+              title={`นับจากผู้รับบริการในช่วงเวลาที่เลือก (${periodLabel})`}
               className={clsx(
                 'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
                 filterMode === 'recall' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
@@ -304,8 +420,12 @@ export default function PatientManager() {
         {filteredPatients.length === 0 ? (
           <div className="text-center py-12 text-gray-400">
             <User className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p className="text-lg">ไม่พบผู้รับบริการ</p>
-            <p className="text-sm mt-1">ข้อมูลจะถูกบันทึกอัตโนมัติเมื่อมีคนไข้เข้าคิว</p>
+            <p className="text-lg">ไม่พบผู้รับบริการในช่วงเวลานี้</p>
+            <p className="text-sm mt-1">
+              {searchQuery
+                ? 'ลองล้างคำค้นหา หรือเลือกช่วงเวลาอื่น'
+                : 'ลองเลือก “สัปดาห์ / เดือน / ปี” เพื่อดูประวัติย้อนหลัง — ข้อมูลจะถูกบันทึกอัตโนมัติเมื่อมีคนไข้เข้าคิว'}
+            </p>
           </div>
         ) : (
           filteredPatients.map((patient) => {
