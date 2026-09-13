@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { isPlatformOwnerEmail } from '@/lib/platform-owners'
 import { cookies } from 'next/headers'
 import { createClient } from '@/utils/supabase/server'
 import { getAdminClient } from '@/lib/supabase-admin'
@@ -733,6 +734,11 @@ async function createDefaultClinicAccounts(
  *   - Any ACTIVE member of the clinic may view the member list
  *     (matches the pre-existing UI behavior where the users tab is
  *     visible to every clinic role).
+ *   - A PLATFORM OWNER (allowlisted email, verified against the Supabase
+ *     session) may also READ the list of any clinic while inspecting it from
+ *     the Platform Dashboard. This is read-only: every mutating handler below
+ *     still requires a clinic membership, so a platform owner cannot add,
+ *     change or remove a clinic's members.
  *
  * Data source: Supabase is the single source of truth. No localStorage.
  * Returns members merged from users + clinic_memberships +
@@ -757,16 +763,21 @@ export async function GET(
   }
 
   // ── 2. Verify caller is an ACTIVE member of the clinic ─────────
-  const { data: membership, error: memError } = await sb
-    .from('clinic_memberships')
-    .select('id')
-    .eq('user_id', caller.id)
-    .eq('clinic_id', clinicId)
-    .eq('is_active', true)
-    .maybeSingle()
+  // A platform owner inspecting a clinic is exempt from the membership
+  // requirement for this READ. The check uses the caller's verified session
+  // email, never a client-supplied value, and grants nothing beyond listing.
+  if (!isPlatformOwnerEmail(caller.email)) {
+    const { data: membership, error: memError } = await sb
+      .from('clinic_memberships')
+      .select('id')
+      .eq('user_id', caller.id)
+      .eq('clinic_id', clinicId)
+      .eq('is_active', true)
+      .maybeSingle()
 
-  if (memError || !membership) {
-    return NextResponse.json({ error: 'not authorized for this clinic' }, { status: 403 })
+    if (memError || !membership) {
+      return NextResponse.json({ error: 'not authorized for this clinic' }, { status: 403 })
+    }
   }
 
   // ── 3. Read all clinic members via service role (server-side only) ──
