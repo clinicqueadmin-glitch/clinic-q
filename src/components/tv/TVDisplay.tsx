@@ -5,7 +5,8 @@ import { useSearchParams } from 'next/navigation'
 import { clsx } from 'clsx'
 import { Volume2, VolumeX, Maximize, Minimize, RefreshCw } from 'lucide-react'
 import { useQueue, type QueueItem } from '@/lib/queue-context'
-import { useClinic } from '@/lib/clinic-context'
+import { useClinic, useClinicDisplayName } from '@/lib/clinic-context'
+import { useAuth } from '@/lib/auth-context'
 import { getDefaultBranchData, getOvertimeStatus, type Room } from '@/lib/branch-data'
 import { useDailyRooms } from '@/lib/use-daily-rooms'
 import TVCalledAlert from './TVCalledAlert'
@@ -60,19 +61,20 @@ export default function TVDisplay() {
   const searchParams = useSearchParams()
   const { queue, setQueue, saveQueueItem } = useQueue()
   const { config, currentClinic, settings } = useClinic()
-  // Get clinicId from URL param (passed by Dashboard) or resolve from clinicq-clinics
+  const { currentClinicId: sessionClinicId } = useAuth()
+  // Which clinic this screen shows: the explicit ?clinicId= it was opened with, else the
+  // clinic this session belongs to. Never a lookup by clinic type — several clinics share
+  // a type, so a type match could display (and read) another clinic.
   const resolvedClinicId = useMemo(() => {
-    // Priority 1: URL param ?clinicId=xxx
     const urlClinicId = searchParams.get('clinicId')
     if (urlClinicId) return urlClinicId
-    // Priority 2: find from clinicq-clinics by type
-    try {
-      const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
-      const matched = clinics.find((c: any) => c.type === (currentClinic || 'dental'))
-      if (matched?.id) return matched.id
-    } catch {}
-    return null
-  }, [searchParams, currentClinic])
+    return sessionClinicId || null
+  }, [searchParams, sessionClinicId])
+
+  // Name shown on screen. Resolved from the clinic this screen is displaying (explicit
+  // ?clinicId= first), never from the clinic type: clinicConfig holds the seed clinics'
+  // names, so a type lookup would label the TV with the wrong clinic's name.
+  const displayName = useClinicDisplayName(resolvedClinicId)
 
   // Load branch data from clinic-specific storage
   const branchData = useMemo(() => {
@@ -379,7 +381,7 @@ export default function TVDisplay() {
       : 'bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white')}>
       {/* Called Alert */}
       {showAlert && lastCalled && (
-        <TVCalledAlert queue={lastCalled} clinic={config ? { name: settings?.clinicName || config.name, nameEn: config.nameEn || config.name, color: config.color, bg: config.bg, icon: config.prefix, prefix: config.prefix } : { name: 'Clinic', nameEn: 'Clinic', color: '#93C5FD', bg: '#EFF6FF', icon: 'Q', prefix: 'Q' }} onDismiss={() => setShowAlert(false)} />
+        <TVCalledAlert queue={lastCalled} clinic={config ? { name: displayName || settings?.clinicName || 'Clinic', nameEn: config.nameEn || config.name, color: config.color, bg: config.bg, icon: config.prefix, prefix: config.prefix } : { name: 'Clinic', nameEn: 'Clinic', color: '#93C5FD', bg: '#EFF6FF', icon: 'Q', prefix: 'Q' }} onDismiss={() => setShowAlert(false)} />
       )}
 
       {/* Room Notification — procedure only, NO patient name */}
@@ -417,7 +419,7 @@ export default function TVDisplay() {
             </div>
           )}
           <div>
-            <h1 className="text-lg font-bold">{settings?.clinicName || config?.name || 'Clinic-Q'}</h1>
+            <h1 className="text-lg font-bold">{displayName || 'Clinic-Q'}</h1>
             <p className="text-[10px] text-gray-400">จอแสดงคิว</p>
           </div>
         </div>

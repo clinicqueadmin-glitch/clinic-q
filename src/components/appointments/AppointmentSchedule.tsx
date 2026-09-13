@@ -23,7 +23,7 @@ const roomColors = ['#93C5FD', '#A7F3D0', '#FCD34D', '#FDA4AF', '#D8B4FE']
 type TabMode = 'by-date' | 'by-doctor' | 'today-queue'
 
 export default function AppointmentSchedule() {
-  const { config, currentClinic } = useClinic()
+  const { config, currentClinic, clinicName } = useClinic()
   const branchData = useMemo(() => getDefaultBranchData(currentClinic || 'dental'), [currentClinic])
   const activeRooms = useMemo(() => branchData.rooms.filter(r => r.active), [branchData])
   const allProcedures = useMemo(() => getAllActiveProcedures(branchData), [branchData])
@@ -313,7 +313,7 @@ export default function AppointmentSchedule() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">📆 นัดหมาย</h1>
-          <p className="text-sm text-gray-500">{config.name}</p>
+          <p className="text-sm text-gray-500">{clinicName || 'คลินิก'}</p>
         </div>
       </div>
 

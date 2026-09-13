@@ -22,7 +22,7 @@ const bookingModeConfig: Record<BookingMode, { label: string; icon: React.Compon
 }
 
 export default function QueueManager() {
-  const { config } = useClinic()
+  const { config, clinicName } = useClinic()
   const { queue, setQueue } = useQueue()
 
   const [searchQuery, setSearchQuery] = useState('')
@@ -169,7 +169,7 @@ export default function QueueManager() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">🎫 จัดการคิว</h1>
-          <p className="text-sm text-gray-500">{config.name} — ข้อมูลเดียวกับ Dashboard</p>
+          <p className="text-sm text-gray-500">{clinicName || 'คลินิก'} — ข้อมูลเดียวกับ Dashboard</p>
         </div>
         <div className="flex items-center gap-3 text-sm">
           <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 rounded-lg">

@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   User, Phone, Search, ChevronRight, CheckCircle, Clock,
   Stethoscope, Sparkles, Heart, Brain, Activity, Bone,
   ArrowLeft, Zap, MapPin, Building2, ChevronLeft,
 } from 'lucide-react'
 import { clsx } from 'clsx'
-import { useClinic } from '@/lib/clinic-context'
+import { useClinic, useClinicDisplayName } from '@/lib/clinic-context'
+import { useAuth } from '@/lib/auth-context'
 import { clinicConfig, type ClinicType } from '@/lib/queue-data'
 import {
   getDefaultBranchData,
@@ -45,24 +46,37 @@ const categoryNames: Record<string, string> = {
 export default function KioskInterface() {
   const { config, currentClinic } = useClinic()
   usePractitioners()
+
+  // This screen can be opened anonymously, so the clinic it belongs to is the explicit
+  // ?clinicId= in its URL. Read it after mount (a statically rendered page must not
+  // depend on the query string during hydration).
+  const [urlClinicId, setUrlClinicId] = useState<string | null>(null)
+  useEffect(() => {
+    try {
+      setUrlClinicId(new URLSearchParams(window.location.search).get('clinicId'))
+    } catch {}
+  }, [])
+  const displayName = useClinicDisplayName(urlClinicId)
+
+  // The kiosk's clinic: the explicit ?clinicId= it was opened with, else the clinic this
+  // session belongs to. Never resolved from the clinic type — several clinics share a
+  // type, so a type match could show and submit to another clinic.
+  const { currentClinicId: sessionClinicId } = useAuth()
+  const kioskClinicId = urlClinicId || sessionClinicId || null
+
   // Load branch data from clinic-specific storage
   const branchData = useMemo(() => {
-    if (typeof window !== 'undefined') {
-      const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
-      const matched = clinics.find((c: any) => c.type === (currentClinic || 'dental'))
-      const cid = matched?.id
-      if (cid) {
-        const saved = localStorage.getItem(`clinic-branch-data-${cid}`)
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved)
-            if (parsed && parsed.branches && parsed.branches.length > 0) return parsed as ReturnType<typeof getDefaultBranchData>
-          } catch {}
-        }
+    if (typeof window !== 'undefined' && kioskClinicId) {
+      const saved = localStorage.getItem(`clinic-branch-data-${kioskClinicId}`)
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved)
+          if (parsed && parsed.branches && parsed.branches.length > 0) return parsed as ReturnType<typeof getDefaultBranchData>
+        } catch {}
       }
     }
     return getDefaultBranchData(currentClinic || 'dental')
-  }, [currentClinic])
+  }, [currentClinic, kioskClinicId])
 
   const [step, setStep] = useState<Step>('info')
   const [name, setName] = useState('')
@@ -109,11 +123,10 @@ export default function KioskInterface() {
   // Load practitioners from localStorage (filtered by current clinic)
   const clinicPractitioners = useMemo(() => {
     if (typeof window !== 'undefined') {
-      // Find current clinic ID from clinicq-clinics
-      const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
-      const currentClinicObj = clinics.find((c: any) => c.type === (currentClinic || 'dental'))
-      const cid = currentClinicObj?.id
-      
+      // Practitioners of this kiosk's clinic (explicit id or session clinic, never a
+      // clinic chosen by type)
+      const cid = kioskClinicId
+
       if (cid) {
         // Try clinic-specific storage first — must match clinicId
         const storageKey = `clinic-practitioners-${cid}`
@@ -139,7 +152,7 @@ export default function KioskInterface() {
       }
     }
     return []
-  }, [currentClinic])
+  }, [kioskClinicId])
 
   // Get room and practitioner for selected procedure
   const assignment = useMemo(() => {
@@ -235,7 +248,7 @@ export default function KioskInterface() {
             </div>
             <div>
               <h1 className="text-lg font-bold text-gray-900">ลงทะเบียนรับบริการ</h1>
-              <p className="text-xs text-gray-500">{config.name}</p>
+              <p className="text-xs text-gray-500">{displayName || 'คลินิก'}</p>
             </div>
           </div>
           {/* Step indicator */}

@@ -118,6 +118,18 @@ function ClinicRouter({ children }: { children: ReactNode }) {
   if (pathname === '/login' || pathname.startsWith('/login') || pathname === '/register' || pathname === '/pricing' || pathname === '/terms' || pathname === '/privacy') {
     return <>{children}</>
   }
+  // The kiosk is a public screen, but it is built on the practitioner context (its
+  // registration form reads practitioners), so it needs that provider. Without it the
+  // whole page crashed on "usePractitioners must be used within a PractitionerProvider".
+  // No app shell is added — the kiosk is a standalone screen.
+  if (pathname === '/kiosk') {
+    return (
+      <PractitionerProvider clinicType={(currentClinic || 'dental') as ClinicType} clinicId={currentClinicId}>
+        {children}
+      </PractitionerProvider>
+    )
+  }
+
   if (pathname === '/tv' || pathname === '/kiosk' || pathname === '/book' || pathname.startsWith('/book') || pathname === '/walkin' || pathname.startsWith('/walkin') || pathname === '/track' || pathname.startsWith('/track') || pathname === '/queue-status' || pathname.startsWith('/queue-status') || pathname === '/qr' || pathname.startsWith('/qr')) {
     return <>{children}</>
   }

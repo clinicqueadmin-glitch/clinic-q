@@ -10,7 +10,8 @@ import { clsx } from 'clsx'
 import { QRCodeSVG } from 'qrcode.react'
 import { clinicConfig, type ClinicType } from '@/lib/queue-data'
 import { getDefaultBranchData, getAllActiveProcedures, estimateNextServiceTime, type AppointmentQueueItem } from '@/lib/branch-data'
-import { getDaySchedule, type ClinicSettings } from '@/lib/clinic-context'
+import { getDaySchedule, useClinicDisplayName, type ClinicSettings } from '@/lib/clinic-context'
+import { useAuth } from '@/lib/auth-context'
 import { useQueue } from '@/lib/queue-context'
 import PhoneInput from '@/components/ui/PhoneInput'
 import { getTodayICT } from '@/lib/clinic-data'
@@ -21,47 +22,29 @@ export default function BookingPage() {
   const urlClinicId = searchParams.get('clinicId')
   const { queue, addQueueItem } = useQueue()
 
-  // Detect clinic ID and type. An explicit ?clinicId= (carried by the clinic's QR
-  // and menu links) wins over the localStorage cache, which can be stale or belong
-  // to another clinic — and an anonymous patient has no session ID to fall back on.
+  // The clinic is identified by an explicit ?clinicId= (carried by the clinic's QR and
+  // menu links) or by the signed-in session. A clinic *type* never identifies a clinic:
+  // several clinics share one type, so a type match could book into another clinic.
+  const { currentClinicId: sessionClinicId } = useAuth()
   const { clinicId, clinicType, clinicCfg } = useMemo(() => {
-    if (typeof window !== 'undefined') {
-      const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
-      if (urlClinicId) {
-        const found = clinics.find((c: any) => c.id === urlClinicId)
-        const resolvedType = (found?.type || urlClinicType || 'dental') as ClinicType
-        return {
-          clinicId: urlClinicId,
-          clinicType: resolvedType,
-          clinicCfg: clinicConfig[resolvedType] || clinicConfig['dental'],
-        }
-      }
-      if (urlClinicType) {
-        const found = clinics.find((c: any) => c.type === urlClinicType)
-        return {
-          clinicId: found?.id || null,
-          clinicType: urlClinicType,
-          clinicCfg: clinicConfig[urlClinicType] || clinicConfig['dental'],
-        }
-      }
-      if (clinics.length > 0) {
-        const userClinic = clinics[0]
-        return {
-          clinicId: userClinic.id,
-          clinicType: (userClinic.type || 'dental') as ClinicType,
-          clinicCfg: clinicConfig[(userClinic.type || 'dental') as ClinicType] || clinicConfig['dental'],
-        }
-      }
-    }
+    const clinics = typeof window !== 'undefined'
+      ? JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
+      : []
+    const id = urlClinicId || sessionClinicId || null
+    // type/cfg drive theming only, and are looked up by the resolved id
+    const cachedType = id ? clinics.find((c: any) => c.id === id)?.type : null
+    const resolvedType = (cachedType || urlClinicType || 'dental') as ClinicType
     return {
-      clinicId: null,
-      clinicType: 'dental' as ClinicType,
-      clinicCfg: clinicConfig['dental'],
+      clinicId: id,
+      clinicType: resolvedType,
+      clinicCfg: clinicConfig[resolvedType] || clinicConfig['dental'],
     }
-  }, [urlClinicType, urlClinicId])
+  }, [urlClinicType, urlClinicId, sessionClinicId])
 
-  // Load actual clinic name from settings
-  const clinicDisplayName = useMemo(() => {
+  // Clinic name for the patient-facing page: the clinic's own cached settings (instant),
+  // then the clinic's settings row / clinics row. Never clinicConfig[type].name — that is
+  // a seed clinic's name and would label this clinic with the wrong name.
+  const cachedClinicName = useMemo(() => {
     if (typeof window !== 'undefined' && clinicId) {
       const saved = localStorage.getItem(`clinic-q-settings-${clinicId}`)
       if (saved) {
@@ -71,8 +54,10 @@ export default function BookingPage() {
         } catch {}
       }
     }
-    return clinicCfg.name
-  }, [clinicId, clinicCfg])
+    return null
+  }, [clinicId])
+  const resolvedClinicName = useClinicDisplayName(clinicId)
+  const clinicDisplayName = cachedClinicName || resolvedClinicName || 'คลินิก'
 
   // Load clinic settings (weekly schedule)
   const clinicSettings = useMemo((): ClinicSettings => {

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useClinic } from '@/lib/clinic-context'
+import { useAuth } from '@/lib/auth-context'
 import PhoneInput from '@/components/ui/PhoneInput'
 import { useSchedule } from '@/lib/schedule-context'
 import { useQueue } from '@/lib/queue-context'
@@ -27,29 +28,26 @@ type LocationStatus = 'checking' | 'near' | 'far' | 'error' | 'denied'
 const roomColors = ['#93C5FD', '#A7F3D0', '#FCD34D', '#FDA4AF', '#D8B4FE']
 
 export default function PatientBooking() {
-  const { config, currentClinic } = useClinic()
+  const { config, currentClinic, clinicName } = useClinic()
+  // This page is served to a signed-in clinic user, so the clinic is the session's own
+  // clinic — never resolved from the clinic type.
+  const { currentClinicId: sessionClinicId } = useAuth()
   // Load branch data from clinic-specific storage, fallback to defaults
   const branchData: ClinicBranchData = useMemo(() => {
-    if (typeof window !== 'undefined') {
-      const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
-      const clinic = clinics.find((c: any) => c.type === currentClinic)
-      const clinicId = clinic?.id
-      if (clinicId) {
-        // Try clinic-specific storage first
-        const saved = localStorage.getItem(`clinic-branch-data-${clinicId}`)
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved)
-            if (parsed && parsed.branches && parsed.branches.length > 0) {
-              return parsed as ClinicBranchData
-            }
-          } catch {}
-        }
-
+    if (typeof window !== 'undefined' && sessionClinicId) {
+      // Try clinic-specific storage first
+      const saved = localStorage.getItem(`clinic-branch-data-${sessionClinicId}`)
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved)
+          if (parsed && parsed.branches && parsed.branches.length > 0) {
+            return parsed as ClinicBranchData
+          }
+        } catch {}
       }
     }
     return getDefaultBranchData(currentClinic || 'dental')
-  }, [currentClinic])
+  }, [currentClinic, sessionClinicId])
   const allProcedures = useMemo(() => getAllActiveProcedures(branchData), [branchData])
   const { assignments, staff } = useSchedule()
   const { queue, setQueue, addQueueItem } = useQueue()
@@ -99,13 +97,9 @@ export default function PatientBooking() {
     )
   }, [maxDistance])
 
-  // Find current clinic ID
-  const currentClinicObj = useMemo(() => {
-    if (typeof window === 'undefined') return null
-    const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
-    return clinics.find((c: any) => c.type === (currentClinic || 'dental')) || null
-  }, [currentClinic])
-  const clinicId = currentClinicObj?.id
+  // The clinic this page submits to: the session's clinic only (no type lookup, no
+  // "first clinic in the cache" fallback — either could target another clinic).
+  const clinicId = sessionClinicId || null
   
 
   // Load practitioners from localStorage (filtered by current clinic)
@@ -392,7 +386,7 @@ export default function PatientBooking() {
             {config.prefix}
           </div>
           <h1 className="text-xl font-bold text-gray-900">จองคิวออนไลน์</h1>
-          <p className="text-sm text-gray-500 mt-1">{config.name}</p>
+          <p className="text-sm text-gray-500 mt-1">{clinicName || 'คลินิก'}</p>
         </div>
       </div>
 

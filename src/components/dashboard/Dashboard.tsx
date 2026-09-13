@@ -18,7 +18,7 @@ type CreateClinicType = 'medical' | 'aesthetic' | 'thai' | 'chinese' | 'dental' 
 
 export default function Dashboard() {
   const router = useRouter()
-  const { currentClinic, config } = useClinic()
+  const { currentClinic, config, clinicName } = useClinic()
   const [showCreateQueue, setShowCreateQueue] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
 
@@ -50,7 +50,7 @@ export default function Dashboard() {
   const handleExportReport = () => {
     if (!config) return
     const csvContent = [
-      `รายงานคิว ${config.name} - วันที่ ${new Date().toLocaleDateString('th-TH')}`,
+      `รายงานคิว ${clinicName || 'คลินิก'} - วันที่ ${new Date().toLocaleDateString('th-TH')}`,
       '',
       'สรุป',
       `คิวที่กำลังรอ,${stats.waiting}`,
@@ -66,7 +66,7 @@ export default function Dashboard() {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `${config.nameEn}-report-${new Date().toISOString().slice(0, 10)}.csv`
+    link.download = `${(clinicName || config.nameEn || 'clinic').trim().replace(/[\\/:*?"<>|\s]+/g, '-')}-report-${new Date().toISOString().slice(0, 10)}.csv`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -161,7 +161,7 @@ export default function Dashboard() {
             </div>
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-gray-900">แดชบอร์ด</h1>
-              <p className="text-gray-500">{config.name}</p>
+              <p className="text-gray-500">{clinicName || 'คลินิก'}</p>
             </div>
           </div>
         </div>
@@ -229,7 +229,7 @@ export default function Dashboard() {
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">คิวปัจจุบัน</h2>
-              <p className="text-sm text-gray-500">{config.name} • {clinicQueue.length} คิว</p>
+              <p className="text-sm text-gray-500">{clinicName || 'คลินิก'} • {clinicQueue.length} คิว</p>
             </div>
             <button
               onClick={() => router.push('/queue')}
@@ -281,7 +281,7 @@ export default function Dashboard() {
           {clinicQueue.length === 0 && (
             <div className="p-12 text-center">
               <Clock className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">ยังไม่มีคิวใน {config.name}</p>
+              <p className="text-gray-500">ยังไม่มีคิวใน {clinicName || 'คลินิก'}</p>
               <button
                 onClick={() => setShowCreateQueue(true)}
                 className="mt-4 btn-primary"
@@ -306,7 +306,7 @@ export default function Dashboard() {
             </div>
             <div>
               <h3 className="font-semibold text-gray-900">สร้างคิวใหม่</h3>
-              <p className="text-sm text-gray-500">เพิ่มคิวใน {config.name}</p>
+              <p className="text-sm text-gray-500">เพิ่มคิวใน {clinicName || 'คลินิก'}</p>
             </div>
           </div>
         </button>

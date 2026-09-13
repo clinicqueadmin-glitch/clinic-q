@@ -59,7 +59,7 @@ function formatDate(dateStr: string): string {
 }
 
 export default function PatientManager() {
-  const { config } = useClinic()
+  const { config, clinicName } = useClinic()
   const { queue } = useQueue()
   const [searchQuery, setSearchQuery] = useState('')
   const [filterMode, setFilterMode] = useState<'all' | 'recall'>('all')
@@ -264,7 +264,7 @@ export default function PatientManager() {
             <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm" style={{ backgroundColor: config.color }}>{config.prefix}</div>
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900">ผู้รับบริการ</h1>
           </div>
-          <p className="text-gray-500">{config.name} — ข้อมูลจากคิววันนี้</p>
+          <p className="text-gray-500">{clinicName || 'คลินิก'} — ข้อมูลจากคิววันนี้</p>
         </div>
       </div>
 

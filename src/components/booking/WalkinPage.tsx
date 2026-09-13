@@ -12,6 +12,8 @@ import { QRCodeSVG } from 'qrcode.react'
 import { clinicConfig, type ClinicType } from '@/lib/queue-data'
 import { getDefaultBranchData, type ClinicBranchData, type Practitioner, type Room } from '@/lib/branch-data'
 import { useQueue } from '@/lib/queue-context'
+import { useAuth } from '@/lib/auth-context'
+import { useClinicDisplayName } from '@/lib/clinic-context'
 import { useDailyRooms } from '@/lib/use-daily-rooms'
 
 interface SelectedProc {
@@ -27,49 +29,29 @@ export default function WalkinPage() {
   const urlClinicId = searchParams.get('clinicId') as string | null
   const { queue, setQueue, addQueueItem } = useQueue()
   
-  // Detect clinic ID and type from URL params or localStorage
+  // The clinic is identified by an explicit ?clinicId= (carried by the clinic's QR and
+  // links) or by the signed-in session. A clinic *type* never identifies a clinic: several
+  // clinics share one type, so a type match could register into another clinic.
+  const { currentClinicId: sessionClinicId } = useAuth()
   const { clinicId, clinicType, clinicCfg } = useMemo(() => {
-    if (typeof window !== 'undefined') {
-      const clinics = JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
-      // Priority 1: URL ?clinicId=xxx (exact match)
-      if (urlClinicId) {
-        const found = clinics.find((c: any) => c.id === urlClinicId)
-        // Use URL ?clinic= param as fallback when localStorage lookup fails
-        const resolvedType = (found?.type || urlClinicType || 'dental') as ClinicType
-        return {
-          clinicId: urlClinicId,
-          clinicType: resolvedType,
-          clinicCfg: clinicConfig[resolvedType] || clinicConfig['dental'],
-        }
-      }
-      // Priority 2: URL ?clinic=dental (type match)
-      if (urlClinicType) {
-        const found = clinics.find((c: any) => c.type === urlClinicType)
-        return {
-          clinicId: found?.id || null,
-          clinicType: urlClinicType,
-          clinicCfg: clinicConfig[urlClinicType] || clinicConfig['dental'],
-        }
-      }
-      // Priority 3: first clinic from localStorage
-      if (clinics.length > 0) {
-        const userClinic = clinics[0]
-        return {
-          clinicId: userClinic.id,
-          clinicType: (userClinic.type || 'dental') as ClinicType,
-          clinicCfg: clinicConfig[(userClinic.type || 'dental') as ClinicType] || clinicConfig['dental'],
-        }
-      }
-    }
+    const clinics = typeof window !== 'undefined'
+      ? JSON.parse(localStorage.getItem('clinicq-clinics') || '[]')
+      : []
+    const id = urlClinicId || sessionClinicId || null
+    // type/cfg drive theming only, and are looked up by the resolved id
+    const cachedType = id ? clinics.find((c: any) => c.id === id)?.type : null
+    const resolvedType = (cachedType || urlClinicType || 'dental') as ClinicType
     return {
-      clinicId: null,
-      clinicType: 'dental' as ClinicType,
-      clinicCfg: clinicConfig['dental'],
+      clinicId: id,
+      clinicType: resolvedType,
+      clinicCfg: clinicConfig[resolvedType] || clinicConfig['dental'],
     }
-  }, [urlClinicType, urlClinicId])
+  }, [urlClinicType, urlClinicId, sessionClinicId])
   
-  // Load actual clinic name from settings
-  const clinicDisplayName = useMemo(() => {
+  // Clinic name for this patient-facing page: the clinic's own cached settings (instant),
+  // then its settings row / clinics row. Never clinicConfig[type].name — that is a seed
+  // clinic's name and would label this clinic with the wrong name.
+  const cachedClinicName = useMemo(() => {
     if (typeof window !== 'undefined' && clinicId) {
       const saved = localStorage.getItem(`clinic-q-settings-${clinicId}`)
       if (saved) {
@@ -78,8 +60,11 @@ export default function WalkinPage() {
           if (parsed.clinicName) return parsed.clinicName
         } catch {}
       }
-    }    return clinicCfg.name
-  }, [clinicId, clinicCfg])
+    }
+    return null
+  }, [clinicId])
+  const resolvedClinicName = useClinicDisplayName(clinicId)
+  const clinicDisplayName = cachedClinicName || resolvedClinicName || 'คลินิก'
  
   // Sync resolved clinic type to localStorage so QueueProvider can read it.
   // Without this, a fresh device scanning the QR code has empty localStorage

@@ -61,6 +61,8 @@ interface ClinicContextType {
    * Null means "not resolved" — callers must show a neutral placeholder.
    */
   clinicName: string | null
+  /** The clinic this provider resolved its data for. Null when no identity is known. */
+  clinicId: string | null
   /** Persist settings to Supabase (source of truth). Resolves true only when the DB write succeeded. */
   updateSettings: (settings: Partial<ClinicSettings>) => Promise<boolean>
 }
@@ -73,6 +75,7 @@ const ClinicContext = createContext<ClinicContextType>({
   isConfigured: false,
   settings: { operatingDays: ['mon', 'tue', 'wed', 'thu', 'fri'] },
   clinicName: null,
+  clinicId: null,
   updateSettings: async () => true,
 })
 
@@ -194,7 +197,7 @@ export function ClinicProvider({ children, clinicId }: { children: ReactNode; cl
   }
 
   return (
-    <ClinicContext.Provider value={{ currentClinic, setClinic, clearClinic, config, isConfigured: currentClinic !== null, settings, clinicName, updateSettings }}>
+    <ClinicContext.Provider value={{ currentClinic, setClinic, clearClinic, config, isConfigured: currentClinic !== null, settings, clinicName, clinicId: clinicId || null, updateSettings }}>
       {children}
     </ClinicContext.Provider>
   )
@@ -202,4 +205,39 @@ export function ClinicProvider({ children, clinicId }: { children: ReactNode; cl
 
 export function useClinic() {
   return useContext(ClinicContext)
+}
+
+/**
+ * Display name for a clinic, resolved from the clinic itself — never from its type.
+ *
+ * Use this on screens that know a clinic id that the provider may not hold: public
+ * screens (TV, kiosk, booking links) open with `?clinicId=` and have no session, so the
+ * provider's own clinicId can be null while the page still knows which clinic it is for.
+ *
+ * Order: the provider's name when it already resolved this exact clinic, then the
+ * clinic's own settings, then its `clinics` row. Returns null when the clinic cannot be
+ * resolved — callers must show a neutral placeholder, never a seeded name.
+ */
+export function useClinicDisplayName(explicitClinicId?: string | null): string | null {
+  const ctx = useContext(ClinicContext)
+  const targetId = explicitClinicId || ctx.clinicId || null
+  const ownedByProvider = !!targetId && targetId === ctx.clinicId
+  const [fetched, setFetched] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    // The provider already resolved this clinic (same id) — no second lookup.
+    if (!targetId || ownedByProvider) {
+      setFetched(null)
+      return
+    }
+    ;(async () => {
+      const general = await getClinicSetting<{ clinicName?: string }>(targetId, 'general')
+      const name = general?.clinicName?.trim() || (await getClinicName(targetId))
+      if (!cancelled) setFetched(name || null)
+    })()
+    return () => { cancelled = true }
+  }, [targetId, ownedByProvider])
+
+  return (ownedByProvider ? ctx.clinicName : null) || fetched
 }
