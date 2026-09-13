@@ -107,20 +107,26 @@ function getElapsedMinutes(timeStr: string | undefined): number | null {
 }
 
 export default function TodayOps() {
-  const { config, currentClinic, settings, clinicName } = useClinic()
+  const { config, currentClinic, settings, clinicName, clinicId } = useClinic()
   const { user, currentRole, currentClinicId } = useAuth()
+  // The clinic this dashboard is scoped to. The provider's clinicId is the effective
+  // identity (for a clinic user it is the session clinic; for a Platform Owner viewing
+  // a clinic it is that clinic), so the session value is only a fallback. Without this
+  // a viewing Platform Owner read the legacy global storage keys and the dashboard
+  // rendered with no rooms/settings for the clinic being viewed.
+  const effectiveClinicId = clinicId || currentClinicId
   // Clinic-specific storage keys
-  const roomKey = currentClinicId ? `clinic-rooms-${currentClinicId}` : 'clinic-rooms'
-  const dailyDateKey = currentClinicId ? `clinic-daily-rooms-date-${currentClinicId}` : 'clinic-daily-rooms-date'
-  const settingsKey = currentClinicId ? `clinic-q-settings-${currentClinicId}` : 'clinic-q-settings'
+  const roomKey = effectiveClinicId ? `clinic-rooms-${effectiveClinicId}` : 'clinic-rooms'
+  const dailyDateKey = effectiveClinicId ? `clinic-daily-rooms-date-${effectiveClinicId}` : 'clinic-daily-rooms-date'
+  const settingsKey = effectiveClinicId ? `clinic-q-settings-${effectiveClinicId}` : 'clinic-q-settings'
   const { practitioners } = usePractitioners()
   const [branchData, setBranchData] = useState(() => getDefaultBranchData(currentClinic || 'dental'))
   
   // Load branch data from clinic-specific storage, with fallbacks
   useEffect(() => {
-    if (typeof window !== 'undefined' && currentClinicId) {
+    if (typeof window !== 'undefined' && effectiveClinicId) {
       // Try clinic-specific storage first
-      const saved = localStorage.getItem(`clinic-branch-data-${currentClinicId}`)
+      const saved = localStorage.getItem(`clinic-branch-data-${effectiveClinicId}`)
       if (saved) {
         try {
           const parsed = JSON.parse(saved)
@@ -133,7 +139,7 @@ export default function TodayOps() {
 
     }
     setBranchData(getDefaultBranchData(currentClinic || 'dental'))
-  }, [currentClinicId, currentClinic])
+  }, [effectiveClinicId, currentClinic])
   
   // Setup guide for new clinics
   const [showSetupGuide, setShowSetupGuide] = useState(() => {
@@ -163,7 +169,7 @@ export default function TodayOps() {
   // Today's daily rooms (practitioner, branch, time for today).
   // Supabase-first: the local cache is painted instantly, then reconciled with
   // the daily_rooms row for (clinic, today ICT) which is the source of truth.
-  const { rooms: dailyRooms, reload: reloadDailyRooms, setRooms: setDailyRooms } = useDailyRooms<Room>(currentClinicId)
+  const { rooms: dailyRooms, reload: reloadDailyRooms, setRooms: setDailyRooms } = useDailyRooms<Room>(effectiveClinicId)
 
   // Reset daily rooms when clinic closes
   useEffect(() => {
@@ -222,7 +228,7 @@ export default function TodayOps() {
       checkMidnight()
     }, 60000) // Check every minute
     return () => clearInterval(interval)
-  }, [currentClinic, currentClinicId, dailyDateKey, setDailyRooms])
+  }, [currentClinic, effectiveClinicId, dailyDateKey, setDailyRooms])
   
   // Dashboard shows ONLY daily rooms that have been configured (with practitioner + branch)
   const allActiveRooms = useMemo(() => {
@@ -262,8 +268,8 @@ export default function TodayOps() {
     const practitioner = practitioners.find(p => p.id === room.practitionerId)
     if (practitioner) return practitioner.name
     // 3. Look up from clinic-specific users
-    if (typeof window !== 'undefined' && currentClinicId) {
-      const users = JSON.parse(localStorage.getItem(`clinicq-users-with-roles-${currentClinicId}`) || '[]')
+    if (typeof window !== 'undefined' && effectiveClinicId) {
+      const users = JSON.parse(localStorage.getItem(`clinicq-users-with-roles-${effectiveClinicId}`) || '[]')
       const user = users.find((u: any) => u.id === room.practitionerId)
       if (user) return user.name
     }
@@ -821,7 +827,7 @@ export default function TodayOps() {
         name: p.name,
         quantity: p.quantity,
         difficulty: p.difficulty,
-      })), currentClinicId || undefined).catch(() => {})
+      })), effectiveClinicId || undefined).catch(() => {})
     }
     playSound('completed')
     notifyQueueCompleted(completingItem.number, completingItem.patientName, completingItem.phone)
@@ -1796,7 +1802,7 @@ export default function TodayOps() {
       {/* Action Buttons — Candy Pills */}
       {!isProvider && (
       <div className="flex flex-wrap items-center gap-2">
-        <a href={`/walkin?staff=1&clinic=${currentClinic || 'dental'}&clinicId=${currentClinicId || ''}`} className="candy-btn candy-btn-primary shadow-lg">
+        <a href={`/walkin?staff=1&clinic=${currentClinic || 'dental'}&clinicId=${effectiveClinicId || ''}`} className="candy-btn candy-btn-primary shadow-lg">
           <Plus className="w-4 h-4" /> ลงคิวคนไข้ {clinicName ? `(${clinicName})` : ''}
         </a>
         {nextQueue && (
@@ -1816,7 +1822,7 @@ export default function TodayOps() {
           </button>
         )}
         {!isProvider && (
-          <a href={`/tv?clinicId=${currentClinicId || ''}`} target="_blank" className="candy-btn shadow-lg" style={{ backgroundColor: '#8B5CF6', color: 'white' }}>
+          <a href={`/tv?clinicId=${effectiveClinicId || ''}`} target="_blank" className="candy-btn shadow-lg" style={{ backgroundColor: '#8B5CF6', color: 'white' }}>
             <MonitorPlay className="w-4 h-4" /> จอ TV
           </a>
         )}

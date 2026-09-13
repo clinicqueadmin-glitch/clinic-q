@@ -22,8 +22,9 @@ import {
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useClinic } from '@/lib/clinic-context'
+import { readViewingClinicId } from '@/lib/clinic-data'
 import { useAuth } from '@/lib/auth-context'
-import { roleConfig, hasPermission, type Permission } from '@/lib/auth-types'
+import { roleConfig, hasPermission, type ClinicRole, type Permission } from '@/lib/auth-types'
 import SetupGuide from '@/components/guide/SetupGuide'
 
 interface MenuItem {
@@ -60,17 +61,28 @@ export default function Sidebar() {
   const accentColor = config?.color || '#F97316'
   const roleCfg = currentRole ? roleConfig[currentRole] : null
 
-  // Use platform menu for platform_owner, otherwise filter by permission
+  // Use platform menu for platform_owner — EXCEPT while the platform owner is
+  // viewing a clinic from the Platform Dashboard: there they must get that clinic's
+  // own menu, exactly like the clinic's owner, or the clinic's screens are
+  // unreachable and the app looks empty. Leaving viewing mode (Header → "กลับ
+  // Platform Dashboard") restores the platform menu.
   const isPlatformOwner = currentRole === 'platform_owner'
-  const visibleMenuItems = isPlatformOwner
+  const isViewingClinic = readViewingClinicId(isPlatformOwner) !== null
+  const showPlatformMenu = isPlatformOwner && !isViewingClinic
+  // A viewing platform owner sees what the clinic's owner sees (platform_owner is
+  // not in rolePermissions, so permission filtering needs the owner role).
+  const menuRole: ClinicRole | null = showPlatformMenu
+    ? null
+    : (isViewingClinic ? 'owner' : (currentRole as ClinicRole | null))
+  const visibleMenuItems = showPlatformMenu
     ? platformMenuItems
     : menuItems.filter(item => {
         // Providers cannot see patients list
-        if (currentRole === 'practitioner' && item.href === '/patients') return false
+        if (menuRole === 'practitioner' && item.href === '/patients') return false
         // Pricing page only for clinic owner
-        if (item.href === '/pricing' && currentRole !== 'owner') return false
-        if (!item.permission || !currentRole) return true
-        return hasPermission(currentRole, item.permission)
+        if (item.href === '/pricing' && menuRole !== 'owner') return false
+        if (!item.permission || !menuRole) return true
+        return hasPermission(menuRole, item.permission)
       })
 
   return (

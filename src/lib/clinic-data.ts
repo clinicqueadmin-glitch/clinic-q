@@ -289,6 +289,51 @@ export async function invitePractitioner(
   }
 }
 
+// ═══ Platform Owner viewing context ═══
+
+/** localStorage key holding the clinic a Platform Owner explicitly entered. */
+export const VIEWING_CLINIC_KEY = 'clinicq-viewing-clinic'
+
+export interface ViewingClinic {
+  clinicId: string
+  clinicName?: string
+  clinicType?: string
+  enteredAt?: string
+}
+
+/**
+ * The clinic a Platform Owner explicitly entered from the Platform Dashboard.
+ *
+ * This is an *explicit* context the user chose by pressing "เข้าใช้งาน" on
+ * `/platform` — it is not an identity derived from a clinic type, and it never
+ * implies a session/membership change. It is only meaningful for the
+ * `platform_owner` role: callers must gate on the role themselves (use
+ * {@link readViewingClinicId}) so a leftover key in a shared browser can never
+ * move a regular clinic user into another clinic.
+ */
+export function readViewingClinic(): ViewingClinic | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(VIEWING_CLINIC_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<ViewingClinic> | null
+    const clinicId = typeof parsed?.clinicId === 'string' ? parsed.clinicId.trim() : ''
+    if (!clinicId) return null
+    return { ...parsed, clinicId } as ViewingClinic
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The viewing clinic's id, but ONLY for a platform owner. Returns null for every
+ * other role, so clinic users keep using their own session clinic.
+ */
+export function readViewingClinicId(isPlatformOwner: boolean): string | null {
+  if (!isPlatformOwner) return null
+  return readViewingClinic()?.clinicId ?? null
+}
+
 // ═══ Subscribe to real-time clinic settings changes ═══
 export function subscribeClinicSettings(
   clinicId: string,

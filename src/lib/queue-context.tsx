@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { type ClinicType } from './queue-data'
 import { getDefaultBranchData } from './branch-data'
 import { useAuth } from './auth-context'
-import { getTodayICT } from './clinic-data'
+import { getTodayICT, readViewingClinicId } from './clinic-data'
 
 export type BookingMode = 'walkin' | 'remote' | 'appointment'
 
@@ -242,7 +242,7 @@ function isPatientRoute(pathname: string): boolean {
 }
 
 export function QueueProvider({ children }: { children: ReactNode }) {
-  const { currentClinicId, isLoading: authLoading } = useAuth()
+  const { currentClinicId, isLoading: authLoading, currentRole } = useAuth()
   const pathname = usePathname()
   const [clinicType, setClinicType] = useState<ClinicType | null>(null)
   const [urlClinicId, setUrlClinicId] = useState<string | null>(() => readUrlClinicId())
@@ -255,16 +255,22 @@ export function QueueProvider({ children }: { children: ReactNode }) {
   //   1. explicit clinicId from the URL/QR — on the patient surfaces this IS the
   //      identity (no session exists), so it wins there.
   //   2. the authenticated session's clinic.
-  //   3. neither → null, so every read/write stops instead of guessing (P0).
+  //   3. the clinic a Platform Owner explicitly entered (viewing mode). A platform
+  //      owner has no membership, so their session clinic is null; without this they
+  //      would see a clinic's screens with every queue figure at 0.
+  //   4. neither → null, so every read/write stops instead of guessing (P0).
   // On the signed-in app surfaces the session wins even if a ?clinicId= is present,
   // so a crafted link cannot move a logged-in user to another clinic. While the
   // session is still restoring we wait (null) instead of briefly trusting the URL,
   // which would otherwise let the URL param win for the first moments of a load.
+  // The viewing clinic is gated on the platform-owner role, so a leftover viewing
+  // context in a shared browser can never move a clinic user into another clinic.
   const sessionClinicId = resolveClinicId(currentClinicId)
   const explicitClinicId = resolveClinicId(urlClinicId)
+  const viewingClinicId = resolveClinicId(readViewingClinicId(currentRole === 'platform_owner'))
   const clinicId = isPatientRoute(pathname || '')
-    ? (explicitClinicId ?? sessionClinicId)
-    : (authLoading ? null : (sessionClinicId ?? explicitClinicId))
+    ? (explicitClinicId ?? sessionClinicId ?? viewingClinicId)
+    : (authLoading ? null : (sessionClinicId ?? viewingClinicId ?? explicitClinicId))
 
   // Read clinic type from localStorage
   useEffect(() => {
