@@ -20,8 +20,13 @@ const defaultRooms: Room[] = [
 ]
 
 export default function RoomSettings() {
-  const { config } = useClinic()
-  const { currentClinicId } = useAuth()
+  const { config, clinicId: providerClinicId } = useClinic()
+  const { currentClinicId: sessionClinicId } = useAuth()
+  // Clinic identity: the provider's clinic is the effective one (it already accounts
+  // for a Platform Owner viewing a clinic); the session clinic is only a fallback.
+  // Every read/write below — room config, its cache and the image upload — belongs
+  // to that clinic.
+  const currentClinicId = providerClinicId || sessionClinicId
 
   const storageKey = currentClinicId ? `clinic-rooms-${currentClinicId}` : 'clinic-rooms'
 

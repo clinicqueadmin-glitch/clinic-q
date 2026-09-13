@@ -46,8 +46,13 @@ interface RoleAssignmentForm {
 const isInternalEmail = (email: string) => email.toLowerCase().endsWith('@internal.clinicq.local')
 
 export default function UserManagement({ canManageUsers = false, currentRole }: { canManageUsers?: boolean; currentRole?: string | null }) {
-  const { currentClinicId } = useAuth()
-  const { currentClinic } = useClinic()
+  const { currentClinicId: sessionClinicId } = useAuth()
+  const { currentClinic, clinicId: providerClinicId } = useClinic()
+  // Clinic identity: the provider's clinic is the effective one (it already accounts
+  // for a Platform Owner viewing a clinic); the session clinic is only a fallback.
+  // The member list, its mutations and the password resets all target this clinic —
+  // with no identity the load stops instead of showing a clinic the viewer is not in.
+  const currentClinicId = providerClinicId || sessionClinicId
   const { practitioners, addPractitioner, deletePractitioner } = usePractitioners()
   const branchData = getDefaultBranchData(currentClinic || 'dental')
 

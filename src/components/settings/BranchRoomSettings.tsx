@@ -19,8 +19,12 @@ import { isSupabaseReady, getSupabase } from '@/lib/supabase'
 import { getClinicSetting } from '@/lib/clinic-data'
 
 export default function BranchRoomSettings() {
-  const { config, currentClinic } = useClinic()
-  const { currentClinicId } = useAuth()
+  const { config, currentClinic, clinicId: providerClinicId } = useClinic()
+  const { currentClinicId: sessionClinicId } = useAuth()
+  // Clinic identity: the provider's clinic is the effective one (it already accounts
+  // for a Platform Owner viewing a clinic); the session clinic is only a fallback, so
+  // this screen never edits another clinic's branches/procedures.
+  const currentClinicId = providerClinicId || sessionClinicId
   
   // Use clinic-specific storage key
   const storageKey = currentClinicId ? `clinic-branch-data-${currentClinicId}` : 'clinic-branch-data'

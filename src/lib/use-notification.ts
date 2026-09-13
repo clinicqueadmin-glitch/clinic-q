@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { sendQueueCalledNotification, sendQueueCompletedNotification, sendQueueCancelledNotification, sendQueueServingNotification } from '@/lib/line-notification'
+import { notifyQueueViaLine } from '@/lib/line-notification'
 
 interface NotificationState {
   permission: NotificationPermission
@@ -239,7 +239,9 @@ export function useNotification() {
   }, [])
 
   // Queue notification — called when status changes to 'serving'
-  const notifyQueueCalled = useCallback(async (queueNumber: string, roomNumber: number, patientName: string, firstName?: string, phone?: string, practitionerName?: string) => {
+  // `clinicId`/`queueId` identify the queue for the LINE message; without a phone
+  // (the patient's own screen) no LINE send is attempted, as before.
+  const notifyQueueCalled = useCallback(async (queueNumber: string, roomNumber: number, patientName: string, firstName?: string, phone?: string, practitionerName?: string, clinicId?: string | null, queueId?: string | null) => {
     const displayName = firstName || patientName
     // Play melody sound first, then speak announcement
     playSound('called')
@@ -257,10 +259,20 @@ export function useNotification() {
       vibrate: [300, 100, 300, 100, 300],
     })
 
-    // Send LINE notification if phone is provided
+    // Send LINE notification if phone is provided. The server decides whether the
+    // clinic is enabled and which events send; the token stays server-side.
     if (phone) {
       try {
-        await sendQueueCalledNotification(phone, queueNumber, displayName, roomNumber, practitionerName)
+        await notifyQueueViaLine({
+          event: 'called',
+          clinicId,
+          queueId,
+          phone,
+          queueNumber,
+          patientName: displayName,
+          roomNumber,
+          practitionerName,
+        })
       } catch (error) {
         console.error('Failed to send LINE notification:', error)
       }
@@ -270,7 +282,7 @@ export function useNotification() {
   }, [sendNotification, playSound, speakAnnouncement])
 
   // Queue completed notification
-  const notifyQueueCompleted = useCallback(async (queueNumber: string, patientName?: string, phone?: string) => {
+  const notifyQueueCompleted = useCallback(async (queueNumber: string, patientName?: string, phone?: string, clinicId?: string | null, queueId?: string | null) => {
     // Send browser notification
     const browserResult = await sendNotification({
       title: `✅ คิว ${queueNumber} เสร็จสิ้น`,
@@ -282,7 +294,14 @@ export function useNotification() {
     // Send LINE notification if phone and patientName are provided
     if (phone && patientName) {
       try {
-        await sendQueueCompletedNotification(phone, queueNumber, patientName)
+        await notifyQueueViaLine({
+          event: 'completed',
+          clinicId,
+          queueId,
+          phone,
+          queueNumber,
+          patientName,
+        })
       } catch (error) {
         console.error('Failed to send LINE notification:', error)
       }
@@ -292,7 +311,7 @@ export function useNotification() {
   }, [sendNotification])
 
   // Queue cancelled notification
-  const notifyQueueCancelled = useCallback(async (queueNumber: string, patientName?: string, phone?: string, reason?: string) => {
+  const notifyQueueCancelled = useCallback(async (queueNumber: string, patientName?: string, phone?: string, reason?: string, clinicId?: string | null, queueId?: string | null) => {
     // Send browser notification
     const browserResult = await sendNotification({
       title: `❌ คิว ${queueNumber} ถูกยกเลิก`,
@@ -304,7 +323,14 @@ export function useNotification() {
     // Send LINE notification if phone and patientName are provided
     if (phone && patientName) {
       try {
-        await sendQueueCancelledNotification(phone, queueNumber, patientName)
+        await notifyQueueViaLine({
+          event: 'cancelled',
+          clinicId,
+          queueId,
+          phone,
+          queueNumber,
+          patientName,
+        })
       } catch (error) {
         console.error('Failed to send LINE notification:', error)
       }

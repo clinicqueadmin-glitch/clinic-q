@@ -22,8 +22,11 @@ interface AddRoomModalProps {
 const normPractitionerName = (n: string) => (n || '').trim().toLowerCase().replace(/\s+/g, ' ')
 
 export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProps) {
-  const { currentClinic, settings } = useClinic()
-  const { currentClinicId } = useAuth()
+  const { currentClinic, settings, clinicId: providerClinicId } = useClinic()
+  const { currentClinicId: sessionClinicId } = useAuth()
+  // Clinic identity: the provider's clinic is the effective one (it already accounts
+  // for a Platform Owner viewing a clinic); the session clinic is only a fallback.
+  const currentClinicId = providerClinicId || sessionClinicId
   const { practitioners } = usePractitioners()
   // Load branch data from clinic-specific storage
   const branchData: ClinicBranchData = useMemo(() => {

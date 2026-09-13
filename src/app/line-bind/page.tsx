@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Phone, MessageCircle, Check, AlertCircle, User, ArrowRight } from 'lucide-react'
-import { saveLineUserProfile, type LineUserProfile } from '@/lib/line-notification'
+import { bindLineUser } from '@/lib/line-notification'
 import { getClinicName, getClinicSetting } from '@/lib/clinic-data'
 
 function LineBindForm() {
@@ -21,13 +21,15 @@ function LineBindForm() {
     // Clinic identity from the URL. The `clinic` param is only a clinic *type*: it
     // is not an identity (several clinics can share a type) so it is never resolved
     // into a clinic, and never turned into a name.
-    const clinic = searchParams.get('clinic') || 'dental'
-    setClinicId(clinic)
+    //
+    // The binding is stored per clinic, so an explicit `clinicId` is required —
+    // without one there is no clinic to bind the patient to.
+    const explicitClinicId = searchParams.get('clinicId') || ''
+    setClinicId(explicitClinicId)
 
     // Display name only for an explicitly identified clinic, taken from that
     // clinic's own settings, then its clinics row. With no id we show nothing
     // rather than another clinic's cached name.
-    const explicitClinicId = searchParams.get('clinicId') || ''
     if (!explicitClinicId) {
       setClinicName('')
       return
@@ -63,21 +65,29 @@ function LineBindForm() {
       return
     }
 
-    setStatus('loading')
-    
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1500))
-    
-    // Save LINE user profile
-    const profile: LineUserProfile = {
-      userId: lineUserId,
-      displayName: name || `LINE User ${lineUserId.slice(-6)}`,
-      phoneNumber: phoneNumber,
-      clinicId: clinicId,
-      createdAt: new Date(),
+    if (!clinicId) {
+      setErrorMessage('ลิงก์นี้ไม่มีรหัสคลินิก กรุณาสแกน QR Code จากคลินิกอีกครั้ง')
+      setStatus('error')
+      return
     }
-    
-    saveLineUserProfile(profile)
+
+    setStatus('loading')
+
+    // Persist the binding in the database (the clinic's LINE notifications read
+    // it from there). The browser keeps a local cache only.
+    const result = await bindLineUser({
+      clinicId,
+      lineUserId,
+      phoneNumber,
+      displayName: name || undefined,
+    })
+
+    if (!result.ok) {
+      setErrorMessage(result.error || 'เชื่อมต่อไม่สำเร็จ กรุณาลองใหม่อีกครั้ง')
+      setStatus('error')
+      return
+    }
+
     setStatus('success')
   }
 

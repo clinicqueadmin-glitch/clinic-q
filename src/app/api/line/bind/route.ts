@@ -1,181 +1,142 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server'
+import { getAdminClient } from '@/lib/supabase-admin'
+import { isPlatformOwnerEmail } from '@/lib/platform-owners'
+
+export const dynamic = 'force-dynamic'
 
 /**
- * LINE Bind API Endpoint
- * 
  * POST /api/line/bind
- * 
- * ใช้เก็บ LINE User ID กับเบอร์โทรศัพท์ของคนไข้
+ *
+ * Binds a patient's phone number to their LINE userId so the clinic can notify
+ * them. The patient has no session, so this route is the only writer of
+ * `line_users` (with the service-role key) and the table itself has no insert
+ * policy — the browser can never write it directly.
+ *
+ * The clinic must exist: `clinicId` is the explicit clinic identity from the
+ * QR/link (`?clinicId=`), never a value derived from a clinic type.
  */
 
-interface BindRequest {
-  userId: string;
-  phoneNumber: string;
-  clinicId: string;
-  displayName?: string;
+const LINE_USER_ID = /^U[0-9a-fA-F]{32}$/
+
+function normalizePhone(phone: string): string {
+  return (phone || '').replace(/\D/g, '')
 }
 
-interface LineUserProfile {
-  userId: string;
-  phoneNumber: string;
-  clinicId: string;
-  displayName: string;
-  createdAt: string;
-}
-
-// In-memory storage (in production, use database)
-const lineUsers: Map<string, LineUserProfile> = new Map();
-
-/**
- * POST - เก็บ LINE User ID กับเบอร์โทรศัพท์
- */
 export async function POST(request: NextRequest) {
   try {
-    const body: BindRequest = await request.json();
-    
-    // Validate required fields
-    if (!body.userId || !body.phoneNumber) {
-      return NextResponse.json(
-        { error: 'กรุณากรอกข้อมูลให้ครบถ้วน (userId, phoneNumber)' },
-        { status: 400 }
-      );
+    let body: any = {}
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ ok: false, error: 'invalid-body' }, { status: 400 })
     }
 
-    // Validate phone number format
-    const phoneRegex = /^[0-9-]{10,12}$/;
-    if (!phoneRegex.test(body.phoneNumber.replace(/-/g, ''))) {
-      return NextResponse.json(
-        { error: 'รูปแบบเบอร์โทรศัพท์ไม่ถูกต้อง' },
-        { status: 400 }
-      );
+    const clinicId = typeof body?.clinicId === 'string' ? body.clinicId.trim() : ''
+    const lineUserId = typeof body?.lineUserId === 'string' ? body.lineUserId.trim() : ''
+    const phone = normalizePhone(body?.phoneNumber || body?.phone || '')
+    const displayName = typeof body?.displayName === 'string' ? body.displayName.trim() : ''
+
+    if (!clinicId) return NextResponse.json({ ok: false, error: 'clinicId is required' }, { status: 400 })
+    if (!LINE_USER_ID.test(lineUserId)) {
+      return NextResponse.json({ ok: false, error: 'รูปแบบ LINE User ID ไม่ถูกต้อง' }, { status: 400 })
+    }
+    if (phone.length < 9 || phone.length > 10) {
+      return NextResponse.json({ ok: false, error: 'รูปแบบเบอร์โทรศัพท์ไม่ถูกต้อง' }, { status: 400 })
     }
 
-    // Validate LINE User ID format
-    if (!body.userId.startsWith('U') || body.userId.length < 20) {
-      return NextResponse.json(
-        { error: 'LINE User ID ไม่ถูกต้อง' },
-        { status: 400 }
-      );
+    // Un-typed admin client (no generated DB types) — values are validated above.
+    const admin = getAdminClient() as any
+    if (!admin) {
+      return NextResponse.json({ ok: false, error: 'server-not-configured' }, { status: 500 })
     }
 
-    // Create or update user profile
-    const profile: LineUserProfile = {
-      userId: body.userId,
-      phoneNumber: body.phoneNumber,
-      clinicId: body.clinicId || 'default',
-      displayName: body.displayName || `LINE User ${body.userId.slice(-6)}`,
-      createdAt: new Date().toISOString(),
-    };
+    const { data: clinic } = await admin
+      .from('clinics')
+      .select('id')
+      .eq('id', clinicId)
+      .maybeSingle()
+    if (!clinic) {
+      return NextResponse.json({ ok: false, error: 'clinic-not-found' }, { status: 404 })
+    }
 
-    // Store in memory (in production, save to database)
-    lineUsers.set(body.userId, profile);
+    const { error } = await admin
+      .from('line_users')
+      .upsert(
+        {
+          clinic_id: clinicId,
+          line_user_id: lineUserId,
+          phone,
+          display_name: displayName || null,
+          is_active: true,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'clinic_id,line_user_id' }
+      )
 
-    // Also store by phone number for lookup
-    const phoneKey = `phone:${body.phoneNumber.replace(/-/g, '')}`;
-    lineUsers.set(phoneKey, profile);
+    if (error) {
+      console.error('[line/bind] upsert failed:', error.message)
+      return NextResponse.json({ ok: false, error: 'บันทึกการเชื่อมต่อไม่สำเร็จ' }, { status: 500 })
+    }
 
-    console.log('LINE User bound:', profile);
-
-    return NextResponse.json({
-      success: true,
-      message: 'เชื่อมต่อบัญชี LINE สำเร็จ',
-      profile: {
-        userId: body.userId,
-        phoneNumber: body.phoneNumber,
-        displayName: profile.displayName,
-      },
-    });
-  } catch (error) {
-    console.error('LINE bind error:', error);
-    return NextResponse.json(
-      { error: 'เกิดข้อผิดพลาดในการเชื่อมต่อ' },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: true })
+  } catch (error: any) {
+    console.error('[line/bind] error:', error)
+    return NextResponse.json({ ok: false, error: 'internal-error' }, { status: 500 })
   }
 }
 
 /**
- * GET - ดึงข้อมูล LINE User จากเบอร์โทรศัพท์
+ * GET /api/line/bind?clinicId=… — the bindings of one clinic.
+ *
+ * Restricted to that clinic's members (and the platform owner): an open lookup
+ * would let anyone test whether a phone number is bound.
  */
 export async function GET(request: NextRequest) {
-  const phoneNumber = request.nextUrl.searchParams.get('phone');
-  const userId = request.nextUrl.searchParams.get('userId');
+  try {
+    const clinicId = (request.nextUrl.searchParams.get('clinicId') || '').trim()
+    if (!clinicId) return NextResponse.json({ ok: false, error: 'clinicId is required' }, { status: 400 })
 
-  if (phoneNumber) {
-    const phoneKey = `phone:${phoneNumber.replace(/-/g, '')}`;
-    const profile = lineUsers.get(phoneKey);
-    
-    if (profile) {
-      return NextResponse.json({
-        success: true,
-        profile,
-      });
+    const admin = getAdminClient() as any
+    if (!admin) return NextResponse.json({ ok: false, error: 'server-not-configured' }, { status: 500 })
+
+    const authHeader = request.headers.get('authorization') || ''
+    const token = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : ''
+    if (!token) return NextResponse.json({ ok: false, error: 'missing-token' }, { status: 401 })
+
+    const { data: userData, error: userError } = await admin.auth.getUser(token)
+    const caller = userData?.user
+    if (userError || !caller) {
+      return NextResponse.json({ ok: false, error: 'invalid-token' }, { status: 401 })
     }
-    
-    return NextResponse.json(
-      { success: false, message: 'ไม่พบข้อมูล LINE User' },
-      { status: 404 }
-    );
-  }
 
-  if (userId) {
-    const profile = lineUsers.get(userId);
-    
-    if (profile) {
-      return NextResponse.json({
-        success: true,
-        profile,
-      });
+    if (!isPlatformOwnerEmail(caller.email)) {
+      const { data: membership } = await admin
+        .from('clinic_memberships')
+        .select('id')
+        .eq('user_id', caller.id)
+        .eq('clinic_id', clinicId)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle()
+      if (!membership) {
+        return NextResponse.json({ ok: false, error: 'forbidden' }, { status: 403 })
+      }
     }
-    
-    return NextResponse.json(
-      { success: false, message: 'ไม่พบข้อมูล LINE User' },
-      { status: 404 }
-    );
+
+    const { data, error } = await admin
+      .from('line_users')
+      .select('id, line_user_id, phone, display_name, is_active, created_at, updated_at')
+      .eq('clinic_id', clinicId)
+      .order('created_at', { ascending: false })
+      .limit(500)
+
+    if (error) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ ok: true, users: data || [], total: (data || []).length })
+  } catch (error: any) {
+    console.error('[line/bind] GET error:', error)
+    return NextResponse.json({ ok: false, error: 'internal-error' }, { status: 500 })
   }
-
-  // Return all users (for admin)
-  const allUsers = Array.from(lineUsers.values()).filter(
-    (value, index, self) => index === self.findIndex((t) => t.userId === value.userId)
-  );
-
-  return NextResponse.json({
-    success: true,
-    users: allUsers,
-    total: allUsers.length,
-  });
-}
-
-/**
- * DELETE - ลบ LINE User
- */
-export async function DELETE(request: NextRequest) {
-  const userId = request.nextUrl.searchParams.get('userId');
-  
-  if (!userId) {
-    return NextResponse.json(
-      { error: 'กรุณาระบุ userId' },
-      { status: 400 }
-    );
-  }
-
-  const profile = lineUsers.get(userId);
-  if (!profile) {
-    return NextResponse.json(
-      { success: false, message: 'ไม่พบข้อมูล LINE User' },
-      { status: 404 }
-    );
-  }
-
-  // Delete from both maps
-  lineUsers.delete(userId);
-  const phoneKey = `phone:${profile.phoneNumber.replace(/-/g, '')}`;
-  lineUsers.delete(phoneKey);
-
-  console.log('LINE User deleted:', userId);
-
-  return NextResponse.json({
-    success: true,
-    message: 'ลบ LINE User สำเร็จ',
-  });
 }

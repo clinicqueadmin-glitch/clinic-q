@@ -10,7 +10,7 @@ import {
 import { clsx } from 'clsx'
 import { useClinic } from '@/lib/clinic-context'
 import { useQueue, type QueueItem, type BookingMode } from '@/lib/queue-context'
-import { sendQueueCalledNotification, sendQueueCompletedNotification } from '@/lib/line-notification'
+import { notifyQueueViaLine } from '@/lib/line-notification'
 import Toast from '@/components/ui/Toast'
 
 type StatusFilter = 'all' | 'waiting' | 'serving' | 'completed'
@@ -22,7 +22,7 @@ const bookingModeConfig: Record<BookingMode, { label: string; icon: React.Compon
 }
 
 export default function QueueManager() {
-  const { config, clinicName } = useClinic()
+  const { config, clinicName, clinicId } = useClinic()
   const { queue, setQueue } = useQueue()
 
   const [searchQuery, setSearchQuery] = useState('')
@@ -79,16 +79,19 @@ export default function QueueManager() {
     setQueue(prev => prev.map(q => q.id === id ? { ...q, status: 'serving' as const, servingAt: Date.now(), firstName } : q))
     showToastMsg(`คิวที่ ${item.number} คุณ${firstName} เชิญเข้าห้อง ${item.assignedRoom}`, 'success')
     
-    // Send LINE notification
+    // Send LINE notification — the server enforces the clinic's LINE settings.
     if (item.phone) {
       try {
-        await sendQueueCalledNotification(
-          item.phone,
-          item.number,
-          firstName,
-          item.assignedRoom,
-          item.assignedDoctor
-        )
+        await notifyQueueViaLine({
+          event: 'called',
+          clinicId,
+          queueId: item.id,
+          phone: item.phone,
+          queueNumber: item.number,
+          patientName: firstName,
+          roomNumber: item.assignedRoom,
+          practitionerName: item.assignedDoctor,
+        })
       } catch (error) {
         console.error('Failed to send LINE notification:', error)
       }
@@ -100,14 +103,17 @@ export default function QueueManager() {
     setQueue(prev => prev.map(q => q.id === id ? { ...q, status: 'completed' as const } : q))
     showToastMsg('เสร็จสิ้น', 'success')
     
-    // Send LINE notification
+    // Send LINE notification — the server enforces the clinic's LINE settings.
     if (item?.phone) {
       try {
-        await sendQueueCompletedNotification(
-          item.phone,
-          item.number,
-          item.patientName
-        )
+        await notifyQueueViaLine({
+          event: 'completed',
+          clinicId,
+          queueId: item.id,
+          phone: item.phone,
+          queueNumber: item.number,
+          patientName: item.patientName,
+        })
       } catch (error) {
         console.error('Failed to send LINE notification:', error)
       }

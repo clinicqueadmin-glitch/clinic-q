@@ -19,6 +19,7 @@ import PhoneInput from '@/components/ui/PhoneInput'
 import BranchRoomSettings from './BranchRoomSettings'
 import RoomSettings from './RoomSettings'
 import LineUserManager from '@/components/line/LineUserManager'
+import { normalizeLineSettings } from '@/lib/line-settings'
 import { usePractitioners } from '@/lib/practitioner-context'
 
 
@@ -31,7 +32,10 @@ const tabs: { id: SettingsTab; name: string; icon: React.ComponentType<{ classNa
   { id: 'users', name: 'จัดการผู้ใช้ในคลินิก', icon: Users, description: 'แพทย์ เจ้าหน้าที่ และสิทธิ์การใช้งาน' },
   { id: 'qr', name: 'QR Code & Link', icon: QrCode, description: 'ลิงก์และ QR สำหรับผู้รับบริการ' },
   { id: 'tv', name: 'ตั้งค่าจอแสดงคิว', icon: Monitor, description: 'ตั้งค่าจอ TV และข้อความโฆษณา' },
-  { id: 'line', name: 'LINE OA', icon: MessageCircle, description: 'ตั้งค่าการแจ้งเตือนผ่าน LINE' },
+  // LINE OA is deliberately NOT a clinic tab: the Platform Owner owns LINE
+  // Notification settings for every clinic, and a clinic only reads the status
+  // (shown on the clinic tab below). The tab body is kept for reference but is
+  // unreachable — nothing in this UI can write line_settings any more.
 ]
 
 /* ─────────────── TV Ad Types ─────────────── */
@@ -45,8 +49,13 @@ interface TVAd {
 }
 
 export default function SettingsManager() {
-  const { config, currentClinic } = useClinic()
-  const { currentRole, currentClinicId } = useAuth()
+  const { config, currentClinic, clinicId: providerClinicId } = useClinic()
+  const { currentRole, currentClinicId: sessionClinicId } = useAuth()
+  // Clinic identity for this whole screen: the provider's clinic is the effective one
+  // (it already accounts for a Platform Owner viewing a clinic); the session clinic is
+  // only a fallback. Settings, caches, QR/walk-in links and uploads all target this
+  // clinic, so a viewing Platform Owner configures the clinic being viewed.
+  const currentClinicId = providerClinicId || sessionClinicId
   const isOwner = currentRole === 'owner' || currentRole === 'platform_owner'
   usePractitioners()
   const canManageSubscription = isOwner || currentRole === 'manager'
@@ -306,7 +315,8 @@ export default function SettingsManager() {
   // truth, localStorage is only a cache. Without this a fresh device showed
   // empty credentials even though line_settings was saved in the DB.
   useEffect(() => {
-    if (!currentClinicId) return
+    const statusClinicId = currentClinicId
+    if (!statusClinicId) return
     const loadLineSettings = async () => {
       if (!isSupabaseReady()) return
       const sb = getSupabase()
@@ -315,22 +325,29 @@ export default function SettingsManager() {
         const { data: row } = await sb
           .from('clinic_settings')
           .select('setting_value')
-          .eq('clinic_id', currentClinicId)
+          .eq('clinic_id', statusClinicId)
           .eq('setting_key', 'line_settings')
           .maybeSingle()
         const raw = row?.setting_value
+        const normalized = normalizeLineSettings(raw)
+        setLineStatus({ enabled: normalized.enabled, queuesAhead: normalized.notifications.queuesAhead })
         if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
           const s = raw as { channelSecret?: string; channelToken?: string; enabled?: boolean }
           if (typeof s.channelSecret === 'string') setLineChannelSecret(s.channelSecret)
           if (typeof s.channelToken === 'string') setLineChannelToken(s.channelToken)
           if (typeof s.enabled === 'boolean') setLineEnabled(s.enabled)
-          try { localStorage.setItem(lineSettingsKey, JSON.stringify(raw)) } catch {}
+          // Cache only for the session's own clinic — never under the shared legacy
+          // key, which would leak one clinic's row into another clinic's screen.
+          if (currentClinicId) { try { localStorage.setItem(lineSettingsKey, JSON.stringify(raw)) } catch {} }
         }
       } catch {}
     }
     void loadLineSettings()
   }, [currentClinicId, lineSettingsKey])
 
+  // Read-only LINE status for the clinic. The values themselves are managed by
+  // the Platform Owner in the platform console; the clinic can only see them.
+  const [lineStatus, setLineStatus] = useState<{ enabled: boolean; queuesAhead: number } | null>(null)
   const [testLineStatus, setTestLineStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [copiedWebhook, setCopiedWebhook] = useState(false)
 
@@ -979,6 +996,32 @@ export default function SettingsManager() {
                     <textarea rows={2} value={clinicAddress} onChange={(e) => setClinicAddress(e.target.value)} className="input-field" />
                   </div>
 
+                </div>
+
+                {/* LINE Notification — read-only. เจ้าของระบบเป็นผู้ตั้งค่าให้แต่ละคลินิก */}
+                <div className="p-4 rounded-2xl border border-green-100 bg-green-50/50">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center">
+                      <MessageCircle className="w-5 h-5 text-green-600" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium text-gray-900">การแจ้งเตือนผ่าน LINE</p>
+                      <p className="text-xs text-gray-500">
+                        จัดการโดยเจ้าของระบบ (Clinic-Q) — คลินิกไม่สามารถแก้ไขได้เอง
+                      </p>
+                    </div>
+                    <span className={clsx(
+                      'px-3 py-1.5 rounded-xl text-xs font-bold',
+                      lineStatus?.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                    )}>
+                      {lineStatus === null ? '—' : lineStatus.enabled ? '🟢 เปิดใช้งาน' : '⚪ ปิดใช้งาน'}
+                    </span>
+                  </div>
+                  {lineStatus?.enabled && lineStatus.queuesAhead > 0 && (
+                    <p className="mt-3 text-xs text-green-700">
+                      🔔 แจ้งเตือนล่วงหน้าเมื่อเหลือคิวก่อนหน้า {lineStatus.queuesAhead} คิว
+                    </p>
+                  )}
                 </div>
               </div>
             )}              {/* ═══════ TAB: ผู้ใช้งานในคลินิก ═══════ */}

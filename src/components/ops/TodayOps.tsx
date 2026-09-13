@@ -641,7 +641,7 @@ export default function TodayOps() {
     saveQueueItem(updated)
     playSound('called')
     const firstName = item.firstName || item.patientName.split(' ')[0] || item.patientName
-    notifyQueueCalled(item.number, roomId, item.patientName, firstName, item.phone, practitionerName)
+    notifyQueueCalled(item.number, roomId, item.patientName, firstName, item.phone, practitionerName, effectiveClinicId, item.id)
     showToastMsg(`เรียก ${item.number} → ห้อง ${roomId} (${practitionerName})`, 'success')
     setShowRoomConfirm(false)
     setRoomConfirmData(null)
@@ -830,7 +830,7 @@ export default function TodayOps() {
       })), effectiveClinicId || undefined).catch(() => {})
     }
     playSound('completed')
-    notifyQueueCompleted(completingItem.number, completingItem.patientName, completingItem.phone)
+    notifyQueueCompleted(completingItem.number, completingItem.patientName, completingItem.phone, effectiveClinicId, completingItem.id)
     setShowComplete(false)
     setCompletingItem(null)
     showToastMsg(`เสร็จสิ้น ${completingItem.number} — ${completedProcs.length} หัตถการ — เวลา ${totalDur} นาที`, 'success')

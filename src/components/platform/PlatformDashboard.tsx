@@ -13,6 +13,7 @@ import {
 } from '@/lib/platform-data'
 import { createClient } from '@/utils/supabase/client'
 import { getTodayICT } from '@/lib/clinic-data'
+import PlatformLineSettings from './PlatformLineSettings'
 
 interface ClinicWithStats extends PlatformClinic {
   totalQueuesToday: number
@@ -709,6 +710,9 @@ export default function PlatformDashboard() {
             </div>
           )}
         </div>
+
+        {/* ═══ Section 5: LINE Notification (Platform Owner only) ═══ */}
+        <PlatformLineSettings />
       </div>
 
       {/* ═══ Delete Clinic Confirmation Dialog ═══ */}

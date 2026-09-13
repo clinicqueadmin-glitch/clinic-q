@@ -1,359 +1,199 @@
 /**
- * LINE Notification Service
- * สำหรับส่งข้อความแจ้งเตือนคิวคนไข้ผ่าน LINE Official Account
+ * LINE notification client helpers.
+ *
+ * LINE *sending* is done server-side (`/api/line/notify`) so the clinic's
+ * channel access token never has to live in a browser and the Platform Owner's
+ * enabled/disabled setting is actually enforced. This module only:
+ *
+ *   • binds a patient's phone to their LINE userId (persisted in the DB by
+ *     `/api/line/bind`, mirrored into localStorage as a local cache), and
+ *   • asks the server to send a queue message.
  */
 
-// LINE API Configuration
-interface LineConfig {
-  channelAccessToken: string;
-  channelSecret: string;
-}
+import { getSupabase } from './supabase'
+import type { LineNotifyEvent } from './line-settings'
 
-// LINE User Profile (เก็บจาก Webhook)
+// LINE User Profile (kept in the browser as a cache only — Supabase is the
+// source of truth via the line_users table)
 export interface LineUserProfile {
-  userId: string;
-  displayName: string;
-  pictureUrl?: string;
-  statusMessage?: string;
-  phoneNumber?: string; // เบอร์โทรที่เชื่อมกับ LINE
-  clinicId: string;
-  createdAt: Date;
+  userId: string
+  displayName: string
+  pictureUrl?: string
+  statusMessage?: string
+  phoneNumber?: string // เบอร์โทรที่เชื่อมกับ LINE
+  clinicId: string
+  createdAt: Date
 }
 
-// Message Template for Queue Notification
-interface QueueNotificationMessage {
-  queueNumber: string;
-  patientName: string;
-  roomNumber?: number;
-  practitionerName?: string;
-  estimatedWaitMinutes?: number;
-  status: 'called' | 'serving' | 'completed' | 'cancelled';
-}
-
-// ข้อความแจ้งเตือนตามสถานะ
-const MESSAGE_TEMPLATES = {
-  called: (data: QueueNotificationMessage) => ({
-    type: 'flex' as const,
-    altText: `🔔 แจ้งเตือนคิว ${data.queueNumber}`,
-    contents: {
-      type: 'bubble',
-      size: 'kilo',
-      header: {
-        type: 'box',
-        layout: 'vertical',
-        contents: [{ type: 'text', text: '🔔 แจ้งเตือนคิว', weight: 'bold', size: 'lg' }],
-        backgroundColor: '#06c755',
-      },
-      body: {
-        type: 'box',
-        layout: 'vertical',
-        contents: [
-          { type: 'text', text: `สวัสดีค่ะ คุณ${data.patientName}`, size: 'md', wrap: true },
-          { type: 'text', text: 'ถึงคิวของคุณแล้วค่ะ!', size: 'md', weight: 'bold', margin: 'md', color: '#06C755' },
-          {
-            type: 'box',
-            layout: 'vertical',
-            margin: 'lg',
-            contents: [
-              { type: 'box', layout: 'horizontal', contents: [{ type: 'text', text: 'คิว', size: 'sm', flex: 2 }, { type: 'text', text: data.queueNumber, size: 'sm', weight: 'bold', flex: 3 }] },
-              ...(data.roomNumber ? [{ type: 'box', layout: 'horizontal', contents: [{ type: 'text', text: 'ห้อง', size: 'sm', flex: 2 }, { type: 'text', text: `ห้อง ${data.roomNumber}`, size: 'sm', weight: 'bold', flex: 3 }] }] : []),
-              ...(data.practitionerName ? [{ type: 'box', layout: 'horizontal', contents: [{ type: 'text', text: 'ผู้ทำหัตถการ', size: 'sm', flex: 2 }, { type: 'text', text: data.practitionerName, size: 'sm', weight: 'bold', flex: 3 }] }] : []),
-            ],
-            backgroundColor: '#F5F5F5',
-            cornerRadius: 'md',
-            paddingAll: '12px',
-          },
-          { type: 'text', text: 'กรุณาเข้าห้องตรวจภายใน 5 นาที', size: 'xs', color: '#999999', margin: 'md', align: 'center' },
-        ],
-      },
-    },
-  }),
-
-  serving: (data: QueueNotificationMessage) => ({
-    type: 'flex' as const,
-    altText: `⏳ กำลังให้บริการคิว ${data.queueNumber}`,
-    contents: {
-      type: 'bubble',
-      size: 'kilo',
-      header: {
-        type: 'box',
-        layout: 'vertical',
-        contents: [{ type: 'text', text: '⏳ กำลังให้บริการ', weight: 'bold', size: 'lg' }],
-        backgroundColor: '#0066CC',
-      },
-      body: {
-        type: 'box',
-        layout: 'vertical',
-        contents: [
-          { type: 'text', text: `คิว ${data.queueNumber} กำลังให้บริการ`, size: 'md', wrap: true },
-          { type: 'text', text: 'กรุณารอสักครู่ค่ะ', size: 'sm', color: '#666666', margin: 'sm' },
-        ],
-      },
-    },
-  }),
-
-  completed: (data: QueueNotificationMessage) => ({
-    type: 'flex' as const,
-    altText: `✅ คิว ${data.queueNumber} เสร็จสิ้น`,
-    contents: {
-      type: 'bubble',
-      size: 'kilo',
-      header: {
-        type: 'box',
-        layout: 'vertical',
-        contents: [{ type: 'text', text: '✅ เสร็จสิ้น', weight: 'bold', size: 'lg' }],
-        backgroundColor: '#06C755',
-      },
-      body: {
-        type: 'box',
-        layout: 'vertical',
-        contents: [
-          { type: 'text', text: `คิว ${data.queueNumber} เสร็จสิ้นแล้วค่ะ`, size: 'md', wrap: true },
-          { type: 'text', text: 'ขอบคุณที่มาใช้บริการค่ะ', size: 'sm', color: '#666666', margin: 'sm' },
-        ],
-      },
-    },
-  }),
-
-  cancelled: (data: QueueNotificationMessage) => ({
-    type: 'flex' as const,
-    altText: `❌ คิว ${data.queueNumber} ถูกยกเลิก`,
-    contents: {
-      type: 'bubble',
-      size: 'kilo',
-      header: {
-        type: 'box',
-        layout: 'vertical',
-        contents: [{ type: 'text', text: '❌ ยกเลิกคิว', weight: 'bold', size: 'lg' }],
-        backgroundColor: '#FF3344',
-      },
-      body: {
-        type: 'box',
-        layout: 'vertical',
-        contents: [
-          { type: 'text', text: `คิว ${data.queueNumber} ถูกยกเลิกแล้วค่ะ`, size: 'md', wrap: true },
-          { type: 'text', text: 'กรุณาติดต่อเจ้าหน้าที่ที่เคาน์เตอร์', size: 'sm', color: '#666666', margin: 'sm' },
-        ],
-      },
-    },
-  }),
-};
-
-/**
- * ดึงการตั้งค่า LINE จาก localStorage (clinic-specific)
- */
-export function getLineSettings(clinicId?: string): LineConfig | null {
-  if (typeof window === 'undefined') return null;
-  
-  // Try clinic-specific key first, then shared key
-  const keys = clinicId ? [`clinic-q-line-settings-${clinicId}`, 'clinic-q-line-settings'] : ['clinic-q-line-settings'];
-  for (const key of keys) {
-    const saved = localStorage.getItem(key);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed.channelToken && parsed.channelSecret && parsed.enabled) {
-          return {
-            channelAccessToken: parsed.channelToken,
-            channelSecret: parsed.channelSecret,
-          };
-        }
-      } catch {}
-    }
-  }
-  
-  return null;
+/** Digits only — the shape phone numbers are stored and compared in. */
+export function normalizePhone(phone: string): string {
+  return phone.replace(/\D/g, '')
 }
 
 /**
- * ดึง LINE User ID จากหมายเลขโทรศัพท์ (clinic-specific)
+ * Bind a patient's phone to their LINE userId.
+ *
+ * The write goes to the DB through the server route (the patient has no
+ * session, so the browser must not write the table itself); localStorage is
+ * only a cache for the device that performed the bind.
  */
-export function getLineUserId(phone: string, clinicId?: string): string | null {
-  if (typeof window === 'undefined') return null;
-  
-  const keys = clinicId ? [`clinic-q-line-users-${clinicId}`, 'clinic-q-line-users'] : ['clinic-q-line-users'];
-  for (const key of keys) {
-    const lineUsers = localStorage.getItem(key);
-    if (lineUsers) {
-      try {
-        const users: LineUserProfile[] = JSON.parse(lineUsers);
-        const normalizedPhone = phone.replace(/-/g, '');
-        const user = users.find(u => u.phoneNumber?.replace(/-/g, '') === normalizedPhone);
-        return user?.userId || null;
-      } catch {}
-    }
+export async function bindLineUser(input: {
+  clinicId: string
+  lineUserId: string
+  phoneNumber: string
+  displayName?: string
+}): Promise<{ ok: boolean; error?: string }> {
+  const profile: LineUserProfile = {
+    userId: input.lineUserId,
+    displayName: input.displayName || `LINE User ${input.lineUserId.slice(-6)}`,
+    phoneNumber: normalizePhone(input.phoneNumber),
+    clinicId: input.clinicId,
+    createdAt: new Date(),
   }
-  return null;
-}
-
-/**
- * บันทึก LINE User Profile (clinic-specific)
- */
-export function saveLineUserProfile(profile: LineUserProfile, clinicId?: string): void {
-  if (typeof window === 'undefined') return;
-  
-  const storageKey = clinicId ? `clinic-q-line-users-${clinicId}` : 'clinic-q-line-users';
-  const lineUsers = localStorage.getItem(storageKey);
-  const users: LineUserProfile[] = lineUsers ? JSON.parse(lineUsers) : [];
-  
-  const existingIndex = users.findIndex(u => u.userId === profile.userId);
-  if (existingIndex >= 0) {
-    users[existingIndex] = profile;
-  } else {
-    users.push(profile);
-  }
-  
-  localStorage.setItem(storageKey, JSON.stringify(users));
-}
-
-/**
- * ส่งข้อความแจ้งเตือนไปยัง LINE
- */
-export async function sendLineNotification(
-  userId: string,
-  message: ReturnType<typeof MESSAGE_TEMPLATES[keyof typeof MESSAGE_TEMPLATES]>
-): Promise<boolean> {
-  const config = getLineSettings();
-  if (!config) {
-    console.error('LINE configuration not found');
-    return false;
-  }
+  // Local cache first — the UI stays responsive even if the network is slow.
+  saveLineUserProfile(profile, input.clinicId)
 
   try {
-    const response = await fetch('https://api.line.me/v2/bot/message/push', {
+    const res = await fetch('/api/line/bind', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clinicId: input.clinicId,
+        lineUserId: input.lineUserId,
+        phone: normalizePhone(input.phoneNumber),
+        displayName: profile.displayName,
+      }),
+    })
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok || body?.ok === false) {
+      return { ok: false, error: body?.error || 'บันทึกการเชื่อมต่อไม่สำเร็จ' }
+    }
+    return { ok: true }
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'network error' }
+  }
+}
+
+export interface QueueLineEventInput {
+  event: LineNotifyEvent
+  clinicId?: string | null
+  /** The queue row this event belongs to — the server re-reads the data it needs. */
+  queueId?: string | null
+  phone?: string | null
+  queueNumber: string
+  patientName: string
+  roomNumber?: number
+  practitionerName?: string
+}
+
+/**
+ * Ask the server to send a queue message to the patient on LINE.
+ *
+ * The server owns the decision (enabled? which events? how many queues ahead?)
+ * and resolves the recipient, so the browser only reports the event. Returns
+ * `skipped` reasons instead of throwing: a missing LINE binding or a disabled
+ * clinic is a normal outcome, not an error.
+ */
+export async function notifyQueueViaLine(
+  input: QueueLineEventInput
+): Promise<{ ok: boolean; skipped?: string; error?: string }> {
+  try {
+    const sb = getSupabase()
+    const token = sb ? (await sb.auth.getSession()).data.session?.access_token : null
+    if (!token) return { ok: false, error: 'no-session' }
+
+    const res = await fetch('/api/line/notify', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.channelAccessToken}`,
+        Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({
-        to: userId,
-        messages: [message],
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      console.error('LINE API Error:', error);
-      return false;
-    }
-
-    return true;
-  } catch (error) {
-    console.error('Failed to send LINE notification:', error);
-    return false;
+      body: JSON.stringify(input),
+    })
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok) return { ok: false, error: body?.error || `http-${res.status}` }
+    return { ok: true, skipped: body?.skipped }
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'network error' }
   }
 }
 
+// ═══ Local cache (per clinic, with the legacy shared key as a fallback) ═══
+
+function lineUsersKeys(clinicId?: string): string[] {
+  return clinicId ? [`clinic-q-line-users-${clinicId}`, 'clinic-q-line-users'] : ['clinic-q-line-users']
+}
+
 /**
- * ส่งข้อความแจ้งเตือนคิว
+ * ดึง LINE User ID จากหมายเลขโทรศัพท์ (clinic-specific cache)
  */
-export async function sendQueueNotification(
-  phone: string,
-  data: QueueNotificationMessage
-): Promise<boolean> {
-  const lineUserId = getLineUserId(phone);
-  if (!lineUserId) {
-    console.log(`No LINE user found for phone: ${phone}`);
-    return false;
+export function getLineUserId(phone: string, clinicId?: string): string | null {
+  if (typeof window === 'undefined') return null
+  const normalizedPhone = normalizePhone(phone)
+  for (const key of lineUsersKeys(clinicId)) {
+    const lineUsers = localStorage.getItem(key)
+    if (!lineUsers) continue
+    try {
+      const users: LineUserProfile[] = JSON.parse(lineUsers)
+      const user = users.find(u => u.phoneNumber && normalizePhone(u.phoneNumber) === normalizedPhone)
+      if (user?.userId) return user.userId
+    } catch {}
   }
-
-  const message = MESSAGE_TEMPLATES[data.status](data);
-  return sendLineNotification(lineUserId, message);
+  return null
 }
 
 /**
- * ส่งข้อความแจ้งเตือนเมื่อถึงคิว (แบบ ready)
+ * บันทึก LINE User Profile ลง cache ของเบราว์เซอร์
  */
-export async function sendQueueCalledNotification(
-  phone: string,
-  queueNumber: string,
-  patientName: string,
-  roomNumber?: number,
-  practitionerName?: string
-): Promise<boolean> {
-  return sendQueueNotification(phone, {
-    queueNumber,
-    patientName,
-    roomNumber,
-    practitionerName,
-    status: 'called',
-  });
-}
+export function saveLineUserProfile(profile: LineUserProfile, clinicId?: string): void {
+  if (typeof window === 'undefined') return
 
-/**
- * ส่งข้อความแจ้งเตือนเมื่อกำลังให้บริการ
- */
-export async function sendQueueServingNotification(
-  phone: string,
-  queueNumber: string,
-  patientName: string
-): Promise<boolean> {
-  return sendQueueNotification(phone, {
-    queueNumber,
-    patientName,
-    status: 'serving',
-  });
-}
-
-/**
- * ส่งข้อความแจ้งเตือนเมื่อเสร็จสิ้น
- */
-export async function sendQueueCompletedNotification(
-  phone: string,
-  queueNumber: string,
-  patientName: string
-): Promise<boolean> {
-  return sendQueueNotification(phone, {
-    queueNumber,
-    patientName,
-    status: 'completed',
-  });
-}
-
-/**
- * ส่งข้อความแจ้งเตือนเมื่อยกเลิกคิว
- */
-export async function sendQueueCancelledNotification(
-  phone: string,
-  queueNumber: string,
-  patientName: string
-): Promise<boolean> {
-  return sendQueueNotification(phone, {
-    queueNumber,
-    patientName,
-    status: 'cancelled',
-  });
-}
-
-/**
- * ดึงรายชื่อ LINE Users ทั้งหมด
- */
-export function getAllLineUsers(): LineUserProfile[] {
-  if (typeof window === 'undefined') return [];
-  
-  const lineUsers = localStorage.getItem('clinic-q-line-users');
-  if (!lineUsers) return [];
-  
+  const storageKey = clinicId ? `clinic-q-line-users-${clinicId}` : 'clinic-q-line-users'
+  let users: LineUserProfile[] = []
   try {
-    return JSON.parse(lineUsers);
+    users = JSON.parse(localStorage.getItem(storageKey) || '[]')
+    if (!Array.isArray(users)) users = []
   } catch {
-    return [];
+    users = []
   }
+
+  const existingIndex = users.findIndex(u => u.userId === profile.userId)
+  if (existingIndex >= 0) users[existingIndex] = profile
+  else users.push(profile)
+
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(users))
+  } catch {}
 }
 
 /**
- * ลบ LINE User
+ * ดึงรายชื่อ LINE Users ทั้งหมด (จาก cache ของเบราว์เซอร์)
  */
-export function removeLineUser(userId: string): void {
-  if (typeof window === 'undefined') return;
-  
-  const lineUsers = localStorage.getItem('clinic-q-line-users');
-  if (!lineUsers) return;
-  
-  try {
-    const users: LineUserProfile[] = JSON.parse(lineUsers);
-    const filtered = users.filter(u => u.userId !== userId);
-    localStorage.setItem('clinic-q-line-users', JSON.stringify(filtered));
-  } catch {}
+export function getAllLineUsers(clinicId?: string): LineUserProfile[] {
+  if (typeof window === 'undefined') return []
+  for (const key of lineUsersKeys(clinicId)) {
+    const raw = localStorage.getItem(key)
+    if (!raw) continue
+    try {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) return parsed
+    } catch {}
+  }
+  return []
+}
+
+/**
+ * ลบ LINE User ออกจาก cache
+ */
+export function removeLineUser(userId: string, clinicId?: string): void {
+  if (typeof window === 'undefined') return
+  for (const key of lineUsersKeys(clinicId)) {
+    const raw = localStorage.getItem(key)
+    if (!raw) continue
+    try {
+      const users: LineUserProfile[] = JSON.parse(raw)
+      const filtered = users.filter(u => u.userId !== userId)
+      localStorage.setItem(key, JSON.stringify(filtered))
+    } catch {}
+  }
 }
