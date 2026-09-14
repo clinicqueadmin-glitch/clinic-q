@@ -13,9 +13,10 @@ import {
    Deliberately independent of the app's `candy-*` classes: the
    marketing page is its own surface, not an app screen.
    ═══════════════════════════════════════════════════════════════ */
-const FONT = { fontFamily: "'Prompt','Nunito',system-ui,sans-serif" }
+const FONT = { fontFamily: "'Inter','Prompt','Nunito',system-ui,sans-serif" }
 const ACCENT = '#0d9488'
 const INK = '#0f172a'
+const GRADIENT = 'linear-gradient(135deg, #0d9488 0%, #14b8a6 50%, #2dd4bf 100%)'
 
 const NAV = [
   { label: 'ภาพรวม', href: '#overview' },
@@ -389,9 +390,13 @@ function PatientPhoneMockup() {
 
 function SectionLabel({ children }: { children: ReactNode }) {
   return (
-    <p className="text-[13px] font-semibold uppercase tracking-[0.14em]" style={{ color: ACCENT }}>
-      {children}
-    </p>
+    <div className="inline-flex items-center gap-2">
+      <div className="h-px w-8 bg-teal-400" />
+      <p className="text-[13px] font-bold uppercase tracking-[0.2em]" style={{ color: ACCENT }}>
+        {children}
+      </p>
+      <div className="h-px w-8 bg-teal-400" />
+    </div>
   )
 }
 
@@ -438,65 +443,97 @@ export default function LandingPage() {
       <section id="overview" className="px-5 pb-20 pt-20 sm:px-8 sm:pt-28">
         <div className="mx-auto max-w-6xl">
           <div className="mx-auto max-w-3xl text-center">
-            <p className="text-[13px] font-medium tracking-wide text-slate-500">
-              ระบบจัดการคลินิกครบวงจร
-            </p>
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-teal-50 rounded-full mb-6">
+              <span className="w-2 h-2 rounded-full bg-teal-500 animate-pulse" />
+              <p className="text-[14px] font-semibold text-teal-700">
+                ระบบจัดการคลินิกครบวงจร
+              </p>
+            </div>
             <h1
-              className="mt-5 text-[34px] font-semibold leading-[1.15] tracking-tight sm:text-[52px]"
+              className="text-[40px] font-extrabold leading-[1.1] tracking-tight sm:text-[64px] md:text-[72px]"
               style={{ color: INK }}
             >
               บริหารคลินิกทั้งระบบ
               <br />
-              <span style={{ color: ACCENT }}>ในที่เดียว</span>
+              <span className="bg-gradient-to-r from-teal-600 to-teal-400 bg-clip-text text-transparent">ในที่เดียว</span>
             </h1>
-            <p className="mx-auto mt-6 max-w-2xl text-[16px] leading-relaxed text-slate-500 sm:text-[17px]">
+            <p className="mx-auto mt-6 max-w-2xl text-[18px] leading-relaxed text-slate-500 sm:text-[20px]">
               ClinicQ รวมการจัดคิว นัดหมาย ห้องตรวจ ผู้ให้บริการ และการวิเคราะห์การทำงาน
               ไว้ในระบบเดียว ใช้ได้กับคลินิกทุกประเภท
             </p>
 
-            <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
               <Link
                 href="/register"
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3.5 text-[15px] font-medium text-white transition hover:opacity-90 sm:w-auto"
-                style={{ background: ACCENT }}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl px-8 py-4 text-[16px] font-bold text-white transition-all hover:scale-[1.02] hover:shadow-xl sm:w-auto shadow-lg shadow-teal-500/30"
+                style={{ background: GRADIENT }}
               >
                 เริ่มใช้งานฟรี
-                <ArrowRight className="h-4 w-4" />
+                <ArrowRight className="h-5 w-5" />
               </Link>
               <Link
                 href="/login"
-                className="inline-flex w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-6 py-3.5 text-[15px] font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 sm:w-auto"
+                className="inline-flex w-full items-center justify-center rounded-2xl border-2 border-slate-200 bg-white px-8 py-4 text-[16px] font-bold text-slate-700 transition-all hover:border-teal-300 hover:bg-teal-50 sm:w-auto"
               >
                 เข้าสู่ระบบ
               </Link>
             </div>
 
-            <p className="mt-4 text-[13px] text-slate-400">
-              ทดลองใช้ฟรี 30 วัน · ไม่ต้องใช้บัตรเครดิต · เริ่มได้ทันที
-            </p>
+            <div className="mt-6 flex items-center justify-center gap-6 text-[14px] text-slate-400">
+              <span className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-teal-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                ทดลองใช้ฟรี 30 วัน
+              </span>
+              <span className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-teal-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                ไม่ต้องใช้บัตรเครดิต
+              </span>
+              <span className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-teal-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                เริ่มได้ทันที
+              </span>
+            </div>
           </div>
 
           <div className="mt-16 sm:mt-20">
-            <DashboardMockup />
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-[0_24px_60px_-24px_rgba(15,23,42,0.25)] overflow-hidden">
+              <div className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-100 bg-slate-50/80">
+                <div className="flex gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-slate-300" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-slate-300" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-slate-300" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="mx-auto max-w-[280px] truncate rounded-md border border-slate-200 bg-white px-3 py-1 text-center text-[11px] text-slate-400">
+                    clinic-q.app/dashboard
+                  </div>
+                </div>
+              </div>
+              <img src="/landing-dashboard.png" alt="ClinicQ Dashboard" className="w-full h-auto" />
+            </div>
           </div>
         </div>
       </section>
 
       {/* ═══════ WHAT IT UNIFIES ═══════ */}
-      <section className="border-y border-slate-100 bg-slate-50/60 px-5 py-16 sm:px-8 sm:py-20">
+      <section className="border-y border-slate-100 bg-gradient-to-b from-white to-slate-50 px-5 py-20 sm:px-8 sm:py-24">
         <div className="mx-auto max-w-6xl">
           <div className="text-center">
             <SectionLabel>ระบบเดียว</SectionLabel>
-            <h2 className="mt-3 text-[24px] font-semibold tracking-tight sm:text-[30px]" style={{ color: INK }}>
-              ห้าสิ่งที่คลินิกต้องใช้จริง รวมอยู่ในที่เดียว
+            <h2 className="mt-4 text-[28px] font-extrabold tracking-tight sm:text-[36px]" style={{ color: INK }}>
+              ห้าสิ่งที่คลินิกต้องใช้จริง
+              <br />
+              <span className="text-slate-400">รวมอยู่ในที่เดียว</span>
             </h2>
           </div>
-          <div className="mt-12 grid grid-cols-1 gap-x-8 gap-y-8 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="mt-14 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-5">
             {pillars.map((p) => (
-              <div key={p.label}>
-                <p.icon className="h-5 w-5" style={{ color: ACCENT }} />
-                <h3 className="mt-3 text-[15px] font-semibold" style={{ color: INK }}>{p.label}</h3>
-                <p className="mt-1.5 text-[13px] leading-relaxed text-slate-500">{p.desc}</p>
+              <div key={p.label} className="group p-5 rounded-2xl bg-white border border-slate-100 hover:border-teal-200 hover:shadow-lg hover:shadow-teal-50 transition-all duration-300">
+                <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center group-hover:bg-teal-100 transition-colors">
+                  <p.icon className="h-5 w-5" style={{ color: ACCENT }} />
+                </div>
+                <h3 className="mt-4 text-[16px] font-bold" style={{ color: INK }}>{p.label}</h3>
+                <p className="mt-2 text-[14px] leading-relaxed text-slate-500">{p.desc}</p>
               </div>
             ))}
           </div>
@@ -504,33 +541,31 @@ export default function LandingPage() {
       </section>
 
       {/* ═══════ WORKFLOW ═══════ */}
-      <section id="workflow" className="px-5 py-20 sm:px-8 sm:py-28">
+      <section id="workflow" className="px-5 py-24 sm:px-8 sm:py-32">
         <div className="mx-auto max-w-6xl">
           <div className="max-w-2xl">
             <SectionLabel>การทำงาน</SectionLabel>
-            <h2 className="mt-3 text-[26px] font-semibold tracking-tight sm:text-[34px]" style={{ color: INK }}>
-              ClinicQ ช่วยคลินิกคุณอย่างไร
+            <h2 className="mt-4 text-[30px] font-extrabold tracking-tight sm:text-[40px]" style={{ color: INK }}>
+              ClinicQ ช่วยคลินิกคุณ<br />อย่างไร
             </h2>
-            <p className="mt-4 text-[15px] leading-relaxed text-slate-500">
+            <p className="mt-5 text-[17px] leading-relaxed text-slate-500">
               ตั้งแต่ผู้รับบริการเดินเข้าคลินิก จนถึงรายงานที่ผู้บริหารใช้ตัดสินใจ
               ทุกขั้นตอนอยู่ในระบบเดียวกัน ไม่ต้องจดใส่กระดาษหรือสลับหลายโปรแกรม
             </p>
           </div>
 
-          <div className="mt-14 grid grid-cols-1 gap-10 md:grid-cols-3 md:gap-8">
+          <div className="mt-16 grid grid-cols-1 gap-8 md:grid-cols-3 md:gap-10">
             {workflow.map((w, i) => (
               <div key={w.step} className="relative">
                 {i < workflow.length - 1 && (
-                  <span className="absolute left-[26px] top-14 hidden h-[calc(100%-2rem)] w-px bg-slate-200 md:block" />
+                  <span className="absolute left-[26px] top-14 hidden h-[calc(100%-2rem)] w-px bg-gradient-to-b from-teal-300 to-transparent md:block" />
                 )}
-                <div
-                  className="relative flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white"
-                >
-                  <w.icon className="h-5 w-5" style={{ color: ACCENT }} />
+                <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-teal-600 shadow-lg shadow-teal-500/30">
+                  <w.icon className="h-6 w-6 text-white" />
                 </div>
-                <p className="mt-5 text-[12px] font-semibold tracking-[0.16em] text-slate-300">{w.step}</p>
-                <h3 className="mt-2 text-[17px] font-semibold" style={{ color: INK }}>{w.title}</h3>
-                <p className="mt-2.5 text-[14px] leading-relaxed text-slate-500">{w.desc}</p>
+                <p className="mt-5 text-[13px] font-bold tracking-[0.2em] text-teal-500">STEP {w.step}</p>
+                <h3 className="mt-3 text-[19px] font-bold" style={{ color: INK }}>{w.title}</h3>
+                <p className="mt-3 text-[15px] leading-relaxed text-slate-500">{w.desc}</p>
               </div>
             ))}
           </div>
@@ -569,7 +604,11 @@ export default function LandingPage() {
             </ul>
           </div>
 
-          <PatientPhoneMockup />
+          <div className="mx-auto w-full max-w-[400px]">
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-[0_24px_60px_-24px_rgba(15,23,42,0.25)] overflow-hidden">
+              <img src="/landing-walkin-qr.png" alt="ClinicQ Walk-in QR" className="w-full h-auto" />
+            </div>
+          </div>
         </div>
       </section>
 
@@ -599,65 +638,46 @@ export default function LandingPage() {
             </p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_1px_3px_rgba(15,23,42,0.04)] sm:p-7">
-            <div className="flex items-baseline justify-between">
-              <div>
-                <p className="text-[14px] font-semibold" style={{ color: INK }}>ผู้รับบริการรายสัปดาห์</p>
-                <p className="mt-0.5 text-[12px] text-slate-400">จำนวนคิว (คน)</p>
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-[0_24px_60px_-24px_rgba(15,23,42,0.25)] overflow-hidden">
+            <div className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-100 bg-slate-50/80">
+              <div className="flex gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-slate-300" />
+                <span className="w-2.5 h-2.5 rounded-full bg-slate-300" />
+                <span className="w-2.5 h-2.5 rounded-full bg-slate-300" />
               </div>
-              <span className="rounded-full bg-teal-50 px-2.5 py-1 text-[12px] font-medium" style={{ color: '#0f766e' }}>
-                +12%
-              </span>
-            </div>
-
-            <div className="mt-7 flex h-40 items-end justify-between gap-2.5">
-              {weeklyBars.map((b) => (
-                <div key={b.day} className="flex flex-1 flex-col items-center gap-2">
-                  <div className="w-full rounded-t-md" style={{ height: `${b.v}%`, background: '#5eead4' }} />
-                  <span className="text-[11px] text-slate-400">{b.day}</span>
+              <div className="flex-1 min-w-0">
+                <div className="mx-auto max-w-[280px] truncate rounded-md border border-slate-200 bg-white px-3 py-1 text-center text-[11px] text-slate-400">
+                  clinic-q.app/analytics
                 </div>
-              ))}
+              </div>
             </div>
-
-            <div className="mt-7 grid grid-cols-3 gap-4 border-t border-slate-100 pt-6">
-              {[
-                { icon: Timer, label: 'เวลารอเฉลี่ย', value: '18 น.' },
-                { icon: Clock, label: 'เวลาให้บริการ', value: '32 น.' },
-                { icon: DoorOpen, label: 'ใช้ห้องตรวจ', value: '76%' },
-              ].map((s) => (
-                <div key={s.label}>
-                  <s.icon className="h-4 w-4 text-slate-400" />
-                  <p className="mt-2 text-[18px] font-semibold" style={{ color: INK }}>{s.value}</p>
-                  <p className="text-[11px] text-slate-400">{s.label}</p>
-                </div>
-              ))}
-            </div>
+            <img src="/landing-analytics.png" alt="ClinicQ Analytics" className="w-full h-auto" />
           </div>
         </div>
       </section>
 
       {/* ═══════ CAPABILITIES ═══════ */}
-      <section id="capabilities" className="border-y border-slate-100 bg-slate-50/60 px-5 py-20 sm:px-8 sm:py-28">
+      <section id="capabilities" className="border-y border-slate-100 bg-gradient-to-b from-slate-50 to-white px-5 py-24 sm:px-8 sm:py-32">
         <div className="mx-auto max-w-6xl">
           <div className="max-w-2xl">
             <SectionLabel>ความสามารถ</SectionLabel>
-            <h2 className="mt-3 text-[26px] font-semibold tracking-tight sm:text-[34px]" style={{ color: INK }}>
+            <h2 className="mt-4 text-[30px] font-extrabold tracking-tight sm:text-[40px]" style={{ color: INK }}>
               จัดการคลินิกครบทุกด้าน
             </h2>
-            <p className="mt-4 text-[15px] leading-relaxed text-slate-500">
+            <p className="mt-5 text-[17px] leading-relaxed text-slate-500">
               ทุกฟังก์ชันที่คลินิกต้องใช้จริง ตั้งแต่วันแรกที่ผู้รับบริการเดินเข้า
               ไปจนถึงรายงานภาพรวมของคลินิก
             </p>
           </div>
 
-          <div className="mt-14 grid grid-cols-1 gap-x-10 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-16 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {capabilities.map((c) => (
-              <div key={c.title}>
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white">
-                  <c.icon className="h-5 w-5" style={{ color: ACCENT }} />
+              <div key={c.title} className="group p-6 rounded-2xl bg-white border border-slate-100 hover:border-teal-200 hover:shadow-xl hover:shadow-teal-50 transition-all duration-300">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-teal-50 to-teal-100 flex items-center justify-center group-hover:from-teal-100 group-hover:to-teal-200 transition-colors">
+                  <c.icon className="h-6 w-6" style={{ color: ACCENT }} />
                 </div>
-                <h3 className="mt-4 text-[16px] font-semibold" style={{ color: INK }}>{c.title}</h3>
-                <p className="mt-2 text-[14px] leading-relaxed text-slate-500">{c.desc}</p>
+                <h3 className="mt-5 text-[18px] font-bold" style={{ color: INK }}>{c.title}</h3>
+                <p className="mt-2 text-[15px] leading-relaxed text-slate-500">{c.desc}</p>
               </div>
             ))}
           </div>
@@ -667,7 +687,21 @@ export default function LandingPage() {
       {/* ═══════ CLINIC MANAGEMENT / TRUST ═══════ */}
       <section className="px-5 py-20 sm:px-8 sm:py-28">
         <div className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-14 lg:grid-cols-2 lg:gap-20">
-          <SettingsMockup />
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-[0_24px_60px_-24px_rgba(15,23,42,0.25)] overflow-hidden">
+            <div className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-100 bg-slate-50/80">
+              <div className="flex gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-slate-300" />
+                <span className="w-2.5 h-2.5 rounded-full bg-slate-300" />
+                <span className="w-2.5 h-2.5 rounded-full bg-slate-300" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="mx-auto max-w-[280px] truncate rounded-md border border-slate-200 bg-white px-3 py-1 text-center text-[11px] text-slate-400">
+                  clinic-q.app/queue
+                </div>
+              </div>
+            </div>
+            <img src="/landing-queue-board.png" alt="ClinicQ Queue Board" className="w-full h-auto" />
+          </div>
           <div>
             <SectionLabel>จัดการคลินิก</SectionLabel>
             <h2 className="mt-3 text-[26px] font-semibold tracking-tight sm:text-[32px]" style={{ color: INK }}>
@@ -700,23 +734,23 @@ export default function LandingPage() {
       </section>
 
       {/* ═══════ CLINIC TYPES ═══════ */}
-      <section id="clinic-types" className="border-y border-slate-100 bg-slate-50/60 px-5 py-20 sm:px-8 sm:py-24">
+      <section id="clinic-types" className="border-y border-slate-100 bg-gradient-to-b from-white to-slate-50 px-5 py-24 sm:px-8 sm:py-28">
         <div className="mx-auto max-w-6xl">
           <div className="text-center">
             <SectionLabel>ประเภทคลินิก</SectionLabel>
-            <h2 className="mt-3 text-[24px] font-semibold tracking-tight sm:text-[30px]" style={{ color: INK }}>
+            <h2 className="mt-4 text-[28px] font-extrabold tracking-tight sm:text-[36px]" style={{ color: INK }}>
               ใช้ได้กับคลินิกหลากหลายประเภท
             </h2>
-            <p className="mx-auto mt-4 max-w-xl text-[15px] leading-relaxed text-slate-500">
+            <p className="mx-auto mt-5 max-w-xl text-[17px] leading-relaxed text-slate-500">
               ตั้งค่าหัตถการ ห้องตรวจ และผู้ให้บริการได้ตามรูปแบบของคลินิกคุณ
             </p>
           </div>
 
-          <div className="mt-12 grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-14 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
             {clinicTypes.map((c) => (
-              <div key={c.name} className="bg-white px-6 py-6">
-                <p className="text-[15px] font-semibold" style={{ color: INK }}>{c.name}</p>
-                <p className="mt-1.5 text-[13px] text-slate-500">{c.desc}</p>
+              <div key={c.name} className="group p-5 rounded-2xl bg-white border border-slate-100 hover:border-teal-200 hover:shadow-lg hover:shadow-teal-50 transition-all duration-300 text-center">
+                <p className="text-[16px] font-bold" style={{ color: INK }}>{c.name}</p>
+                <p className="mt-2 text-[13px] text-slate-500">{c.desc}</p>
               </div>
             ))}
           </div>
@@ -724,29 +758,30 @@ export default function LandingPage() {
       </section>
 
       {/* ═══════ FINAL CTA ═══════ */}
-      <section className="px-5 py-24 sm:px-8 sm:py-28">
-        <div className="mx-auto max-w-3xl text-center">
-          <h2 className="text-[26px] font-semibold tracking-tight sm:text-[34px]" style={{ color: INK }}>
-            เริ่มจัดการคลินิกให้เป็นระบบขึ้น
-          </h2>
-          <p className="mx-auto mt-4 max-w-xl text-[15px] leading-relaxed text-slate-500">
-            สมัครใช้งานและเริ่มลงคิวแรกได้ภายในไม่กี่นาที ทดลองใช้ฟรี 30 วัน
-          </p>
-          <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Link
-              href="/register"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3.5 text-[15px] font-medium text-white transition hover:opacity-90 sm:w-auto"
-              style={{ background: ACCENT }}
-            >
-              เริ่มใช้งานฟรี
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link
-              href="/login"
-              className="inline-flex w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-6 py-3.5 text-[15px] font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 sm:w-auto"
-            >
-              เข้าสู่ระบบ
-            </Link>
+      <section className="px-5 py-28 sm:px-8 sm:py-36">
+        <div className="mx-auto max-w-4xl text-center">
+          <div className="p-12 sm:p-16 rounded-[2rem] bg-gradient-to-br from-teal-600 via-teal-500 to-emerald-500 shadow-2xl shadow-teal-500/30">
+            <h2 className="text-[32px] font-extrabold tracking-tight text-white sm:text-[44px]">
+              พร้อมเริ่มต้นใช้งาน?
+            </h2>
+            <p className="mx-auto mt-5 max-w-xl text-[18px] leading-relaxed text-teal-100">
+              สมัครใช้งานและเริ่มลงคิวแรกได้ภายในไม่กี่นาที ทดลองใช้ฟรี 30 วัน
+            </p>
+            <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+              <Link
+                href="/register"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl px-8 py-4 text-[17px] font-bold text-teal-700 bg-white transition-all hover:scale-[1.02] hover:shadow-xl sm:w-auto shadow-lg"
+              >
+                เริ่มใช้งานฟรี
+                <ArrowRight className="h-5 w-5" />
+              </Link>
+              <Link
+                href="/login"
+                className="inline-flex w-full items-center justify-center rounded-2xl border-2 border-white/30 bg-white/10 px-8 py-4 text-[17px] font-bold text-white transition-all hover:bg-white/20 sm:w-auto backdrop-blur-sm"
+              >
+                เข้าสู่ระบบ
+              </Link>
+            </div>
           </div>
         </div>
       </section>
@@ -786,8 +821,8 @@ export default function LandingPage() {
           </a>
         </div>
 
-        <div className="mx-auto mt-8 max-w-6xl border-t border-slate-100 pt-6">
-          <p className="text-center text-[12px] text-slate-400 sm:text-left">
+        <div className="mx-auto mt-8 max-w-6xl border-t border-slate-100 pt-8">
+          <p className="text-center text-[14px] text-slate-400">
             © 2026 Clinic-Q Platform. สงวนลิขสิทธิ์
           </p>
         </div>
