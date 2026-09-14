@@ -516,10 +516,6 @@ export default function AddRoomModal({ open, onClose, onSave }: AddRoomModalProp
                 </div>
               </div>
 
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-6">
-                <p className="text-xs text-amber-700 font-medium">⚠️ เมื่อยืนยันแล้วจะไม่สามารถแก้ไขได้</p>
-              </div>
-
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowConfirm(false)}
