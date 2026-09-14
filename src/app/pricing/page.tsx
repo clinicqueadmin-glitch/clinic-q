@@ -148,33 +148,43 @@ export default function PricingPage() {
           </div>
         </div>
 
-        {/* ═══ EARLY BIRD BANNER — Big Red Text ═══ */}
+        {/* ═══ EARLY BIRD BANNER — Bold Red with Expiry ═══ */}
         {billing === 'yearly' && isEarlyBird && earlyBirdEndDate && (() => {
           const ebEndStr = earlyBirdEndDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })
-          const isLastDay = countdown.hours < 24 && countdown.hours >= 0
           return (
-            <div className="mb-8 p-6 bg-gradient-to-r from-red-50 via-red-50 to-orange-50 border-2 border-red-400 rounded-3xl text-center shadow-lg shadow-red-100">
-              <div className="flex items-center justify-center gap-2 mb-3">
-                <span className="text-3xl">🔥</span>
-                <span className="text-2xl font-black text-red-600">ทดลองใช้ 30 วัน</span>
+            <div className="mb-8 p-6 bg-red-50 border-2 border-red-500 rounded-3xl text-center shadow-lg shadow-red-200">
+              {/* Price highlight */}
+              <div className="mb-4">
+                <p className="text-sm font-bold text-red-600 uppercase tracking-wider mb-2">🔥 Early Bird — ราคาพิเศษ</p>
+                <div className="flex items-baseline justify-center gap-2">
+                  <span className="text-6xl font-black text-red-600">3,999</span>
+                  <span className="text-xl font-bold text-red-500">บาท/ปี</span>
+                </div>
+                <div className="mt-2">
+                  <span className="text-lg text-gray-400 line-through">5,999</span>
+                  <span className="ml-2 px-3 py-1 bg-red-100 text-red-700 text-sm font-bold rounded-full">
+                    ประหยัด 2,000 บาท
+                  </span>
+                </div>
               </div>
-              <div className="bg-red-600 text-white rounded-2xl py-3 px-6 mb-3">
-                <p className="text-xl md:text-2xl font-black">
-                  🎉 พิเศษ! Early Bird 3,999 บาท/ปี
+              {/* Expiry date — prominent red */}
+              <div className="bg-red-600 text-white rounded-2xl py-3 px-6 mb-4">
+                <p className="text-lg font-black">
+                  ⏰ หมดอายุ {ebEndStr}
                 </p>
-                <p className="text-sm mt-1 text-red-100">
-                  ประหยัดไปอีก 2,000 บาท! หากสมัครภายใน <b className="text-yellow-300">{ebEndStr}</b>
+                <p className="text-sm mt-1 text-red-200">
+                  หากสมัครไม่ทัน ราคาจะกลับเป็น <b className="text-white">5,999 บาท/ปี</b>
                 </p>
               </div>
               {/* Countdown Timer */}
-              <div className="flex items-center justify-center gap-2 mt-3">
-                <span className="text-sm font-medium text-red-600">⏳ เหลือเวลาอีก</span>
+              <div className="flex items-center justify-center gap-2">
+                <span className="text-sm font-bold text-red-600">⏳ เหลือเวลาอีก</span>
                 <div className="flex gap-1">
-                  <span className="bg-red-600 text-white px-2 py-1 rounded-lg text-sm font-black tabular-nums">{String(countdown.hours).padStart(2, '0')}</span>
-                  <span className="text-red-600 font-bold">:</span>
-                  <span className="bg-red-600 text-white px-2 py-1 rounded-lg text-sm font-black tabular-nums">{String(countdown.minutes).padStart(2, '0')}</span>
-                  <span className="text-red-600 font-bold">:</span>
-                  <span className="bg-red-600 text-white px-2 py-1 rounded-lg text-sm font-black tabular-nums">{String(countdown.seconds).padStart(2, '0')}</span>
+                  <span className="bg-red-600 text-white px-3 py-1.5 rounded-lg text-lg font-black tabular-nums">{String(countdown.hours).padStart(2, '0')}</span>
+                  <span className="text-red-600 font-bold text-lg">:</span>
+                  <span className="bg-red-600 text-white px-3 py-1.5 rounded-lg text-lg font-black tabular-nums">{String(countdown.minutes).padStart(2, '0')}</span>
+                  <span className="text-red-600 font-bold text-lg">:</span>
+                  <span className="bg-red-600 text-white px-3 py-1.5 rounded-lg text-lg font-black tabular-nums">{String(countdown.seconds).padStart(2, '0')}</span>
                 </div>
               </div>
             </div>
@@ -262,16 +272,16 @@ export default function PricingPage() {
                     {isEarlyBird ? (
                       <>
                         <div className="flex items-baseline justify-center gap-1">
-                          <span className="text-5xl font-extrabold text-amber-600">3,999</span>
+                          <span className="text-5xl font-extrabold text-red-600">3,999</span>
                           <span className="text-lg text-gray-400">บาท/ปี</span>
                         </div>
                         <div className="mt-2">
                           <span className="text-lg text-gray-400 line-through">5,999</span>
-                          <span className="ml-2 px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-bold rounded-full">
+                          <span className="ml-2 px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded-full">
                             ประหยัด 2,000 บาท
                           </span>
                         </div>
-                        <p className="text-sm text-amber-600 mt-2 font-medium">🎉 ราคา Early Bird — สมัครภายใน 7 วันหลังสมัคร</p>
+                        <p className="text-sm text-red-600 mt-2 font-bold">🔥 Early Bird — หมดอายุ 7 วันหลังสมัคร</p>
                       </>
                     ) : (
                       <>
@@ -380,10 +390,10 @@ export default function PricingPage() {
                   <td className="p-4 text-center text-sm font-bold text-teal-600">500 บาท</td>
                 </tr>
                 {isEarlyBird && (
-                  <tr className="border-b border-gray-50 bg-amber-50">
-                    <td className="p-4 text-sm text-amber-700 font-bold">Early Bird</td>
+                  <tr className="border-b border-gray-50 bg-red-50">
+                    <td className="p-4 text-sm text-red-700 font-bold">🔥 Early Bird</td>
                     <td className="p-4 text-center text-sm text-gray-400">—</td>
-                    <td className="p-4 text-center text-sm font-bold text-amber-600">3,999 บาท/ปี</td>
+                    <td className="p-4 text-center text-sm font-bold text-red-600">3,999 บาท/ปี</td>
                   </tr>
                 )}
                 <tr className="border-b border-gray-50">
