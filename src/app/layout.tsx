@@ -45,7 +45,7 @@ export default function RootLayout({
   return (
     <html lang="th">
       <body>
-        <div className="brand-watermark" />
+
         <SWRegistration />
         <PWAInstallBanner />
         <AuthProvider>

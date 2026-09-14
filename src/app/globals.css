@@ -17,17 +17,7 @@ body {
   line-height: 1.6;
 }
 
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background:
-    url('/brand-logo.png') repeat center / 300px,
-    linear-gradient(135deg, #f0fdfa 0%, #f0f9ff 50%, #f0fdf4 100%);
-  opacity: 0.08;
-  pointer-events: none;
-  z-index: 0;
-}
+/* Watermark removed — was showing repeated ClinicQ logo on all pages */
 
 body > * {
   position: relative;

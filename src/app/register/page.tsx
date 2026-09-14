@@ -7,6 +7,7 @@ import {
   Stethoscope, Sparkles, Heart, Leaf, Brain, Bone,
   ArrowRight, CheckCircle, Mail, User, Phone, Building2, Lock,
 } from 'lucide-react'
+import PhoneInput from '@/components/ui/PhoneInput'
 import { clsx } from 'clsx'
 
 const clinicTypes = [
@@ -52,6 +53,7 @@ export default function RegisterPage() {
     if (!form.email.trim()) errs.email = 'กรุณากรอกอีเมล'
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errs.email = 'อีเมลไม่ถูกต้อง'
     if (!form.phone.trim()) errs.phone = 'กรุณากรอกเบอร์โทรศัพท์'
+    else if (form.phone.replace(/\D/g, '').length !== 10) errs.phone = 'เบอร์โทรศัพท์ต้องมี 10 หลัก'
     if (!form.password) errs.password = 'กรุณาตั้งรหัสผ่าน'
     else if (form.password.length < 6) errs.password = 'รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร'
     if (!form.confirmPassword) errs.confirmPassword = 'กรุณายืนยันรหัสผ่าน'
@@ -434,15 +436,14 @@ export default function RegisterPage() {
                 onChange={v => setForm(f => ({ ...f, email: v }))}
                 error={errors.email}
               />
-              <InputField
-                icon={<Phone className="w-4 h-4" />}
+              <PhoneInput
                 label="เบอร์โทรศัพท์"
-                type="tel"
-                placeholder="081-234-5678"
                 value={form.phone}
                 onChange={v => setForm(f => ({ ...f, phone: v }))}
-                error={errors.phone}
+                required
+                showIcon
               />
+              {errors.phone && <p className="text-xs text-red-500 mt-1">{errors.phone}</p>}
               <InputField
                 icon={<Lock className="w-4 h-4" />}
                 label="ตั้งรหัสผ่าน"
