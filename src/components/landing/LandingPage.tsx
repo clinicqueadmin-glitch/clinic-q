@@ -23,6 +23,7 @@ const NAV = [
   { label: 'ความสามารถ', href: '#capabilities' },
   { label: 'การทำงาน', href: '#workflow' },
   { label: 'ประเภทคลินิก', href: '#clinic-types' },
+  { label: 'วิธีใช้งาน', href: '/help' },
 ]
 
 /* ═══ What ClinicQ unifies — the one-sentence promise, unpacked ═══ */
@@ -423,6 +424,12 @@ export default function LandingPage() {
 
           <div className="flex items-center gap-2 sm:gap-3">
             <Link
+              href="/help"
+              className="rounded-lg px-3 py-2 text-[14px] font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+            >
+              📚 วิธีใช้งาน
+            </Link>
+            <Link
               href="/login"
               className="rounded-lg px-3 py-2 text-[14px] font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
             >
@@ -430,7 +437,7 @@ export default function LandingPage() {
             </Link>
             <Link
               href="/register"
-              className="rounded-lg px-4 py-2 text-[14px] font-medium text-white transition hover:opacity-90"
+              className="rounded-lg px-4 py-2 text-[14px] font-bold text-white transition hover:opacity-90"
               style={{ background: ACCENT }}
             >
               เริ่มใช้งานฟรี
@@ -754,6 +761,43 @@ export default function LandingPage() {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* ═══════ HOW TO USE ═══════ */}
+      <section className="px-5 py-24 sm:px-8 sm:py-28">
+        <div className="mx-auto max-w-4xl text-center">
+          <SectionLabel>วิธีใช้งาน</SectionLabel>
+          <h2 className="mt-4 text-[28px] font-extrabold tracking-tight sm:text-[36px]" style={{ color: INK }}>
+            เริ่มต้นง่ายๆ ใน 4 ขั้นตอน
+          </h2>
+          <p className="mx-auto mt-5 max-w-xl text-[17px] leading-relaxed text-slate-500">
+            ดูคู่มือแบบละเอียดทีละขั้นตอน ตั้งแต่สมัครจนถึงใช้งานจริง
+          </p>
+
+          <div className="mt-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              { step: '01', title: 'สมัครใช้งาน', desc: 'กรอกข้อมูลและยืนยันอีเมล', icon: '📝' },
+              { step: '02', title: 'ตั้งค่าคลินิก', desc: 'เพิ่มสาขา ห้องตรวจ และทีมงาน', icon: '⚙️' },
+              { step: '03', title: 'เริ่มลงคิว', desc: 'ลงทะเบียนผู้รับบริการ Walk-in', icon: '🎫' },
+              { step: '04', title: 'ดูรายงาน', desc: 'วิเคราะห์ประสิทธิภาพคลินิก', icon: '📊' },
+            ].map((item) => (
+              <div key={item.step} className="p-5 rounded-2xl bg-white border border-slate-100 hover:border-teal-200 hover:shadow-lg transition-all">
+                <span className="text-3xl">{item.icon}</span>
+                <p className="mt-3 text-[13px] font-bold text-teal-500">ขั้นตอนที่ {item.step}</p>
+                <p className="mt-1 text-[16px] font-bold" style={{ color: INK }}>{item.title}</p>
+                <p className="mt-1 text-[14px] text-slate-500">{item.desc}</p>
+              </div>
+            ))}
+          </div>
+
+          <Link
+            href="/help"
+            className="inline-flex items-center gap-2 mt-10 px-8 py-4 rounded-2xl border-2 border-teal-200 bg-white text-[16px] font-bold text-teal-700 transition-all hover:border-teal-400 hover:bg-teal-50 hover:shadow-lg"
+          >
+            📚 ดูคู่มือวิธีใช้งานทั้งหมด
+            <ArrowRight className="h-5 w-5" />
+          </Link>
         </div>
       </section>
 

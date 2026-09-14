@@ -156,8 +156,9 @@ function ClinicRouter({ children }: { children: ReactNode }) {
     )
   }
 
-  // Not authenticated → redirect to login (but root / shows landing page)
-  if (!isLoading && !isAuthenticated && pathname !== '/') {
+  // Not authenticated → redirect to login (but public pages are allowed)
+  const publicPaths = ['/', '/help', '/terms', '/privacy', '/pricing']
+  if (!isLoading && !isAuthenticated && !publicPaths.includes(pathname)) {
     if (typeof window !== 'undefined') {
       window.location.href = '/login'
     }
