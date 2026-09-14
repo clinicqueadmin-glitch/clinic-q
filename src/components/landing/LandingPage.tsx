@@ -802,6 +802,9 @@ export default function LandingPage() {
                 {n.label}
               </a>
             ))}
+            <Link href="/help" className="text-[13px] text-slate-500 transition hover:text-slate-900">
+              คู่มือการใช้งาน
+            </Link>
             <Link href="/terms" className="text-[13px] text-slate-500 transition hover:text-slate-900">
               เงื่อนไขการใช้งาน
             </Link>
