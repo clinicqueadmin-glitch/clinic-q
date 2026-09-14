@@ -1,496 +1,795 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import type { ReactNode } from 'react'
 import {
   LayoutDashboard, Clock, CalendarCheck, DoorOpen, Stethoscope, BarChart3,
   MonitorPlay, Smartphone, QrCode, ShieldCheck, Building2, TrendingUp,
-  Timer, ArrowRight, CheckCircle2, Sparkles, LineChart,
+  Timer, ArrowRight, Users, Workflow, ListChecks, Bell,
 } from 'lucide-react'
-import { clsx } from 'clsx'
 
-/* ═══ Core capabilities — ClinicQ คือระบบจัดการคลินิก ไม่ใช่ AI ทั่วไป ═══ */
-const coreFeatures = [
+/* ═══════════════════════════════════════════════════════════════
+   Design tokens — one visual language for the whole page.
+   Deliberately independent of the app's `candy-*` classes: the
+   marketing page is its own surface, not an app screen.
+   ═══════════════════════════════════════════════════════════════ */
+const FONT = { fontFamily: "'Prompt','Nunito',system-ui,sans-serif" }
+const ACCENT = '#0d9488'
+const INK = '#0f172a'
+
+const NAV = [
+  { label: 'ภาพรวม', href: '#overview' },
+  { label: 'ความสามารถ', href: '#capabilities' },
+  { label: 'การทำงาน', href: '#workflow' },
+  { label: 'ประเภทคลินิก', href: '#clinic-types' },
+]
+
+/* ═══ What ClinicQ unifies — the one-sentence promise, unpacked ═══ */
+const pillars = [
+  { icon: Clock, label: 'คิว', desc: 'Walk-in, จองออนไลน์ และนัดหมาย ในลำดับเดียว' },
+  { icon: CalendarCheck, label: 'นัดหมาย', desc: 'ตรวจการมาถึง ตรงเวลา และการลงทะเบียนซ้ำ' },
+  { icon: DoorOpen, label: 'ห้องตรวจ', desc: 'สถานะห้องว่างและห้องที่กำลังให้บริการ' },
+  { icon: Stethoscope, label: 'ผู้ให้บริการ', desc: 'ตารางงาน บทบาท และสิทธิ์ของทีม' },
+  { icon: BarChart3, label: 'การวิเคราะห์', desc: 'เวลารอ เวลาให้บริการ และภาระงานจริง' },
+]
+
+/* ═══ Workflow — what actually happens in a clinic, in order ═══ */
+const workflow = [
   {
-    icon: Clock,
-    title: 'จัดคิวผู้รับบริการ',
-    desc: 'ลงทะเบียน Walk-in จองคิวออนไลน์ และนัดหมาย จัดลำดับคิวอัตโนมัติ พร้อมเวลารอโดยประมาณ',
-    color: '#0d9488',
-    bg: '#f0fdfa',
+    icon: QrCode,
+    step: '01',
+    title: 'ผู้รับบริการเข้าคิว',
+    desc: 'สแกน QR ที่หน้าคลินิก ลงทะเบียน Walk-in หรือจองคิวออนไลน์และนัดหมายไว้ล่วงหน้า ระบบออกหมายเลขคิวให้ทันที',
+  },
+  {
+    icon: Workflow,
+    step: '02',
+    title: 'เจ้าหน้าที่จัดการคิว',
+    desc: 'เห็นคิวทั้งวันในจอเดียว เรียกคิวถัดไป มอบหมายห้องตรวจและผู้ให้บริการ พร้อมบันทึกเวลารอและเวลาให้บริการโดยอัตโนมัติ',
+  },
+  {
+    icon: TrendingUp,
+    step: '03',
+    title: 'ผู้บริหารเห็นภาพรวม',
+    desc: 'ดูจำนวนผู้รับบริการ ช่วงเวลาที่งานหนัก เวลารอเฉลี่ย ประสิทธิภาพห้องและทีมงาน จากข้อมูลที่ระบบเก็บไว้แล้ว',
+  },
+]
+
+/* ═══ Capabilities ═══ */
+const capabilities = [
+  {
+    icon: ListChecks,
+    title: 'จัดคิวและลำดับอัตโนมัติ',
+    desc: 'รวม Walk-in จองออนไลน์ และนัดหมายไว้ในลำดับเดียว แสดงเวลารอโดยประมาณของผู้รับบริการแต่ละคิว',
   },
   {
     icon: CalendarCheck,
-    title: 'นัดหมาย & การมาถึง',
-    desc: 'จัดการนัดหมาย ตรวจสอบการมาถึง ตรงเวลา/มาสาย ป้องกันการลงทะเบียนซ้ำ',
-    color: '#2563EB',
-    bg: '#EFF6FF',
+    title: 'นัดหมายและการมาถึง',
+    desc: 'จัดการนัดหมายล่วงหน้า บันทึกการมาถึง ตรวจว่ามาตรงเวลาหรือมาสาย และกันการลงทะเบียนซ้ำ',
   },
   {
     icon: DoorOpen,
-    title: 'ห้องตรวจ',
-    desc: 'ผูกห้องกับหัตถการและผู้ทำหัตถการ ดูสถานะห้องว่าง/กำลังให้บริการได้ทันที',
-    color: '#A855F7',
-    bg: '#FAF5FF',
+    title: 'ห้องตรวจและผู้ให้บริการ',
+    desc: 'ผูกห้องกับหัตถการและผู้ให้บริการ ดูได้ทันทีว่าห้องไหนว่าง ห้องไหนกำลังให้บริการ',
   },
   {
-    icon: Stethoscope,
-    title: 'ผู้ทำหัตถการ & ทีมงาน',
-    desc: 'กำหนดบทบาท Owner / Manager / Staff และจัดการสิทธิ์การเข้าถึงอย่างปลอดภัย',
-    color: '#F97316',
-    bg: '#FFF7ED',
+    icon: Users,
+    title: 'ทีมงานและสิทธิ์การใช้งาน',
+    desc: 'กำหนดบทบาท Owner, Manager, Staff และผู้ทำหัตถการ พร้อมสิทธิ์การเข้าถึงที่แยกตามหน้าที่',
   },
   {
-    icon: BarChart3,
-    title: 'วิเคราะห์การทำงาน',
-    desc: 'สถิติผู้รับบริการ เวลารอ ผลงานผู้ทำหัตถการ การใช้ห้องตรวจ และการนัดหมาย',
-    color: '#22C55E',
-    bg: '#F0FDF4',
+    icon: MonitorPlay,
+    title: 'จอแสดงคิวและ QR',
+    desc: 'จอ TV หน้าคลินิกแสดงคิวและสถานะห้องแบบเรียลไทม์ และ QR สำหรับให้ผู้รับบริการเข้าคิวเอง',
   },
   {
     icon: ShieldCheck,
-    title: 'ข้อมูลปลอดภัยบน Cloud',
-    desc: 'จัดเก็บเป็นระบบ แยกข้อมูลแต่ละคลินิก พร้อมสำรองข้อมูลอัตโนมัติ',
-    color: '#E11D48',
-    bg: '#FFF1F2',
+    title: 'ข้อมูลแยกตามคลินิก',
+    desc: 'ข้อมูลแต่ละคลินิกถูกแยกออกจากกัน จัดเก็บบนคลาวด์ และสำรองข้อมูลอัตโนมัติ',
   },
 ]
 
-const extraFeatures = [
-  { icon: MonitorPlay, title: 'จอ TV หน้าคลินิก', desc: 'แสดงคิวและสถานะห้องแบบเรียลไทม์ (ไม่แสดงชื่อผู้รับบริการ)' },
-  { icon: QrCode, title: 'QR & ลิงก์เดียว', desc: 'ผู้รับบริการสแกนเข้าหน้าจองคิว ติดตามคิวได้จากมือถือ' },
-  { icon: Smartphone, title: 'ติดตามคิวออนไลน์', desc: 'ดูคิวของตนเองและสถานะล่าสุดได้ทุกที่ทุกเวลา' },
-  { icon: Building2, title: 'หลายสาขา / หลายห้อง', desc: 'รองรับหลายสาขา ห้องตรวจ และทีมงานในคลินิกเดียว' },
-]
-
-/* ═══ Clinic types — ตรงกับ config จริงในระบบ ═══ */
 const clinicTypes = [
-  { icon: '🦷', name: 'ทันตกรรม', color: '#A855F7' },
-  { icon: '🏥', name: 'เวชกรรม', color: '#22C55E' },
-  { icon: '✨', name: 'เสริมความงาม', color: '#EC4899' },
-  { icon: '🌿', name: 'แพทย์แผนไทย', color: '#EAB308' },
-  { icon: '🏮', name: 'แพทย์แผนจีน', color: '#F97316' },
-  { icon: '🦴', name: 'กายภาพบำบัด', color: '#3B82F6' },
+  { name: 'ทันตกรรม', desc: 'คิวตามห้องและทันตแพทย์' },
+  { name: 'เวชกรรม', desc: 'ผู้ป่วยนอกและนัดหมายซ้ำ' },
+  { name: 'กายภาพบำบัด', desc: 'คอร์สการรักษาหลายครั้ง' },
+  { name: 'แพทย์แผนไทย', desc: 'หัตถการและเวลาบริการที่ยืดหยุ่น' },
+  { name: 'แพทย์แผนจีน', desc: 'หัตถการและห้องเฉพาะทาง' },
+  { name: 'เสริมความงาม', desc: 'นัดหมายและผู้ให้บริการหลายคน' },
 ]
 
-/* ═══ Preview URL — live ClinicQ walk-in page ═══ */
-const PREVIEW_URL = '/walkin?clinicId=clinic-dental'
+const insights = [
+  'ช่วง 17:00–18:00 มีเวลารอเฉลี่ยสูงที่สุดของวัน',
+  'ห้องตรวจ 1 ถูกใช้งานสูงกว่าห้องอื่นในสัปดาห์นี้',
+  'เวลารอเฉลี่ยลดลง 8% เมื่อเทียบกับสัปดาห์ก่อน',
+]
 
-/* ═══ Mock data for analytics preview ═══ */
 const weeklyBars = [
   { day: 'จ', v: 45 }, { day: 'อ', v: 62 }, { day: 'พ', v: 58 },
   { day: 'พฤ', v: 74 }, { day: 'ศ', v: 88 }, { day: 'ส', v: 70 }, { day: 'อา', v: 30 },
 ]
 
-const insights = [
-  'ช่วง 17:00–18:00 มีเวลารอเฉลี่ยสูงที่สุด',
-  'ห้อง 1 ถูกใช้งานสูงกว่าห้องอื่นในสัปดาห์นี้',
-  'ผู้รับบริการมาสายเฉลี่ย 12 นาที',
-  'เวลารอเฉลี่ยลดลงจากสัปดาห์ก่อน 8%',
-]
+/* ═══════════════════════════════════════════════════════════════
+   Screen mockups — built from the real ClinicQ layout (sidebar,
+   KPI row, queue list, room panel) so the page shows the product
+   itself rather than decoration. Pure markup: no images, no data.
+   ═══════════════════════════════════════════════════════════════ */
 
-const steps = [
-  { step: 1, title: 'สมัครใช้งาน', desc: 'เลือกประเภทคลินิก กรอกข้อมูล ใช้เวลาไม่ถึง 2 นาที', icon: '📝', color: '#0d9488' },
-  { step: 2, title: 'ตั้งค่าคลินิก', desc: 'เพิ่มสาขา ห้องตรวจ ผู้ทำหัตถการ และรายการหัตถการ', icon: '⚙️', color: '#A855F7' },
-  { step: 3, title: 'เริ่มใช้งาน', desc: 'ลงทะเบียนผู้รับบริการ เรียกคิว ดูสถิติ ครบจบในที่เดียว', icon: '🚀', color: '#22C55E' },
-]
+function Frame({ url, children }: { url: string; children: ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white shadow-[0_24px_60px_-24px_rgba(15,23,42,0.25)] overflow-hidden">
+      <div className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-100 bg-slate-50/80">
+        <div className="flex gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-slate-300" />
+          <span className="w-2.5 h-2.5 rounded-full bg-slate-300" />
+          <span className="w-2.5 h-2.5 rounded-full bg-slate-300" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="mx-auto max-w-[280px] truncate rounded-md border border-slate-200 bg-white px-3 py-1 text-center text-[11px] text-slate-400">
+            {url}
+          </div>
+        </div>
+      </div>
+      <div className="bg-slate-50/60">{children}</div>
+    </div>
+  )
+}
 
-const planFeatures = [
-  'คิวไม่จำกัด',
-  'สาขา ห้อง ผู้ใช้ ไม่จำกัด',
-  'นัดหมาย & Walk-in & จองออนไลน์',
-  'วิเคราะห์การทำงาน + กราฟ',
-  'TV Display จอแสดงคิว',
-  'QR Code & ลิงก์สำหรับผู้รับบริการ',
-  'จัดการสิทธิ์ Owner / Manager / Staff',
-]
+function StatusDot({ tone }: { tone: 'wait' | 'serving' | 'done' }) {
+  const map = {
+    wait: { bg: '#fef3c7', text: '#b45309', label: 'รอเรียก' },
+    serving: { bg: '#ccfbf1', text: '#0f766e', label: 'กำลังให้บริการ' },
+    done: { bg: '#e2e8f0', text: '#475569', label: 'เสร็จแล้ว' },
+  }[tone]
+  return (
+    <span
+      className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
+      style={{ backgroundColor: map.bg, color: map.text }}
+    >
+      {map.label}
+    </span>
+  )
+}
 
-/* ═══ Hero Live Preview — iframe showing real ClinicQ walk-in page ═══ */
-function HeroLivePreview() {
-  const [loaded, setLoaded] = useState(false)
+function DashboardMockup() {
+  const kpis = [
+    { label: 'รวมวันนี้', value: '24', tone: '#0f172a' },
+    { label: 'รอเรียก', value: '5', tone: '#b45309' },
+    { label: 'กำลังให้บริการ', value: '3', tone: ACCENT },
+    { label: 'เสร็จแล้ว', value: '15', tone: '#475569' },
+    { label: 'ยกเลิก', value: '1', tone: '#be123c' },
+  ]
+  const rows = [
+    { no: 'A012', name: 'สมชาย ก.', proc: 'กายภาพบำบัดคอ', tone: 'serving' as const, room: 'ห้อง 1' },
+    { no: 'A013', name: 'มาลี ว.', proc: 'กายภาพบำบัดหลัง', tone: 'wait' as const, room: '—' },
+    { no: 'A014', name: 'ปิยะ ส.', proc: 'อัลตราซาวด์', tone: 'wait' as const, room: '—' },
+    { no: 'A011', name: 'อรทัย พ.', proc: 'ปรับท่าทาง', tone: 'done' as const, room: 'ห้อง 2' },
+  ]
+  const nav = [
+    { icon: LayoutDashboard, label: 'แดชบอร์ด', active: true },
+    { icon: Users, label: 'ผู้รับบริการ', active: false },
+    { icon: BarChart3, label: 'วิเคราะห์ข้อมูล', active: false },
+    { icon: DoorOpen, label: 'จัดการคลินิก', active: false },
+  ]
 
   return (
-    <div className="mt-16 max-w-5xl mx-auto animate-float">
-      <div className="candy-card p-2 sm:p-3 overflow-hidden">
-        {/* Browser chrome bar */}
-        <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-t-xl border-b border-gray-100">
-          <div className="flex gap-1.5">
-            <div className="w-2.5 h-2.5 rounded-full bg-red-400" />
-            <div className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
-            <div className="w-2.5 h-2.5 rounded-full bg-green-400" />
-          </div>
-          <div className="flex-1 mx-2">
-            <div className="bg-white rounded-md px-3 py-1 text-[10px] text-gray-400 font-mono truncate border border-gray-200">
-              clinic-q.app{PREVIEW_URL}
+    <Frame url="clinic-q.app/dashboard">
+      <div className="flex">
+        {/* sidebar */}
+        <aside className="hidden sm:flex w-[168px] flex-shrink-0 flex-col border-r border-slate-100 bg-white px-3 py-4">
+          <div className="flex items-center gap-2 px-1">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg text-[11px] font-bold text-white" style={{ background: ACCENT }}>
+              CQ
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-[11px] font-semibold" style={{ color: INK }}>Clinic-Q</p>
+              <p className="truncate text-[9px] text-slate-400">คลินิกกายภาพ</p>
             </div>
           </div>
-          <span className="candy-badge bg-emerald-50 text-emerald-600 !text-[9px] !px-2 !py-0.5">
-            <span className="w-1 h-1 rounded-full bg-emerald-500 inline-block" /> LIVE
+          <nav className="mt-4 space-y-0.5">
+            {nav.map((n) => (
+              <div
+                key={n.label}
+                className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-[10px]"
+                style={{
+                  background: n.active ? '#f0fdfa' : 'transparent',
+                  color: n.active ? '#0f766e' : '#64748b',
+                  fontWeight: n.active ? 600 : 400,
+                }}
+              >
+                <n.icon className="h-3.5 w-3.5" />
+                {n.label}
+              </div>
+            ))}
+          </nav>
+        </aside>
+
+        {/* main */}
+        <div className="min-w-0 flex-1 p-4">
+          <div className="flex items-center justify-between">
+            <p className="text-[13px] font-semibold" style={{ color: INK }}>แดชบอร์ด</p>
+            <span className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[9px] text-slate-500">
+              วันนี้ · 09:40 น.
+            </span>
+          </div>
+
+          <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
+            {kpis.map((k) => (
+              <div key={k.label} className="rounded-xl border border-slate-100 bg-white px-2.5 py-2">
+                <p className="text-[15px] font-bold leading-none" style={{ color: k.tone }}>{k.value}</p>
+                <p className="mt-1 text-[9px] text-slate-400">{k.label}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-3 rounded-xl border border-slate-100 bg-white">
+            <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
+              <p className="text-[10px] font-semibold text-slate-700">คิววันนี้</p>
+              <span className="rounded-md px-2 py-0.5 text-[9px] font-medium text-white" style={{ background: ACCENT }}>
+                เรียกคิวถัดไป
+              </span>
+            </div>
+            <div className="divide-y divide-slate-50">
+              {rows.map((r) => (
+                <div key={r.no} className="flex items-center gap-3 px-3 py-2">
+                  <span className="w-11 flex-shrink-0 rounded-md bg-slate-100 py-0.5 text-center text-[10px] font-semibold text-slate-700">
+                    {r.no}
+                  </span>
+                  <span className="w-20 flex-shrink-0 truncate text-[10px] text-slate-700">{r.name}</span>
+                  <span className="hidden flex-1 truncate text-[10px] text-slate-400 sm:block">{r.proc}</span>
+                  <span className="hidden w-14 flex-shrink-0 text-[10px] text-slate-400 md:block">{r.room}</span>
+                  <StatusDot tone={r.tone} />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            {[
+              { room: 'ห้อง 1', state: 'กำลังให้บริการ', tone: ACCENT },
+              { room: 'ห้อง 2', state: 'ว่าง', tone: '#94a3b8' },
+              { room: 'ห้อง 3', state: 'ว่าง', tone: '#94a3b8' },
+            ].map((rm) => (
+              <div key={rm.room} className="rounded-xl border border-slate-100 bg-white px-2.5 py-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: rm.tone }} />
+                  <p className="text-[10px] font-semibold text-slate-700">{rm.room}</p>
+                </div>
+                <p className="mt-1 text-[9px] text-slate-400">{rm.state}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Frame>
+  )
+}
+
+function SettingsMockup() {
+  const rows = [
+    { name: 'ห้องตรวจ 1', meta: 'กายภาพบำบัดคอ · นภดล ว.', on: true },
+    { name: 'ห้องตรวจ 2', meta: 'อัลตราซาวด์ · นภดล ว.', on: true },
+    { name: 'ห้องตรวจ 3', meta: 'ปรับท่าทาง · สุดา ม.', on: true },
+    { name: 'ห้องตรวจ 4', meta: 'ยังไม่เปิดใช้งาน', on: false },
+  ]
+  const roles = ['เจ้าของคลินิก', 'ผู้จัดการ', 'เจ้าหน้าที่', 'ผู้ทำหัตถการ']
+
+  return (
+    <Frame url="clinic-q.app/settings">
+      <div className="p-4 sm:p-5">
+        <div className="flex items-center justify-between">
+          <p className="text-[13px] font-semibold" style={{ color: INK }}>จัดการคลินิก</p>
+          <span className="rounded-md px-2 py-0.5 text-[9px] font-medium text-white" style={{ background: ACCENT }}>
+            บันทึกแล้ว
           </span>
         </div>
 
-        {/* Live iframe */}
-        <div className="relative aspect-[16/9] bg-gray-100 rounded-b-xl overflow-hidden">
-          {!loaded && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-8 h-8 border-3 border-teal-400 border-t-transparent rounded-full animate-spin" />
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {['ตั้งค่าคลินิก', 'สาขาและหัตถการ', 'ห้องตรวจ', 'จัดการผู้ใช้'].map((t, i) => (
+            <span
+              key={t}
+              className="rounded-lg border px-2.5 py-1 text-[9px]"
+              style={
+                i === 2
+                  ? { borderColor: '#99f6e4', background: '#f0fdfa', color: '#0f766e', fontWeight: 600 }
+                  : { borderColor: '#e2e8f0', background: '#fff', color: '#94a3b8' }
+              }
+            >
+              {t}
+            </span>
+          ))}
+        </div>
+
+        <div className="mt-3 rounded-xl border border-slate-100 bg-white">
+          <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
+            <p className="text-[10px] font-semibold text-slate-700">ห้องตรวจและหัตถการ</p>
+            <span className="text-[9px] text-slate-400">4 ห้อง</span>
+          </div>
+          <div className="divide-y divide-slate-50">
+            {rows.map((r) => (
+              <div key={r.name} className="flex items-center gap-3 px-3 py-2">
+                <span
+                  className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
+                  style={{ background: r.on ? ACCENT : '#cbd5e1' }}
+                />
+                <span className="w-20 flex-shrink-0 text-[10px] font-medium text-slate-700">{r.name}</span>
+                <span className="flex-1 truncate text-[10px] text-slate-400">{r.meta}</span>
+                <span
+                  className="rounded-md px-1.5 py-0.5 text-[9px]"
+                  style={r.on ? { background: '#ccfbf1', color: '#0f766e' } : { background: '#f1f5f9', color: '#94a3b8' }}
+                >
+                  {r.on ? 'เปิด' : 'ปิด'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-3 rounded-xl border border-slate-100 bg-white p-3">
+          <p className="text-[10px] font-semibold text-slate-700">สิทธิ์การใช้งานตามบทบาท</p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {roles.map((r) => (
+              <span key={r} className="rounded-lg bg-slate-50 px-2 py-1 text-[9px] text-slate-500">
+                {r}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Frame>
+  )
+}
+
+function PatientPhoneMockup() {
+  return (
+    <div className="mx-auto w-[248px]">
+      <div className="rounded-[28px] border border-slate-200 bg-white p-2 shadow-[0_24px_60px_-24px_rgba(15,23,42,0.25)]">
+        <div className="overflow-hidden rounded-[22px] border border-slate-100 bg-slate-50">
+          <div className="flex items-center justify-between px-3 py-1.5 text-[8px] text-slate-400">
+            <span>09:41</span>
+            <span>Clinic-Q</span>
+          </div>
+          <div className="px-3 pb-4 pt-2">
+            <p className="text-[10px] text-slate-400">คิวของคุณ</p>
+            <p className="text-[30px] font-bold leading-none" style={{ color: ACCENT }}>A012</p>
+
+            <div className="mt-3 rounded-xl border border-slate-100 bg-white px-3 py-2.5">
+              <div className="flex items-center gap-1.5">
+                <Bell className="h-3 w-3" style={{ color: ACCENT }} />
+                <p className="text-[10px] font-medium text-slate-700">เหลืออีก 2 คิวก่อนถึงคุณ</p>
+              </div>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                <div className="h-full w-2/3 rounded-full" style={{ background: ACCENT }} />
+              </div>
+              <p className="mt-2 text-[9px] text-slate-400">เวลารอโดยประมาณ 15 นาที</p>
             </div>
-          )}
-          <iframe
-            src={PREVIEW_URL}
-            title="ClinicQ Walk-in Preview"
-            className={`w-full h-full border-0 transition-opacity duration-500 ${loaded ? 'opacity-100' : 'opacity-0'}`}
-            onLoad={() => setLoaded(true)}
-            sandbox="allow-scripts allow-same-origin allow-forms"
-            loading="lazy"
-          />
+
+            <div className="mt-2 space-y-1.5">
+              {[
+                { k: 'หัตถการ', v: 'กายภาพบำบัดคอ' },
+                { k: 'ห้องตรวจ', v: 'ห้อง 1' },
+                { k: 'ผู้ให้บริการ', v: 'นภดล ว.' },
+              ].map((d) => (
+                <div key={d.k} className="flex items-center justify-between rounded-lg border border-slate-100 bg-white px-2.5 py-1.5">
+                  <span className="text-[9px] text-slate-400">{d.k}</span>
+                  <span className="text-[9px] font-medium text-slate-700">{d.v}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
-export default function LandingPage() {
-  const router = useRouter()
-  const [scrollY, setScrollY] = useState(0)
+/* ═══════════════════════════════════════════════════════════════
+   Page
+   ═══════════════════════════════════════════════════════════════ */
 
-  useEffect(() => {
-    const handleScroll = () => setScrollY(window.scrollY)
-    window.addEventListener('scroll', handleScroll)
-    return () => window.removeEventListener('scroll', handleScroll)
-  }, [])
-
+function SectionLabel({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen relative z-[2]">
-      {/* ═══════ NAVBAR ═══════ */}
-      <nav className={clsx(
-        'fixed top-0 left-0 right-0 z-50 transition-all duration-300',
-        scrollY > 40 ? 'bg-white/90 backdrop-blur-lg shadow-md border-b border-teal-50' : 'bg-transparent'
-      )}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-2">
-              <img src="/brand-logo.png" alt="Clinic-Q" className="h-9 w-auto" />
-              <span className="hidden sm:block text-lg font-extrabold text-gray-900">Clinic-Q</span>
-            </div>
-            <div className="flex items-center gap-2 sm:gap-3">
-              <button
-                onClick={() => router.push('/login')}
-                className="candy-btn text-gray-600 hover:text-gray-900"
-              >
-                เข้าสู่ระบบ
-              </button>
-              <button
-                onClick={() => router.push('/register')}
-                className="candy-btn candy-btn-primary !px-5 !py-2"
-              >
-                สมัครใช้งานฟรี
-              </button>
-            </div>
+    <p className="text-[13px] font-semibold uppercase tracking-[0.14em]" style={{ color: ACCENT }}>
+      {children}
+    </p>
+  )
+}
+
+export default function LandingPage() {
+  return (
+    <div className="relative z-[2] min-h-screen bg-white text-slate-900" style={FONT}>
+      {/* ═══════ HEADER ═══════ */}
+      <header className="sticky top-0 z-50 border-b border-slate-200/70 bg-white/85 backdrop-blur-xl">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-8">
+          <Link href="/" className="flex items-center gap-2.5">
+            <img src="/brand-logo.png" alt="Clinic-Q" className="h-8 w-auto" />
+            <span className="text-[17px] font-semibold tracking-tight" style={{ color: INK }}>
+              Clinic<span style={{ color: ACCENT }}>Q</span>
+            </span>
+          </Link>
+
+          <nav className="hidden items-center gap-8 md:flex">
+            {NAV.map((n) => (
+              <a key={n.href} href={n.href} className="text-[14px] text-slate-500 transition hover:text-slate-900">
+                {n.label}
+              </a>
+            ))}
+          </nav>
+
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Link
+              href="/login"
+              className="rounded-lg px-3 py-2 text-[14px] font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+            >
+              เข้าสู่ระบบ
+            </Link>
+            <Link
+              href="/register"
+              className="rounded-lg px-4 py-2 text-[14px] font-medium text-white transition hover:opacity-90"
+              style={{ background: ACCENT }}
+            >
+              เริ่มใช้งานฟรี
+            </Link>
           </div>
         </div>
-      </nav>
+      </header>
 
       {/* ═══════ HERO ═══════ */}
-      <section className="pt-28 pb-16 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center max-w-3xl mx-auto page-enter">
-            <div className="candy-badge bg-white text-gray-600 shadow-sm border border-teal-100 mb-6 !px-4 !py-2 !text-sm">
-              <Sparkles className="w-4 h-4 text-teal-500" />
-              ทดลองใช้ฟรี 30 วัน · ไม่ต้องบัตรเครดิต
-            </div>
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-gray-900 leading-tight">
-              ระบบจัดการ{' '}
-              <span className="candy-gradient-text">คลินิก</span>
-              <br />
-              ครบจบในที่เดียว
-            </h1>
-            <p className="mt-6 text-lg text-gray-500 leading-relaxed max-w-2xl mx-auto">
-              จัดคิว นัดหมาย ห้องตรวจ ผู้ทำหัตถการ และวิเคราะห์การทำงานของคลินิก
-              <br className="hidden sm:block" />
-              เหมาะสำหรับคลินิกทุกประเภท ตั้งแต่ทันตกรรมไปจนถึงกายภาพบำบัด
+      <section id="overview" className="px-5 pb-20 pt-20 sm:px-8 sm:pt-28">
+        <div className="mx-auto max-w-6xl">
+          <div className="mx-auto max-w-3xl text-center">
+            <p className="text-[13px] font-medium tracking-wide text-slate-500">
+              ระบบจัดการคลินิกครบวงจร
             </p>
-            <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
-              <button
-                onClick={() => router.push('/register')}
-                className="candy-btn candy-btn-primary w-full sm:w-auto !px-8 !py-4 !text-base justify-center"
+            <h1
+              className="mt-5 text-[34px] font-semibold leading-[1.15] tracking-tight sm:text-[52px]"
+              style={{ color: INK }}
+            >
+              บริหารคลินิกทั้งระบบ
+              <br />
+              <span style={{ color: ACCENT }}>ในที่เดียว</span>
+            </h1>
+            <p className="mx-auto mt-6 max-w-2xl text-[16px] leading-relaxed text-slate-500 sm:text-[17px]">
+              ClinicQ รวมการจัดคิว นัดหมาย ห้องตรวจ ผู้ให้บริการ และการวิเคราะห์การทำงาน
+              ไว้ในระบบเดียว ใช้ได้กับคลินิกทุกประเภท
+            </p>
+
+            <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <Link
+                href="/register"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3.5 text-[15px] font-medium text-white transition hover:opacity-90 sm:w-auto"
+                style={{ background: ACCENT }}
               >
-                เริ่มใช้งานฟรี <ArrowRight className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => router.push('/login')}
-                className="candy-btn w-full sm:w-auto !px-8 !py-4 !text-base justify-center bg-white text-gray-700 border border-gray-200 shadow-md hover:shadow-lg"
+                เริ่มใช้งานฟรี
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+              <Link
+                href="/login"
+                className="inline-flex w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-6 py-3.5 text-[15px] font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 sm:w-auto"
               >
                 เข้าสู่ระบบ
-              </button>
+              </Link>
             </div>
 
-            {/* Clinic types */}
-            <div className="mt-12 flex flex-wrap items-center justify-center gap-3">
-              {clinicTypes.map(ct => (
-                <div key={ct.name} className="candy-badge bg-white text-gray-600 shadow-sm border border-gray-100 !px-4 !py-2 !text-sm">
-                  <span className="text-lg">{ct.icon}</span>
-                  {ct.name}
-                </div>
-              ))}
-            </div>
+            <p className="mt-4 text-[13px] text-slate-400">
+              ทดลองใช้ฟรี 30 วัน · ไม่ต้องใช้บัตรเครดิต · เริ่มได้ทันที
+            </p>
           </div>
 
-          {/* Hero visual — LIVE system preview (iframe) */}
-          <HeroLivePreview />
+          <div className="mt-16 sm:mt-20">
+            <DashboardMockup />
+          </div>
         </div>
       </section>
 
-      {/* ═══════ FEATURES ═══════ */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-14">
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900">
-              จัดการคลินิก <span className="candy-gradient-text">ครบทุกด้าน</span>
+      {/* ═══════ WHAT IT UNIFIES ═══════ */}
+      <section className="border-y border-slate-100 bg-slate-50/60 px-5 py-16 sm:px-8 sm:py-20">
+        <div className="mx-auto max-w-6xl">
+          <div className="text-center">
+            <SectionLabel>ระบบเดียว</SectionLabel>
+            <h2 className="mt-3 text-[24px] font-semibold tracking-tight sm:text-[30px]" style={{ color: INK }}>
+              ห้าสิ่งที่คลินิกต้องใช้จริง รวมอยู่ในที่เดียว
             </h2>
-            <p className="mt-4 text-lg text-gray-500 max-w-2xl mx-auto">
-              ทุกฟังก์ชันที่คลินิกต้องใช้จริง ตั้งแต่วันแรกที่ผู้รับบริการเดินเข้า ไปจนถึงรายงานภาพรวม
+          </div>
+          <div className="mt-12 grid grid-cols-1 gap-x-8 gap-y-8 sm:grid-cols-2 lg:grid-cols-5">
+            {pillars.map((p) => (
+              <div key={p.label}>
+                <p.icon className="h-5 w-5" style={{ color: ACCENT }} />
+                <h3 className="mt-3 text-[15px] font-semibold" style={{ color: INK }}>{p.label}</h3>
+                <p className="mt-1.5 text-[13px] leading-relaxed text-slate-500">{p.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════ WORKFLOW ═══════ */}
+      <section id="workflow" className="px-5 py-20 sm:px-8 sm:py-28">
+        <div className="mx-auto max-w-6xl">
+          <div className="max-w-2xl">
+            <SectionLabel>การทำงาน</SectionLabel>
+            <h2 className="mt-3 text-[26px] font-semibold tracking-tight sm:text-[34px]" style={{ color: INK }}>
+              ClinicQ ช่วยคลินิกคุณอย่างไร
+            </h2>
+            <p className="mt-4 text-[15px] leading-relaxed text-slate-500">
+              ตั้งแต่ผู้รับบริการเดินเข้าคลินิก จนถึงรายงานที่ผู้บริหารใช้ตัดสินใจ
+              ทุกขั้นตอนอยู่ในระบบเดียวกัน ไม่ต้องจดใส่กระดาษหรือสลับหลายโปรแกรม
             </p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {coreFeatures.map((f, i) => {
-              const Icon = f.icon
-              return (
-                <div key={i} className="candy-card p-6">
-                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: f.bg }}>
-                    <Icon className="w-6 h-6" style={{ color: f.color }} />
-                  </div>
-                  <h3 className="text-lg font-bold text-gray-900 mb-2">{f.title}</h3>
-                  <p className="text-sm text-gray-500 leading-relaxed">{f.desc}</p>
+
+          <div className="mt-14 grid grid-cols-1 gap-10 md:grid-cols-3 md:gap-8">
+            {workflow.map((w, i) => (
+              <div key={w.step} className="relative">
+                {i < workflow.length - 1 && (
+                  <span className="absolute left-[26px] top-14 hidden h-[calc(100%-2rem)] w-px bg-slate-200 md:block" />
+                )}
+                <div
+                  className="relative flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white"
+                >
+                  <w.icon className="h-5 w-5" style={{ color: ACCENT }} />
                 </div>
-              )
-            })}
+                <p className="mt-5 text-[12px] font-semibold tracking-[0.16em] text-slate-300">{w.step}</p>
+                <h3 className="mt-2 text-[17px] font-semibold" style={{ color: INK }}>{w.title}</h3>
+                <p className="mt-2.5 text-[14px] leading-relaxed text-slate-500">{w.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════ PATIENT FLOW ═══════ */}
+      <section className="border-y border-slate-100 bg-slate-50/60 px-5 py-20 sm:px-8 sm:py-28">
+        <div className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-14 lg:grid-cols-2 lg:gap-20">
+          <div>
+            <SectionLabel>ผู้รับบริการ</SectionLabel>
+            <h2 className="mt-3 text-[26px] font-semibold tracking-tight sm:text-[32px]" style={{ color: INK }}>
+              ผู้รับบริการเข้าคิวเองได้
+              <br />
+              ไม่ต้องรอที่เคาน์เตอร์
+            </h2>
+            <p className="mt-4 text-[15px] leading-relaxed text-slate-500">
+              สแกน QR ที่หน้าคลินิก ลงทะเบียน Walk-in หรือจองคิวออนไลน์ล่วงหน้า
+              แล้วติดตามสถานะคิวของตัวเองจากมือถือได้ทันที
+            </p>
+
+            <ul className="mt-8 space-y-5">
+              {[
+                { icon: QrCode, t: 'สแกน QR แล้วเข้าคิวได้ทันที', d: 'ไม่ต้องติดตั้งแอป และไม่ต้องสมัครสมาชิก' },
+                { icon: Smartphone, t: 'ติดตามคิวจากมือถือ', d: 'เห็นหมายเลขคิว ตำแหน่งคิว และเวลารอโดยประมาณ' },
+                { icon: Bell, t: 'รู้ล่วงหน้าก่อนถึงคิว', d: 'เมื่อถึงคิว ระบบแจ้งสถานะให้ผู้รับบริการทราบ' },
+              ].map((f) => (
+                <li key={f.t} className="flex gap-4">
+                  <f.icon className="mt-0.5 h-5 w-5 flex-shrink-0" style={{ color: ACCENT }} />
+                  <div>
+                    <p className="text-[15px] font-medium" style={{ color: INK }}>{f.t}</p>
+                    <p className="mt-0.5 text-[13px] text-slate-500">{f.d}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
           </div>
 
-          {/* Extra capabilities */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
-            {extraFeatures.map((f, i) => {
-              const Icon = f.icon
-              return (
-                <div key={i} className="candy-card p-4 flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center flex-shrink-0">
-                    <Icon className="w-5 h-5 text-teal-600" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-gray-900">{f.title}</h4>
-                    <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{f.desc}</p>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+          <PatientPhoneMockup />
         </div>
       </section>
 
       {/* ═══════ ANALYTICS ═══════ */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-6xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
-            <div>
-              <div className="candy-badge bg-teal-50 text-teal-700 mb-4 !px-4 !py-2 !text-sm">
-                <TrendingUp className="w-4 h-4" /> วิเคราะห์การทำงานของคลินิก
-              </div>
-              <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 leading-tight">
-                รู้ว่าคลินิกทำงาน<br />
-                <span className="candy-gradient-text">เป็นอย่างไรทุกวัน</span>
-              </h2>
-              <p className="mt-4 text-gray-500 leading-relaxed">
-                ไม่ใช่แค่จำนวนคิว แต่เห็นภาพรวมผู้รับบริการ เวลารอ ผลงานผู้ทำหัตถการ
-                การใช้ห้องตรวจ และการนัดหมาย เพื่อวางแผนและเพิ่มประสิทธิภาพได้จริง
-              </p>
-              <div className="mt-6 space-y-3">
-                {insights.map((t, i) => (
-                  <div key={i} className="flex items-start gap-2 text-sm text-gray-600">
-                    <LineChart className="w-4 h-4 text-teal-500 flex-shrink-0 mt-0.5" />
-                    <span>{t}</span>
-                  </div>
-                ))}
-              </div>
+      <section className="px-5 py-20 sm:px-8 sm:py-28">
+        <div className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-14 lg:grid-cols-2 lg:gap-20">
+          <div>
+            <SectionLabel>การวิเคราะห์</SectionLabel>
+            <h2 className="mt-3 text-[26px] font-semibold tracking-tight sm:text-[32px]" style={{ color: INK }}>
+              เห็นว่าคลินิกทำงาน
+              <br />
+              เป็นอย่างไรทุกวัน
+            </h2>
+            <p className="mt-4 text-[15px] leading-relaxed text-slate-500">
+              ไม่ใช่แค่จำนวนคิว แต่เห็นภาพรวมผู้รับบริการ เวลารอ เวลาให้บริการ
+              ประสิทธิภาพของห้องตรวจและผู้ให้บริการ เพื่อวางแผนกำลังคนและเวลาทำงานได้จริง
+            </p>
+
+            <div className="mt-8 space-y-4 border-l-2 border-slate-200 pl-5">
+              {insights.map((t) => (
+                <p key={t} className="text-[14px] leading-relaxed text-slate-600">{t}</p>
+              ))}
             </div>
 
-            {/* Chart preview */}
-            <div className="candy-card p-6">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-sm font-bold text-gray-700">ผู้รับบริการรายสัปดาห์</p>
-                <span className="candy-badge bg-emerald-50 text-emerald-600">+12%</span>
+            <p className="mt-8 text-[13px] text-slate-400">
+              ตัวเลขทั้งหมดมาจากข้อมูลคิวที่ระบบเก็บไว้แล้ว ไม่ต้องกรอกเพิ่ม
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_1px_3px_rgba(15,23,42,0.04)] sm:p-7">
+            <div className="flex items-baseline justify-between">
+              <div>
+                <p className="text-[14px] font-semibold" style={{ color: INK }}>ผู้รับบริการรายสัปดาห์</p>
+                <p className="mt-0.5 text-[12px] text-slate-400">จำนวนคิว (คน)</p>
               </div>
-              <p className="text-xs text-gray-400 mb-5">จำนวนผู้รับบริการ (คน)</p>
-              <div className="flex items-end justify-between gap-2 h-40">
-                {weeklyBars.map((b, i) => (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-2">
-                    <div
-                      className="w-full rounded-t-lg bg-gradient-to-t from-teal-400 to-teal-500"
-                      style={{ height: `${b.v}%` }}
-                    />
-                    <span className="text-[10px] font-medium text-gray-400">{b.day}</span>
+              <span className="rounded-full bg-teal-50 px-2.5 py-1 text-[12px] font-medium" style={{ color: '#0f766e' }}>
+                +12%
+              </span>
+            </div>
+
+            <div className="mt-7 flex h-40 items-end justify-between gap-2.5">
+              {weeklyBars.map((b) => (
+                <div key={b.day} className="flex flex-1 flex-col items-center gap-2">
+                  <div className="w-full rounded-t-md" style={{ height: `${b.v}%`, background: '#5eead4' }} />
+                  <span className="text-[11px] text-slate-400">{b.day}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-7 grid grid-cols-3 gap-4 border-t border-slate-100 pt-6">
+              {[
+                { icon: Timer, label: 'เวลารอเฉลี่ย', value: '18 น.' },
+                { icon: Clock, label: 'เวลาให้บริการ', value: '32 น.' },
+                { icon: DoorOpen, label: 'ใช้ห้องตรวจ', value: '76%' },
+              ].map((s) => (
+                <div key={s.label}>
+                  <s.icon className="h-4 w-4 text-slate-400" />
+                  <p className="mt-2 text-[18px] font-semibold" style={{ color: INK }}>{s.value}</p>
+                  <p className="text-[11px] text-slate-400">{s.label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════ CAPABILITIES ═══════ */}
+      <section id="capabilities" className="border-y border-slate-100 bg-slate-50/60 px-5 py-20 sm:px-8 sm:py-28">
+        <div className="mx-auto max-w-6xl">
+          <div className="max-w-2xl">
+            <SectionLabel>ความสามารถ</SectionLabel>
+            <h2 className="mt-3 text-[26px] font-semibold tracking-tight sm:text-[34px]" style={{ color: INK }}>
+              จัดการคลินิกครบทุกด้าน
+            </h2>
+            <p className="mt-4 text-[15px] leading-relaxed text-slate-500">
+              ทุกฟังก์ชันที่คลินิกต้องใช้จริง ตั้งแต่วันแรกที่ผู้รับบริการเดินเข้า
+              ไปจนถึงรายงานภาพรวมของคลินิก
+            </p>
+          </div>
+
+          <div className="mt-14 grid grid-cols-1 gap-x-10 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
+            {capabilities.map((c) => (
+              <div key={c.title}>
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white">
+                  <c.icon className="h-5 w-5" style={{ color: ACCENT }} />
+                </div>
+                <h3 className="mt-4 text-[16px] font-semibold" style={{ color: INK }}>{c.title}</h3>
+                <p className="mt-2 text-[14px] leading-relaxed text-slate-500">{c.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════ CLINIC MANAGEMENT / TRUST ═══════ */}
+      <section className="px-5 py-20 sm:px-8 sm:py-28">
+        <div className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-14 lg:grid-cols-2 lg:gap-20">
+          <SettingsMockup />
+          <div>
+            <SectionLabel>จัดการคลินิก</SectionLabel>
+            <h2 className="mt-3 text-[26px] font-semibold tracking-tight sm:text-[32px]" style={{ color: INK }}>
+              ตั้งค่าคลินิกให้ตรง
+              <br />
+              กับวิธีทำงานจริงของคุณ
+            </h2>
+            <p className="mt-4 text-[15px] leading-relaxed text-slate-500">
+              เพิ่มสาขา ห้องตรวจ ผู้ให้บริการ และรายการหัตถการได้เอง
+              พร้อมกำหนดสิทธิ์การใช้งานตามบทบาทของแต่ละคน
+            </p>
+
+            <div className="mt-9 space-y-7">
+              {[
+                { icon: Building2, t: 'หลายสาขา หลายห้องตรวจ', d: 'แยกสาขาและห้องตรวจได้ตามโครงสร้างของคลินิก' },
+                { icon: Stethoscope, t: 'ผู้ให้บริการและหัตถการ', d: 'ผูกผู้ให้บริการกับห้องและหัตถการที่ทำได้' },
+                { icon: ShieldCheck, t: 'สิทธิ์การใช้งานตามบทบาท', d: 'เจ้าของคลินิก ผู้จัดการ เจ้าหน้าที่ และผู้ทำหัตถการ' },
+              ].map((f) => (
+                <div key={f.t} className="flex gap-4">
+                  <f.icon className="mt-0.5 h-5 w-5 flex-shrink-0" style={{ color: ACCENT }} />
+                  <div>
+                    <p className="text-[15px] font-medium" style={{ color: INK }}>{f.t}</p>
+                    <p className="mt-0.5 text-[13px] leading-relaxed text-slate-500">{f.d}</p>
                   </div>
-                ))}
-              </div>
-              <div className="grid grid-cols-3 gap-3 mt-6 pt-5 border-t border-gray-100">
-                {[
-                  { icon: Timer, label: 'เวลารอเฉลี่ย', value: '18 น.' },
-                  { icon: Clock, label: 'เวลาให้บริการ', value: '32 น.' },
-                  { icon: BarChart3, label: 'ใช้ห้อง', value: '76%' },
-                ].map((s, i) => {
-                  const Icon = s.icon
-                  return (
-                    <div key={i} className="text-center">
-                      <Icon className="w-4 h-4 text-teal-500 mx-auto mb-1" />
-                      <p className="text-base font-black text-gray-900">{s.value}</p>
-                      <p className="text-[10px] text-gray-400">{s.label}</p>
-                    </div>
-                  )
-                })}
-              </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
       </section>
 
       {/* ═══════ CLINIC TYPES ═══════ */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900">
-              รองรับคลินิก <span className="candy-gradient-text">ทุกประเภท</span>
+      <section id="clinic-types" className="border-y border-slate-100 bg-slate-50/60 px-5 py-20 sm:px-8 sm:py-24">
+        <div className="mx-auto max-w-6xl">
+          <div className="text-center">
+            <SectionLabel>ประเภทคลินิก</SectionLabel>
+            <h2 className="mt-3 text-[24px] font-semibold tracking-tight sm:text-[30px]" style={{ color: INK }}>
+              ใช้ได้กับคลินิกหลากหลายประเภท
             </h2>
-            <p className="mt-4 text-lg text-gray-500 max-w-2xl mx-auto">
-              ตั้งค่าหัตถการ ห้องตรวจ และผู้ทำหัตถการได้ตามรูปแบบของคลินิกคุณ
+            <p className="mx-auto mt-4 max-w-xl text-[15px] leading-relaxed text-slate-500">
+              ตั้งค่าหัตถการ ห้องตรวจ และผู้ให้บริการได้ตามรูปแบบของคลินิกคุณ
             </p>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-            {clinicTypes.map((ct, i) => (
-              <div key={i} className="candy-card p-5 text-center">
-                <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl mx-auto mb-3" style={{ backgroundColor: `${ct.color}15` }}>
-                  {ct.icon}
-                </div>
-                <p className="text-sm font-bold text-gray-900">{ct.name}</p>
+
+          <div className="mt-12 grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 sm:grid-cols-2 lg:grid-cols-3">
+            {clinicTypes.map((c) => (
+              <div key={c.name} className="bg-white px-6 py-6">
+                <p className="text-[15px] font-semibold" style={{ color: INK }}>{c.name}</p>
+                <p className="mt-1.5 text-[13px] text-slate-500">{c.desc}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ═══════ HOW IT WORKS ═══════ */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-14">
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900">
-              เริ่มใช้งาน <span className="candy-gradient-text">ง่ายนิดเดียว</span>
-            </h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {steps.map((s, i) => (
-              <div key={i} className="relative">
-                {i < 2 && (
-                  <div className="hidden md:block absolute top-14 left-full w-full h-0.5 bg-gradient-to-r from-teal-200 to-transparent z-0" />
-                )}
-                <div className="candy-card p-6 text-center relative">
-                  <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4" style={{ backgroundColor: `${s.color}15` }}>
-                    {s.icon}
-                  </div>
-                  <div className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-teal-500 text-white text-xs font-bold mb-3">{s.step}</div>
-                  <h3 className="text-lg font-bold text-gray-900 mb-2">{s.title}</h3>
-                  <p className="text-sm text-gray-500">{s.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ═══════ PRICING ═══════ */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-teal-50 via-white to-blue-50">
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-4">
-            แพ็กเกจเดียว ครบทุกฟีเจอร์
+      {/* ═══════ FINAL CTA ═══════ */}
+      <section className="px-5 py-24 sm:px-8 sm:py-28">
+        <div className="mx-auto max-w-3xl text-center">
+          <h2 className="text-[26px] font-semibold tracking-tight sm:text-[34px]" style={{ color: INK }}>
+            เริ่มจัดการคลินิกให้เป็นระบบขึ้น
           </h2>
-          <p className="text-lg text-gray-500 mb-8">
-            ทดลองใช้ฟรี 30 วัน · ไม่ต้องบัตรเครดิต · ไม่มีสัญญาผูกมัด
+          <p className="mx-auto mt-4 max-w-xl text-[15px] leading-relaxed text-slate-500">
+            สมัครใช้งานและเริ่มลงคิวแรกได้ภายในไม่กี่นาที ทดลองใช้ฟรี 30 วัน
           </p>
-
-          {/* Yearly promotion */}
-          <div className="max-w-2xl mx-auto mb-8">
-            <div className="candy-card p-6 text-white" style={{ background: 'linear-gradient(135deg, #14b8a6, #0d9488)' }}>
-              <p className="text-xl sm:text-2xl font-extrabold">🎉 สมัครรายปี</p>
-              <p className="text-base sm:text-lg font-bold mt-2 leading-relaxed">
-                ตั้งค่าแจ้งเตือนเมื่อถึงคิวนัดทาง <span className="text-yellow-200">LINE OA</span> ให้ฟรี
-              </p>
-              <p className="text-sm opacity-90 mt-2">พร้อมจัดทำ Rich Menu สำหรับระบบนัดคิว</p>
-            </div>
-          </div>
-
-          <div className="max-w-lg mx-auto">
-            <div className="candy-card p-8 border-2 !border-teal-400">
-              <span className="candy-badge bg-teal-50 text-teal-700 !px-4 !py-1.5 !text-sm">⭐ แพ็กเกจเดียว ครบทุกฟีเจอร์</span>
-              <h3 className="text-2xl font-extrabold text-gray-900 mt-4">Clinic-Q Professional</h3>
-              <div className="mt-4">
-                <span className="text-4xl font-extrabold text-teal-600">599</span>
-                <span className="text-lg text-gray-400"> บาท/เดือน</span>
-              </div>
-              <p className="text-sm text-gray-500 mt-2">หรือ 5,999 บาท/ปี (Early Bird 3,999 บาท/ปี)</p>
-              <div className="mt-6 space-y-2 text-left max-w-sm mx-auto">
-                {planFeatures.map((f, i) => (
-                  <div key={i} className="flex items-center gap-2 text-sm text-gray-600">
-                    <CheckCircle2 className="w-4 h-4 text-teal-500 flex-shrink-0" /> {f}
-                  </div>
-                ))}
-              </div>
-              <button
-                onClick={() => router.push('/pricing')}
-                className="candy-btn candy-btn-primary w-full justify-center mt-6 !py-3"
-              >
-                ดูรายละเอียด <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ═══════ CTA ═══════ */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-4">
-            พร้อมที่จะจัดการคลินิกให้เป็นระบบขึ้น?
-          </h2>
-          <p className="text-lg text-gray-500 mb-8">
-            เริ่มต้นใช้ Clinic-Q วันนี้ แล้วบริหารคลินิกได้ง่ายกว่าที่เคย
-          </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <button
-              onClick={() => router.push('/register')}
-              className="candy-btn candy-btn-primary w-full sm:w-auto !px-8 !py-4 !text-base justify-center"
+          <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <Link
+              href="/register"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3.5 text-[15px] font-medium text-white transition hover:opacity-90 sm:w-auto"
+              style={{ background: ACCENT }}
             >
-              สมัครใช้งานฟรี <ArrowRight className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => router.push('/login')}
-              className="candy-btn w-full sm:w-auto !px-8 !py-4 !text-base justify-center bg-white text-gray-700 border border-gray-200 shadow-md hover:shadow-lg"
+              เริ่มใช้งานฟรี
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link
+              href="/login"
+              className="inline-flex w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-6 py-3.5 text-[15px] font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 sm:w-auto"
             >
               เข้าสู่ระบบ
-            </button>
+            </Link>
           </div>
         </div>
       </section>
 
       {/* ═══════ FOOTER ═══════ */}
-      <footer className="py-8 px-4 sm:px-6 lg:px-8 border-t border-teal-100">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <img src="/brand-logo.png" alt="Clinic-Q" className="h-8 w-auto" />
-            <span className="text-xs text-gray-400">v1.0</span>
+      <footer className="border-t border-slate-200 px-5 py-10 sm:px-8">
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-6 sm:flex-row">
+          <div className="flex items-center gap-2.5">
+            <img src="/brand-logo.png" alt="Clinic-Q" className="h-7 w-auto" />
+            <span className="text-[15px] font-semibold tracking-tight" style={{ color: INK }}>
+              Clinic<span style={{ color: ACCENT }}>Q</span>
+            </span>
           </div>
-          <p className="text-xs text-gray-400">© 2026 Clinic-Q Platform. All rights reserved.</p>
-          <div className="flex items-center gap-4">
-            <a href="https://lin.ee/OqlmFFG" target="_blank" rel="noopener noreferrer" className="text-xs text-green-500 font-bold hover:underline">💬 ติดต่อ Admin</a>
-            <Link href="/terms" className="text-xs text-gray-400 hover:text-gray-600">เงื่อนไข</Link>
-            <Link href="/privacy" className="text-xs text-gray-400 hover:text-gray-600">นโยบายความเป็นส่วนตัว</Link>
-          </div>
+
+          <nav className="flex flex-wrap items-center justify-center gap-x-7 gap-y-2">
+            {NAV.map((n) => (
+              <a key={n.href} href={n.href} className="text-[13px] text-slate-500 transition hover:text-slate-900">
+                {n.label}
+              </a>
+            ))}
+            <Link href="/terms" className="text-[13px] text-slate-500 transition hover:text-slate-900">
+              เงื่อนไขการใช้งาน
+            </Link>
+            <Link href="/privacy" className="text-[13px] text-slate-500 transition hover:text-slate-900">
+              นโยบายความเป็นส่วนตัว
+            </Link>
+          </nav>
+
+          <a
+            href="https://lin.ee/OqlmFFG"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[13px] font-medium transition hover:opacity-80"
+            style={{ color: ACCENT }}
+          >
+            ติดต่อทีมงาน
+          </a>
+        </div>
+
+        <div className="mx-auto mt-8 max-w-6xl border-t border-slate-100 pt-6">
+          <p className="text-center text-[12px] text-slate-400 sm:text-left">
+            © 2026 Clinic-Q Platform. สงวนลิขสิทธิ์
+          </p>
         </div>
       </footer>
     </div>
