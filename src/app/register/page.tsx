@@ -31,6 +31,7 @@ export default function RegisterPage() {
   const [resending, setResending] = useState(false)
   const [resendResult, setResendResult] = useState<{ success: boolean; message: string } | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [submitStep, setSubmitStep] = useState('')
   const [completingRegistration, setCompletingRegistration] = useState(false)
   const [completeError, setCompleteError] = useState('')
   const [form, setForm] = useState({
@@ -127,11 +128,13 @@ export default function RegisterPage() {
     if (submitting) return
     if (!validate()) return
     setSubmitting(true)
+    setSubmitStep('กำลังตรวจสอบข้อมูล...')
     
     // Check for duplicate clinic
     const isDuplicate = await checkDuplicateClinic()
     if (isDuplicate) {
       setSubmitting(false)
+      setSubmitStep('')
       setShowDuplicateModal(true)
       return
     }
@@ -141,9 +144,11 @@ export default function RegisterPage() {
     const { isSupabaseReady } = await import('@/lib/supabase')
     if (!isSupabaseReady()) {
       setSubmitting(false)
+      setSubmitStep('')
       alert('ระบบยังไม่ได้เชื่อมต่อกับฐานข้อมูล กรุณาติดต่อผู้ดูแลระบบ')
       return
     }
+    setSubmitStep('กำลังสร้างบัญชีผู้ใช้...')
     const { supabaseRegister } = await import('@/lib/supabase-auth')
     const result = await supabaseRegister({
       email: form.email,
@@ -155,6 +160,7 @@ export default function RegisterPage() {
     })
     if (!result.success) {
       setSubmitting(false)
+      setSubmitStep('')
       alert(result.error || 'สมัครใช้งานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง')
       return
     }
@@ -176,17 +182,21 @@ export default function RegisterPage() {
       } catch {}
       setPendingEmail(form.email)
       setSubmitting(false)
+      setSubmitStep('')
       setStep('check_email')
       return
     }
 
     // Session available (confirmation disabled) → create defaults now.
     const clinicId = (result as any).clinicId || ''
+    setSubmitStep('กำลังสร้างบัญชีเริ่มต้น...')
     await createDefaultAccounts(clinicId)
     // Fire-and-forget: persist trial in DB + alert Platform Owner on LINE.
     // Idempotent — safe to call even if the endpoint was already hit.
+    setSubmitStep('กำลังแจ้งเตือนผู้ดูแลระบบ...')
     notifyNewClinic(clinicId, form.ownerName, form.email)
     setSubmitting(false)
+    setSubmitStep('')
     setStep('success')
   }
 
@@ -524,7 +534,7 @@ export default function RegisterPage() {
               {submitting ? (
                 <div className="flex-1 py-3 rounded-2xl font-bold text-white bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center gap-2">
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  กำลังสร้างฐานข้อมูล...
+                  {submitStep || 'กำลังดำเนินการ...'}
                 </div>
               ) : (
                 <button
