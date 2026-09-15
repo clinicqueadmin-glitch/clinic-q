@@ -672,6 +672,107 @@ export default function RegisterPage() {
                 return null
               }
             })()}
+
+            {/* Save/Copy credentials button */}
+            {typeof window !== 'undefined' && (() => {
+              try {
+                const stored = JSON.parse(sessionStorage.getItem('defaultAccounts') || '[]')
+                if (!stored.length) return null
+                const roleLabel = (role: string) =>
+                  role === 'manager' ? 'ผู้จัดการ' :
+                  role === 'front_desk' || role === 'staff' ? 'เจ้าหน้าที่' :
+                  role === 'practitioner' ? 'ผู้ทำหัตถการ' : role
+                const handleSave = () => {
+                  const lines = [
+                    '═══════════════════════════════════════',
+                    '  Clinic-Q — ข้อมูลบัญชีผู้ใช้คลินิก',
+                    '═══════════════════════════════════════',
+                    '',
+                    `คลินิก: ${form.clinicName || '-'}`,
+                    `อีเมล: ${form.email}`,
+                    '',
+                    '───────────────────────────────────────',
+                    '',
+                  ]
+                  stored.forEach((acc: { role: string; username: string; temporaryPassword: string }) => {
+                    lines.push(`[${roleLabel(acc.role)}]`)
+                    lines.push(`  Username:         ${acc.username}`)
+                    lines.push(`  รหัสผ่านชั่วคราว: ${acc.temporaryPassword}`)
+                    lines.push('')
+                  })
+                  lines.push('───────────────────────────────────────')
+                  lines.push('⚠️ รหัสผ่านชั่วคราวนี้จะแสดงเพียงครั้งเดียว')
+                  lines.push('   หลังจากนี้ระบบจะไม่สามารถแสดงอีกได้')
+                  lines.push('   หากลืม ให้ผู้จัดการรีเซ็ตรหัสผ่านจากหน้าจัดการผู้ใช้')
+                  lines.push('')
+                  lines.push('═══════════════════════════════════════')
+                  const text = lines.join('\n')
+                  navigator.clipboard?.writeText(text).then(() => {
+                    alert('✅ คัดลอกข้อมูลบัญชีทั้งหมดแล้ว — ไปวางในที่ปลอดภัยได้เลย')
+                  }).catch(() => {
+                    // fallback: download as file
+                    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = `clinicq-accounts-${form.clinicName || 'clinic'}.txt`
+                    a.click()
+                    URL.revokeObjectURL(url)
+                  })
+                }
+                const handleDownload = () => {
+                  const lines = [
+                    '═══════════════════════════════════════',
+                    '  Clinic-Q — ข้อมูลบัญชีผู้ใช้คลินิก',
+                    '═══════════════════════════════════════',
+                    '',
+                    `คลินิก: ${form.clinicName || '-'}`,
+                    `อีเมล: ${form.email}`,
+                    '',
+                    '───────────────────────────────────────',
+                    '',
+                  ]
+                  stored.forEach((acc: { role: string; username: string; temporaryPassword: string }) => {
+                    lines.push(`[${roleLabel(acc.role)}]`)
+                    lines.push(`  Username:         ${acc.username}`)
+                    lines.push(`  รหัสผ่านชั่วคราว: ${acc.temporaryPassword}`)
+                    lines.push('')
+                  })
+                  lines.push('───────────────────────────────────────')
+                  lines.push('⚠️ รหัสผ่านชั่วคราวนี้จะแสดงเพียงครั้งเดียว')
+                  lines.push('   หลังจากนี้ระบบจะไม่สามารถแสดงอีกได้')
+                  lines.push('   หากลืม ให้ผู้จัดการรีเซ็ตรหัสผ่านจากหน้าจัดการผู้ใช้')
+                  lines.push('')
+                  lines.push('═══════════════════════════════════════')
+                  const text = lines.join('\n')
+                  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+                  const url = URL.createObjectURL(blob)
+                  const a = document.createElement('a')
+                  a.href = url
+                  a.download = `clinicq-accounts-${form.clinicName || 'clinic'}.txt`
+                  a.click()
+                  URL.revokeObjectURL(url)
+                }
+                return (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleSave}
+                      className="flex-1 py-2.5 rounded-xl font-bold text-sm text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-all flex items-center justify-center gap-2"
+                    >
+                      📋 คัดลอกข้อมูลทั้งหมด
+                    </button>
+                    <button
+                      onClick={handleDownload}
+                      className="flex-1 py-2.5 rounded-xl font-bold text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 transition-all flex items-center justify-center gap-2"
+                    >
+                      💾 บันทึกเป็นไฟล์
+                    </button>
+                  </div>
+                )
+              } catch {
+                return null
+              }
+            })()}
             <div className="bg-amber-50 rounded-2xl p-4 border border-amber-200">
               <p className="text-sm text-amber-700 font-medium">
                 ⚠️ ทดลองใช้จะสิ้นสุดใน 30 วัน — อัปเกรดเป็นแพ็กเกจชำระเงินเพื่อใช้งานต่อ
