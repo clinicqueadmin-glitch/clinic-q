@@ -150,15 +150,17 @@ export default function PlatformDashboard() {
             .single()
           let ownerName = ''
           let ownerEmail = ''
+          let phone = ''
           if (ownerMembership?.user_id) {
             const { data: ownerUser } = await sb.from('users')
-              .select('name, email')
+              .select('name, email, phone')
               .eq('id', ownerMembership.user_id)
               .limit(1)
               .single()
             if (ownerUser) {
               ownerName = ownerUser.name || ''
               ownerEmail = ownerUser.email || ''
+              phone = ownerUser.phone || ''
             }
           }
           // Get subscription from DB (clinic_settings → setting_key='subscription')
@@ -188,15 +190,7 @@ export default function PlatformDashboard() {
               }
             }
           } catch {}
-          // Get phone from clinic settings
-          let phone = ''
-          try {
-            const settingsRaw = localStorage.getItem(`clinic-q-settings-${c.id}`)
-            if (settingsRaw) {
-              const settings = JSON.parse(settingsRaw)
-              phone = settings.phone || ''
-            }
-          } catch {}
+          // Phone comes from the owner's user record (already fetched above)
           return {
             id: c.id,
             name: c.name,
