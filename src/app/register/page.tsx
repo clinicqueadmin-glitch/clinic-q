@@ -31,7 +31,8 @@ export default function RegisterPage() {
   const [resending, setResending] = useState(false)
   const [resendResult, setResendResult] = useState<{ success: boolean; message: string } | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const [submitStep, setSubmitStep] = useState('')
+  const [submitStep, setSubmitStep] = useState(0)
+  const [submitStepText, setSubmitStepText] = useState('')
   const [trialEnd, setTrialEnd] = useState<Date | null>(null)
   const [countdown, setCountdown] = useState({ days: 30, hours: 0, minutes: 0, seconds: 0 })
   const [completingRegistration, setCompletingRegistration] = useState(false)
@@ -130,13 +131,15 @@ export default function RegisterPage() {
     if (submitting) return
     if (!validate()) return
     setSubmitting(true)
-    setSubmitStep('กำลังตรวจสอบข้อมูล...')
+    setSubmitStep(1)
+    setSubmitStepText('กำลังตรวจสอบข้อมูล...')
     
     // Check for duplicate clinic
     const isDuplicate = await checkDuplicateClinic()
     if (isDuplicate) {
       setSubmitting(false)
-      setSubmitStep('')
+      setSubmitStep(0)
+      setSubmitStepText('')
       setShowDuplicateModal(true)
       return
     }
@@ -146,11 +149,13 @@ export default function RegisterPage() {
     const { isSupabaseReady } = await import('@/lib/supabase')
     if (!isSupabaseReady()) {
       setSubmitting(false)
-      setSubmitStep('')
+      setSubmitStep(0)
+      setSubmitStepText('')
       alert('ระบบยังไม่ได้เชื่อมต่อกับฐานข้อมูล กรุณาติดต่อผู้ดูแลระบบ')
       return
     }
-    setSubmitStep('กำลังสร้างบัญชีผู้ใช้...')
+    setSubmitStep(2)
+    setSubmitStepText('กำลังสร้างบัญชีผู้ใช้...')
     const { supabaseRegister } = await import('@/lib/supabase-auth')
     const result = await supabaseRegister({
       email: form.email,
@@ -162,7 +167,8 @@ export default function RegisterPage() {
     })
     if (!result.success) {
       setSubmitting(false)
-      setSubmitStep('')
+      setSubmitStep(0)
+      setSubmitStepText('')
       alert(result.error || 'สมัครใช้งานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง')
       return
     }
@@ -184,21 +190,25 @@ export default function RegisterPage() {
       } catch {}
       setPendingEmail(form.email)
       setSubmitting(false)
-      setSubmitStep('')
+      setSubmitStep(0)
+      setSubmitStepText('')
       setStep('check_email')
       return
     }
 
     // Session available (confirmation disabled) → create defaults now.
     const clinicId = (result as any).clinicId || ''
-    setSubmitStep('กำลังสร้างบัญชีเริ่มต้น...')
+    setSubmitStep(3)
+    setSubmitStepText('กำลังสร้างบัญชีเริ่มต้น...')
     await createDefaultAccounts(clinicId)
     // Fire-and-forget: persist trial in DB + alert Platform Owner on LINE.
     // Idempotent — safe to call even if the endpoint was already hit.
-    setSubmitStep('กำลังแจ้งเตือนผู้ดูแลระบบ...')
+    setSubmitStep(4)
+    setSubmitStepText('กำลังแจ้งเตือนผู้ดูแลระบบ...')
     notifyNewClinic(clinicId, form.ownerName, form.email)
     setSubmitting(false)
-    setSubmitStep('')
+    setSubmitStep(0)
+    setSubmitStepText('')
     setTrialEnd(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000))
     setStep('success')
   }
@@ -553,9 +563,30 @@ export default function RegisterPage() {
                 ย้อนกลับ
               </button>
               {submitting ? (
-                <div className="flex-1 py-3 rounded-2xl font-bold text-white bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center gap-2">
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  {submitStep || 'กำลังดำเนินการ...'}
+                <div className="flex-1 space-y-2">
+                  {/* Progress bar */}
+                  <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-500 ease-out"
+                      style={{ width: `${(submitStep / 4) * 100}%` }}
+                    />
+                  </div>
+                  {/* Step indicators */}
+                  <div className="flex items-center justify-between px-1">
+                    {[1, 2, 3, 4].map(step => (
+                      <div key={step} className="flex items-center gap-1">
+                        <div className={clsx(
+                          'w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold transition-all',
+                          step < submitStep ? 'bg-green-500 text-white' :
+                          step === submitStep ? 'bg-purple-500 text-white animate-pulse' :
+                          'bg-gray-200 text-gray-400'
+                        )}>
+                          {step < submitStep ? '✓' : step}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-center text-gray-500 font-medium">{submitStepText}</p>
                 </div>
               ) : (
                 <button
