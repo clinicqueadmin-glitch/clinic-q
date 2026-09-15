@@ -29,6 +29,7 @@ export default function RegisterPage() {
   const [pendingEmail, setPendingEmail] = useState('')
   const [resending, setResending] = useState(false)
   const [resendResult, setResendResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [submitting, setSubmitting] = useState(false)
   const [completingRegistration, setCompletingRegistration] = useState(false)
   const [completeError, setCompleteError] = useState('')
   const [form, setForm] = useState({
@@ -122,11 +123,14 @@ export default function RegisterPage() {
   }
 
   const handleSubmit = async () => {
+    if (submitting) return
     if (!validate()) return
+    setSubmitting(true)
     
     // Check for duplicate clinic
     const isDuplicate = await checkDuplicateClinic()
     if (isDuplicate) {
+      setSubmitting(false)
       setShowDuplicateModal(true)
       return
     }
@@ -135,6 +139,7 @@ export default function RegisterPage() {
     if (typeof window === 'undefined') return
     const { isSupabaseReady } = await import('@/lib/supabase')
     if (!isSupabaseReady()) {
+      setSubmitting(false)
       alert('ระบบยังไม่ได้เชื่อมต่อกับฐานข้อมูล กรุณาติดต่อผู้ดูแลระบบ')
       return
     }
@@ -148,6 +153,7 @@ export default function RegisterPage() {
       clinicType: selectedType || 'dental',
     })
     if (!result.success) {
+      setSubmitting(false)
       alert(result.error || 'สมัครใช้งานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง')
       return
     }
@@ -168,6 +174,7 @@ export default function RegisterPage() {
         }))
       } catch {}
       setPendingEmail(form.email)
+      setSubmitting(false)
       setStep('check_email')
       return
     }
@@ -178,6 +185,7 @@ export default function RegisterPage() {
     // Fire-and-forget: persist trial in DB + alert Platform Owner on LINE.
     // Idempotent — safe to call even if the endpoint was already hit.
     notifyNewClinic(clinicId, form.ownerName, form.email)
+    setSubmitting(false)
     setStep('success')
   }
 
@@ -512,18 +520,25 @@ export default function RegisterPage() {
               >
                 ย้อนกลับ
               </button>
-              <button
-                onClick={handleSubmit}
-                disabled={!acceptTerms}
-                className={clsx(
-                  'flex-1 py-3 rounded-2xl font-bold text-white transition-all flex items-center justify-center gap-2',
-                  acceptTerms
-                    ? 'bg-gradient-to-r from-purple-500 to-pink-500 hover:shadow-lg shadow-purple-200'
-                    : 'bg-gray-300 cursor-not-allowed'
-                )}
-              >
-                🚀 สมัครใช้งานฟรี
-              </button>
+              {submitting ? (
+                <div className="flex-1 py-3 rounded-2xl font-bold text-white bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  กำลังสร้างฐานข้อมูล...
+                </div>
+              ) : (
+                <button
+                  onClick={handleSubmit}
+                  disabled={!acceptTerms}
+                  className={clsx(
+                    'flex-1 py-3 rounded-2xl font-bold text-white transition-all flex items-center justify-center gap-2',
+                    acceptTerms
+                      ? 'bg-gradient-to-r from-purple-500 to-pink-500 hover:shadow-lg shadow-purple-200'
+                      : 'bg-gray-300 cursor-not-allowed'
+                  )}
+                >
+                  🚀 สมัครใช้งานฟรี
+                </button>
+              )}
             </div>
           </div>
         )}
