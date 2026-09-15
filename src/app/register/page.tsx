@@ -32,6 +32,8 @@ export default function RegisterPage() {
   const [resendResult, setResendResult] = useState<{ success: boolean; message: string } | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [submitStep, setSubmitStep] = useState('')
+  const [trialEnd, setTrialEnd] = useState<Date | null>(null)
+  const [countdown, setCountdown] = useState({ days: 30, hours: 0, minutes: 0, seconds: 0 })
   const [completingRegistration, setCompletingRegistration] = useState(false)
   const [completeError, setCompleteError] = useState('')
   const [form, setForm] = useState({
@@ -197,8 +199,27 @@ export default function RegisterPage() {
     notifyNewClinic(clinicId, form.ownerName, form.email)
     setSubmitting(false)
     setSubmitStep('')
+    setTrialEnd(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000))
     setStep('success')
   }
+
+  // Countdown timer for trial expiry
+  useEffect(() => {
+    if (!trialEnd) return
+    const tick = () => {
+      const diff = trialEnd.getTime() - Date.now()
+      if (diff <= 0) { setCountdown({ days: 0, hours: 0, minutes: 0, seconds: 0 }); return }
+      setCountdown({
+        days: Math.floor(diff / (1000 * 60 * 60 * 24)),
+        hours: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+        minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)),
+        seconds: Math.floor((diff % (1000 * 60)) / 1000),
+      })
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [trialEnd])
 
   // ═══ After email confirmation: finish clinic setup ═══
   // Supabase redirects to /register?confirmed=1 via /auth/callback once the
@@ -889,9 +910,25 @@ export default function RegisterPage() {
               }
             })()}
 
-            <div className="bg-amber-50 rounded-2xl p-4 border border-amber-200">
-              <p className="text-sm text-amber-700 font-medium">
-                ⚠️ ทดลองใช้จะสิ้นสุดใน 30 วัน — อัปเกรดเป็นแพ็กเกจชำระเงินเพื่อใช้งานต่อ
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl p-5 border border-amber-200 space-y-3">
+              <p className="text-sm font-bold text-amber-800">
+                ⏰ ทดลองใช้ฟรี เหลืออีก {countdown.days} วัน
+              </p>
+              <div className="flex justify-center gap-3">
+                {[
+                  { val: countdown.days, label: 'วัน' },
+                  { val: countdown.hours, label: 'ชม.' },
+                  { val: countdown.minutes, label: 'น.' },
+                  { val: countdown.seconds, label: 'วิ.' },
+                ].map((item, i) => (
+                  <div key={i} className="bg-white rounded-xl px-3 py-2 shadow-sm border border-amber-100 min-w-[52px] text-center">
+                    <p className="text-xl font-extrabold text-amber-600 tabular-nums">{String(item.val).padStart(2, '0')}</p>
+                    <p className="text-[10px] text-amber-500 font-medium">{item.label}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-amber-600">
+                อัปเกรดเป็นแพ็กเกจชำระเงินเพื่อใช้งานต่อหลังหมดอายุ
               </p>
             </div>
 
