@@ -8,6 +8,7 @@ import {
   ArrowRight, CheckCircle, Mail, User, Phone, Building2, Lock,
 } from 'lucide-react'
 import PhoneInput from '@/components/ui/PhoneInput'
+import { QRCodeSVG } from 'qrcode.react'
 import { clsx } from 'clsx'
 
 const clinicTypes = [
@@ -788,6 +789,53 @@ export default function RegisterPage() {
                 return null
               }
             })()}
+
+            {/* QR Code for staff to scan */}
+            {typeof window !== 'undefined' && (() => {
+              try {
+                const stored = JSON.parse(sessionStorage.getItem('defaultAccounts') || '[]')
+                if (!stored.length) return null
+                const roleLabel = (role: string) =>
+                  role === 'manager' ? 'ผู้จัดการ' :
+                  role === 'front_desk' || role === 'staff' ? 'เจ้าหน้าที่' :
+                  role === 'practitioner' ? 'ผู้ทำหัตถการ' : role
+                const lines = [
+                  'Clinic-Q ข้อมูลบัญชีผู้ใช้',
+                  `คลินิก: ${form.clinicName || '-'}`,
+                  `อีเมล: ${form.email}`,
+                  '',
+                ]
+                stored.forEach((acc: { role: string; username: string; temporaryPassword: string }) => {
+                  lines.push(`[${roleLabel(acc.role)}]`)
+                  lines.push(`User: ${acc.username}`)
+                  lines.push(`Pass: ${acc.temporaryPassword}`)
+                  lines.push('')
+                })
+                lines.push('รหัสผ่านชั่วคราวแสดงเพียงครั้งเดียว')
+                const qrText = lines.join('\n')
+                return (
+                  <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl p-5 border border-indigo-200 text-center space-y-3">
+                    <p className="text-sm font-bold text-indigo-800">
+                      📱 สแกน QR Code ด้วยมือถือเพื่อดูข้อมูลบัญชี
+                    </p>
+                    <div className="bg-white rounded-xl p-3 inline-block shadow-sm border border-indigo-100">
+                      <QRCodeSVG
+                        value={qrText}
+                        size={160}
+                        level="M"
+                        includeMargin
+                      />
+                    </div>
+                    <p className="text-xs text-indigo-600">
+                      ส่ง QR Code นี้ให้ทีมงานเพื่อสแกนด้วยมือถือ
+                    </p>
+                  </div>
+                )
+              } catch {
+                return null
+              }
+            })()}
+
             <div className="bg-amber-50 rounded-2xl p-4 border border-amber-200">
               <p className="text-sm text-amber-700 font-medium">
                 ⚠️ ทดลองใช้จะสิ้นสุดใน 30 วัน — อัปเกรดเป็นแพ็กเกจชำระเงินเพื่อใช้งานต่อ
