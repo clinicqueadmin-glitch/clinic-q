@@ -836,6 +836,49 @@ export default function RegisterPage() {
               }
             })()}
 
+            {/* Send credentials via email */}
+            {typeof window !== 'undefined' && (() => {
+              try {
+                const stored = JSON.parse(sessionStorage.getItem('defaultAccounts') || '[]')
+                if (!stored.length) return null
+                const roleLabel = (role: string) =>
+                  role === 'manager' ? 'ผู้จัดการ' :
+                  role === 'front_desk' || role === 'staff' ? 'เจ้าหน้าที่' :
+                  role === 'practitioner' ? 'ผู้ทำหัตถการ' : role
+                const emailLines = [
+                  'Clinic-Q — ข้อมูลบัญชีผู้ใช้คลินิก',
+                  '',
+                  `คลินิก: ${form.clinicName || '-'}`,
+                  `อีเมล: ${form.email}`,
+                  '',
+                  '──────────────────────────────',
+                  '',
+                ]
+                stored.forEach((acc: { role: string; username: string; temporaryPassword: string }) => {
+                  emailLines.push(`[${roleLabel(acc.role)}]`)
+                  emailLines.push(`  Username: ${acc.username}`)
+                  emailLines.push(`  รหัสผ่าน: ${acc.temporaryPassword}`)
+                  emailLines.push('')
+                })
+                emailLines.push('──────────────────────────────')
+                emailLines.push('⚠️ รหัสผ่านชั่วคราวนี้จะแสดงเพียงครั้งเดียว')
+                emailLines.push('   หากลืม ให้ผู้จัดการรีเซ็ตรหัสผ่านจากหน้าจัดการผู้ใช้')
+                const subject = encodeURIComponent(`Clinic-Q ข้อมูลบัญชีผู้ใช้ — ${form.clinicName || 'คลินิกของคุณ'}`)
+                const body = encodeURIComponent(emailLines.join('\n'))
+                const mailtoUrl = `mailto:${form.email}?subject=${subject}&body=${body}`
+                return (
+                  <a
+                    href={mailtoUrl}
+                    className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl font-bold text-sm text-purple-700 bg-purple-50 border border-purple-200 hover:bg-purple-100 transition-all"
+                  >
+                    📧 ส่งข้อมูลบัญชีทางอีเมล
+                  </a>
+                )
+              } catch {
+                return null
+              }
+            })()}
+
             <div className="bg-amber-50 rounded-2xl p-4 border border-amber-200">
               <p className="text-sm text-amber-700 font-medium">
                 ⚠️ ทดลองใช้จะสิ้นสุดใน 30 วัน — อัปเกรดเป็นแพ็กเกจชำระเงินเพื่อใช้งานต่อ
