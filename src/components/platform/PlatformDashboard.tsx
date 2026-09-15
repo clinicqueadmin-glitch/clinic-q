@@ -57,6 +57,7 @@ export default function PlatformDashboard() {
   const [platformClinics, setPlatformClinics] = useState<ClinicWithStats[]>([])
   const [allUsers, setAllUsers] = useState<Array<{ id: string; name: string; email: string; role: string; clinicType: string; color: string }>>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [viewDetailClinic, setViewDetailClinic] = useState<ClinicWithStats | null>(null)
   const [deleteConfirmClinic, setDeleteConfirmClinic] = useState<ClinicWithStats | null>(null)
   const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0) // 0=confirm name, 1=confirm action, 2=deleting
   const [deleteError, setDeleteError] = useState('')
@@ -569,6 +570,13 @@ export default function PlatformDashboard() {
                       <td className="py-3 px-3 text-center">
                         <div className="flex items-center gap-1.5 justify-center">
                           <button
+                            onClick={() => setViewDetailClinic(clinic)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 border border-gray-200 transition-all"
+                            title="ดูข้อมูลคลินิก"
+                          >
+                            📋 ดูข้อมูล
+                          </button>
+                          <button
                             onClick={() => enterClinic(clinic.id, clinic.type, clinic.name)}
                             className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 transition-all shadow-sm"
                           >
@@ -708,6 +716,84 @@ export default function PlatformDashboard() {
         {/* ═══ Section 5: LINE Notification (Platform Owner only) ═══ */}
         <PlatformLineSettings />
       </div>
+
+      {/* ═══ Clinic Detail Modal ═══ */}
+      {viewDetailClinic && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="absolute inset-0" onClick={() => setViewDetailClinic(null)} />
+          <div className="relative bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-500 to-indigo-500 px-6 py-5">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center text-white font-bold text-lg" style={{ backgroundColor: viewDetailClinic.color }}>
+                  {viewDetailClinic.prefix}
+                </div>
+                <div>
+                  <h3 className="text-lg font-extrabold text-white">{viewDetailClinic.name}</h3>
+                  <p className="text-sm text-white/80">{clinicTypeLabels[viewDetailClinic.type] || viewDetailClinic.type}</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">เบอร์โทรศัพท์</p>
+                  <p className="text-sm font-bold text-gray-900">{viewDetailClinic.phone || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">เจ้าของ</p>
+                  <p className="text-sm font-bold text-gray-900">{viewDetailClinic.ownerName || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">อีเมล</p>
+                  <p className="text-sm font-medium text-gray-700">{viewDetailClinic.ownerEmail || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">แพ็กเกจ</p>
+                  <p className="text-sm font-bold text-gray-900">
+                    {viewDetailClinic.planType === 'trial' ? '🧪 ทดลองใช้' : viewDetailClinic.planType === 'yearly' ? '⭐ รายปี' : '⭐ รายเดือน'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">วันสมัคร</p>
+                  <p className="text-sm text-gray-700">{viewDetailClinic.registeredAt || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">วันหมดอายุ</p>
+                  <p className="text-sm text-gray-700">{viewDetailClinic.expiresAt || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">คิววันนี้</p>
+                  <p className="text-sm font-bold text-gray-900">{viewDetailClinic.totalQueuesToday}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">ผู้ใช้งาน</p>
+                  <p className="text-sm font-bold text-gray-900">{viewDetailClinic.totalUsers}</p>
+                </div>
+              </div>
+              {viewDetailClinic.isEarlyBird && (
+                <div className="bg-amber-50 rounded-xl p-3 border border-amber-200">
+                  <p className="text-xs font-bold text-amber-700">🔥 Early Bird — สมัครภายใน 7 วันแรก</p>
+                </div>
+              )}
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => { setViewDetailClinic(null); enterClinic(viewDetailClinic.id, viewDetailClinic.type, viewDetailClinic.name) }}
+                  className="flex-1 py-3 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 transition-all flex items-center justify-center gap-2"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  เข้าคลินิก
+                </button>
+                <button
+                  onClick={() => setViewDetailClinic(null)}
+                  className="px-6 py-3 rounded-xl text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all"
+                >
+                  ปิด
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ═══ Delete Clinic Confirmation Dialog ═══ */}
       {deleteConfirmClinic && (
