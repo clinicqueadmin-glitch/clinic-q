@@ -22,6 +22,7 @@ interface ClinicStatus {
   id: string
   name: string
   type: string
+  phone: string
   enabled: boolean
   hasSecret: boolean
   hasToken: boolean
@@ -97,6 +98,35 @@ export async function GET(request: NextRequest) {
       boundCounts.set(row.clinic_id, (boundCounts.get(row.clinic_id) || 0) + 1)
     }
 
+    // Fetch owner phone for each clinic
+    const clinicIds = (clinics || []).map((c: any) => c.id)
+    const phoneMap = new Map<string, string>()
+    if (clinicIds.length > 0) {
+      const { data: ownerMembers } = await admin
+        .from('clinic_memberships')
+        .select('clinic_id, user_id')
+        .eq('role', 'owner')
+        .eq('is_active', true)
+        .in('clinic_id', clinicIds)
+      if (ownerMembers && ownerMembers.length > 0) {
+        const ownerIds = [...new Set(ownerMembers.map((m: any) => m.user_id).filter(Boolean))]
+        if (ownerIds.length > 0) {
+          const { data: ownerUsers } = await admin
+            .from('users')
+            .select('id, phone')
+            .in('id', ownerIds)
+          for (const u of (ownerUsers || []) as any[]) {
+            if (u.phone) phoneMap.set(u.id, u.phone)
+          }
+        }
+        for (const m of ownerMembers as any[]) {
+          if (m.user_id && phoneMap.has(m.user_id)) {
+            phoneMap.set(m.clinic_id, phoneMap.get(m.user_id) || '')
+          }
+        }
+      }
+    }
+
     const clinicStatuses: ClinicStatus[] = (clinics || []).map((c: any) => {
       const row = settingsByClinic.get(c.id)
       const settings = normalizeLineSettings(row?.value)
@@ -104,6 +134,7 @@ export async function GET(request: NextRequest) {
         id: c.id,
         name: c.name || '',
         type: c.type || '',
+        phone: phoneMap.get(c.id) || '',
         enabled: settings.enabled,
         hasSecret: !!settings.channelSecret,
         hasToken: !!settings.channelToken,

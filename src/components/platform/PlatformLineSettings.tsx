@@ -19,6 +19,7 @@ interface ClinicLineStatus {
   id: string
   name: string
   type: string
+  phone: string
   enabled: boolean
   hasSecret: boolean
   hasToken: boolean
@@ -210,6 +211,7 @@ export default function PlatformLineSettings() {
                 <div>
                   <p className="font-bold text-gray-900">{selected.name}</p>
                   <p className="text-xs text-gray-500">
+                    {selected.phone && <>{selected.phone} · </>}
                     {selected.hasToken ? 'ตั้งค่า Channel Token แล้ว' : 'ยังไม่ได้ตั้งค่า Channel Token'}
                     {' · '}
                     ผู้ผูก LINE {selected.boundUsers} คน
@@ -330,6 +332,7 @@ export default function PlatformLineSettings() {
               <thead>
                 <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
                   <th className="py-2 pr-4">ชื่อคลินิก</th>
+                  <th className="py-2 pr-4">เบอร์โทร</th>
                   <th className="py-2 pr-4">LINE Notification</th>
                   <th className="py-2 pr-4">Channel Token</th>
                   <th className="py-2 pr-4">ก่อนถึงคิว</th>
@@ -348,6 +351,7 @@ export default function PlatformLineSettings() {
                     )}
                   >
                     <td className="py-2.5 pr-4 font-medium text-gray-800">{c.name || c.id}</td>
+                    <td className="py-2.5 pr-4 text-xs text-gray-500">{c.phone || '—'}</td>
                     <td className="py-2.5 pr-4">
                       <span className={clsx(
                         'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold',
