@@ -274,7 +274,16 @@ export default function TVDisplay() {
     })
   }, [roomStatus, overtimeAlerted, soundEnabled, branchData])
 
-  const nextQueue = useMemo(() => queue.find(q => q.status === 'waiting' && q.arrived), [queue])
+  const nextQueue = useMemo(() => {
+    // Same priority as Dashboard (TodayOps): on-time appointments first,
+    // then walk-ins, then late appointments — so TV and Dashboard agree.
+    const waiting = queue.filter(q => q.status === 'waiting' && q.arrived)
+    const onTimeAppt = waiting.find(q => q.bookingMode === 'appointment' && q.isOnTime !== false)
+    if (onTimeAppt) return onTimeAppt
+    const walkin = waiting.find(q => q.bookingMode !== 'appointment')
+    if (walkin) return walkin
+    return waiting[0] || null
+  }, [queue])
 
   const stats = useMemo(() => ({
     serving: queue.filter(q => q.status === 'serving').length,
