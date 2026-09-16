@@ -15,6 +15,7 @@ export type WeeklySchedule = Record<string, DaySchedule> // keys: mon, tue, wed,
 export interface ClinicSettings {
   clinicName?: string // custom clinic name
   logo?: string // base64 data URL
+  address?: string // clinic address
   operatingDays: string[] // legacy: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
   openTime?: string // legacy: single เวลาเปิดทำการ (HH:mm)
   closeTime?: string // legacy: single เวลาปิดทำการ (HH:mm)

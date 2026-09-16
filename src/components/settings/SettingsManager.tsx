@@ -134,6 +134,7 @@ export default function SettingsManager() {
           if (parsed.clinicName) setClinicName(parsed.clinicName)
           if (parsed.logo) setClinicLogo(parsed.logo)
           if (parsed.phone) setClinicPhone(parsed.phone)
+          if (parsed.address) setClinicAddress(parsed.address)
           if (parsed.weeklySchedule) {
             setWeeklySchedule(prev => ({ ...prev, ...parsed.weeklySchedule }))
           } else if (parsed.openTime && parsed.closeTime && parsed.operatingDays) {
@@ -470,6 +471,7 @@ export default function SettingsManager() {
     try {
       ok = await updateSettings({
         clinicName, logo: logoValue,
+        address: clinicAddress,
         operatingDays: activeDays,
         openTime: firstActive?.openTime || '08:00',
         closeTime: firstActive?.closeTime || '20:00',
