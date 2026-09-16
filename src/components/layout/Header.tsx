@@ -78,8 +78,8 @@ export default function Header() {
   const clinics = getUserClinics()
   const currentClinic = clinics.find(c => c.id === currentClinicId)
   
-  // Trial status
-  const [trialInfo, setTrialInfo] = useState<{ isTrial: boolean; daysLeft: number; endDate: string } | null>(null)
+  // Trial status + Early Bird
+  const [trialInfo, setTrialInfo] = useState<{ isTrial: boolean; daysLeft: number; endDate: string; earlyBirdEndDate?: string } | null>(null)
   
   useEffect(() => {
     if (currentClinicId && typeof window !== 'undefined') {
@@ -91,10 +91,15 @@ export default function Header() {
             const end = new Date(data.trialEndDate)
             const now = new Date()
             const daysLeft = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+            // Early Bird = registration date + 7 days (trialEndDate - 23 days)
+            const ebEnd = new Date(end)
+            ebEnd.setDate(ebEnd.getDate() - 23)
+            const ebExpired = ebEnd.getTime() < now.getTime()
             setTrialInfo({
               isTrial: true,
               daysLeft: Math.max(0, daysLeft),
               endDate: end.toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' }),
+              earlyBirdEndDate: ebExpired ? undefined : ebEnd.toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' }),
             })
           } else {
             setTrialInfo(null)
@@ -120,10 +125,15 @@ export default function Header() {
               trialEndDate: trialEnd.toISOString(),
               paidEndDate: null,
             }))
+            // Early Bird = registration date + 7 days
+            const ebEnd = new Date(start)
+            ebEnd.setDate(ebEnd.getDate() + 7)
+            const ebExpired = ebEnd.getTime() < now.getTime()
             setTrialInfo({
               isTrial: true,
               daysLeft: Math.max(0, daysLeft),
               endDate: trialEnd.toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' }),
+              earlyBirdEndDate: ebExpired ? undefined : ebEnd.toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' }),
             })
           } else {
             setTrialInfo({ isTrial: true, daysLeft: 30, endDate: '—' })
@@ -197,6 +207,12 @@ export default function Header() {
               <>🧪 ทดลองใช้ฟรี — เหลืออีก <b>{trialInfo.daysLeft}</b> วัน (หมดอายุ {trialInfo.endDate})</>
             )}
           </span>
+          {/* Early Bird promo — red text */}
+          {trialInfo.earlyBirdEndDate && (
+            <span className="text-yellow-100 text-xs font-bold ml-2">
+              🔥 สมัครก่อน <span className="text-white underline">{trialInfo.earlyBirdEndDate}</span> ราคา <span className="text-yellow-200 text-sm font-black">3,999 บาท/ปี</span> ต่อเนื่อง 3 ปี
+            </span>
+          )}
           {/* Upgrade button — owner/manager only */}
           {(currentRole === 'owner' || currentRole === 'manager') && (
             <button 
