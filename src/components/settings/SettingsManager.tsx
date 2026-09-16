@@ -121,7 +121,7 @@ export default function SettingsManager() {
   const settingsKey = currentClinicId ? `clinic-q-settings-${currentClinicId}` : 'clinic-q-settings'
   const lineSettingsKey = currentClinicId ? `clinic-q-line-settings-${currentClinicId}` : 'clinic-q-line-settings'
 
-  // Fetch clinic name from Supabase on mount and reset to defaults
+  // Fetch clinic name + phone from Supabase on mount and reset to defaults
   useEffect(() => {
     const fetchClinicData = async () => {
       // First, try to load from localStorage settings — the clinic-specific key ONLY.
@@ -133,6 +133,7 @@ export default function SettingsManager() {
           const parsed = JSON.parse(saved)
           if (parsed.clinicName) setClinicName(parsed.clinicName)
           if (parsed.logo) setClinicLogo(parsed.logo)
+          if (parsed.phone) setClinicPhone(parsed.phone)
           if (parsed.weeklySchedule) {
             setWeeklySchedule(prev => ({ ...prev, ...parsed.weeklySchedule }))
           } else if (parsed.openTime && parsed.closeTime && parsed.operatingDays) {
@@ -152,7 +153,7 @@ export default function SettingsManager() {
         } catch {}
       }
       
-      // Then, fetch from Supabase to get the latest clinic name
+      // Then, fetch from Supabase to get the latest clinic name + owner phone
       if (isSupabaseReady()) {
         const sb = getSupabase()
         if (sb) {
@@ -180,6 +181,30 @@ export default function SettingsManager() {
 
               if (clinic?.name) {
                 setClinicName(clinic.name)
+              }
+
+              // Load owner phone from users table (same source as Platform Dashboard)
+              const { data: ownerMember } = await sb.from('clinic_memberships')
+                .select('user_id')
+                .eq('clinic_id', targetClinicId)
+                .eq('role', 'owner')
+                .eq('is_active', true)
+                .limit(1)
+                .maybeSingle()
+              if (ownerMember?.user_id) {
+                const { data: ownerUser } = await sb.from('users')
+                  .select('phone')
+                  .eq('id', ownerMember.user_id)
+                  .maybeSingle()
+                if (ownerUser?.phone) {
+                  setClinicPhone(ownerUser.phone)
+                  // Cache in localStorage for this clinic
+                  try {
+                    const cache = saved ? JSON.parse(saved) : {}
+                    cache.phone = ownerUser.phone
+                    localStorage.setItem(settingsKey, JSON.stringify(cache))
+                  } catch {}
+                }
               }
             }
           }
@@ -450,6 +475,34 @@ export default function SettingsManager() {
         closeTime: firstActive?.closeTime || '20:00',
         weeklySchedule,
       })
+      // Also save phone to localStorage cache and sync to users table
+      if (currentClinicId) {
+        try {
+          const cached = localStorage.getItem(settingsKey)
+          const cacheObj = cached ? JSON.parse(cached) : {}
+          cacheObj.phone = clinicPhone
+          localStorage.setItem(settingsKey, JSON.stringify(cacheObj))
+        } catch {}
+        // Sync phone to users table so Platform Dashboard stays in sync
+        if (isSupabaseReady()) {
+          const sb = getSupabase()
+          if (sb) {
+            const { data: { user } } = await sb.auth.getUser()
+            if (user) {
+              const { data: ownerMember } = await sb.from('clinic_memberships')
+                .select('user_id')
+                .eq('clinic_id', currentClinicId)
+                .eq('role', 'owner')
+                .eq('is_active', true)
+                .limit(1)
+                .maybeSingle()
+              if (ownerMember?.user_id) {
+                await sb.from('users').update({ phone: clinicPhone }).eq('id', ownerMember.user_id)
+              }
+            }
+          }
+        }
+      }
     } catch {
       ok = false
     }
