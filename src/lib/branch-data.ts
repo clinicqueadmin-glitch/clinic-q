@@ -308,11 +308,25 @@ export function getQueueWaitInfo(
   queue: { id: string; procedureId: string; status: string; arrived: boolean; assignedRoom: number; servingAt?: number }[],
   targetId: string
 ): { position: number; aheadCount: number; estimatedWaitMinutes: number; aheadDetails: { id: string; procedureId: string; duration: number }[] } {
-  // Get all arrived waiting items, ordered by created_at (queue order)
-  const waitingItems = queue.filter(q => q.status === 'waiting' && q.arrived)
+  // Find the target patient's procedure and its branch
+  const targetItem = queue.find(q => q.id === targetId)
+  const targetBranch = targetItem ? findBranchForProcedure(data, targetItem.procedureId) : null
+  const targetBranchId = targetBranch?.id || ''
+
+  // Get arrived waiting items in the SAME branch only
+  const waitingItems = queue.filter(q => {
+    if (q.status !== 'waiting' || !q.arrived) return false
+    // If we can determine the target branch, only count same-branch patients
+    if (targetBranchId) {
+      const branch = findBranchForProcedure(data, q.procedureId)
+      return branch?.id === targetBranchId
+    }
+    return true
+  })
   
   const targetIndex = waitingItems.findIndex(q => q.id === targetId)
   if (targetIndex === -1) {
+    // Target not found in same-branch waiting items; still show position 0
     return { position: 0, aheadCount: 0, estimatedWaitMinutes: 0, aheadDetails: [] }
   }
 
@@ -325,16 +339,21 @@ export function getQueueWaitInfo(
 
   let estimatedWaitMinutes = aheadDetails.reduce((sum, d) => sum + d.duration, 0)
 
-  // ═══ Add remaining time from currently serving patients ═══
-  // For each room that has a serving patient, calculate remaining time
-  const servingItems = queue.filter(q => q.status === 'serving' && q.servingAt)
+  // ═══ Add remaining time from currently serving patients in the SAME branch ═══
+  const servingItems = queue.filter(q => {
+    if (q.status !== 'serving' || !q.servingAt) return false
+    // Only count serving patients from the same branch as the target
+    if (targetBranchId) {
+      const branch = findBranchForProcedure(data, q.procedureId)
+      return branch?.id === targetBranchId
+    }
+    return true
+  })
   const now = Date.now()
   servingItems.forEach(serving => {
     const totalDuration = getEstimatedDuration(data, serving.procedureId)
     const elapsedMinutes = Math.round((now - (serving.servingAt || now)) / 60000)
     const remainingMinutes = Math.max(0, totalDuration - elapsedMinutes)
-    // Add remaining time only if this serving patient is ahead in the same room
-    // (simplified: add remaining time from all serving rooms)
     estimatedWaitMinutes += remainingMinutes
   })
 
